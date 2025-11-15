@@ -158,14 +158,15 @@
 
   .page-logo-center {
   position: absolute;
-  top: 32%;                /* 👉 plus bas, juste au-dessus de la carte */
+  top: 27%;                    /* 👉 Légèrement plus haut pour ne pas toucher le titre */
   left: 50%;
   transform: translateX(-50%);
-  width: 230px;            /* 👉 plus grand */
+  width: 230px;
   height: 230px;
   object-fit: contain;
   filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.7));
-  animation: fadeIn 0.6s ease-out;
+  z-index: 30;                 /* ⭐ FORCÉ DEVANT TOUT LE RESTE */
+  pointer-events: none;        /* (optionnel) pour que ça ne gêne aucun clic */
   }
 
 
