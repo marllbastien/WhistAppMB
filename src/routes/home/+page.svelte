@@ -2,6 +2,11 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
 
+
+  const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
+
+
   let tableName = '';
   let mancheNumber: number | '' = '';
   let playerCount: string | null = null; // "4" | "5" | "6"
@@ -15,7 +20,8 @@
 
   onMount(async () => {
   try {
-  const res = await fetch('http://localhost:5179/api/joueurs');
+  const res = await fetch("${API_BASE_URL}/api/joueurs");
+
   if (!res.ok) {
   throw new Error('HTTP ' + res.status);
   }

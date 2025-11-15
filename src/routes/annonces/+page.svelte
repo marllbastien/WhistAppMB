@@ -1,81 +1,86 @@
 <script lang="ts">
-	import { onMount } from 'svelte';
-import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
-
-	let tableName = '';
-	let mancheNumber = '';
-	let players: string[] = [];
-	let playerCount = 0;
-	let rows = 0;
-	let donneNumber = 1; // numéro de la donne actuelle
-
+  import { onMount } from 'svelte';
+  import jsPDF from 'jspdf';
+  import autoTable from 'jspdf-autotable';
   
-    
-    let soloPlayer: string | null = null;
+  
+  const API_BASE_URL =
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
+  
+  
+  let tableName = '';
+  let mancheNumber = '';
+  let players: string[] = [];
+  let playerCount = 0;
+  let rows = 0;
+  let donneNumber = 1; // numéro de la donne actuelle
 
 
-    let showAnnonceOrder = false; // Permet d'afficher la latte des annonces
-	let showHistorique = false; // Permet d'afficher le tableau des scores complet
+
+  let soloPlayer: string | null = null;
+
+
+  let showAnnonceOrder = false; // Permet d'afficher la latte des annonces
+  let showHistorique = false; // Permet d'afficher le tableau des scores complet
   let showFeuillePoints = false;
   let showArbitreModal = false;
-let arbitreMessage = "";
+  let arbitreMessage = "";
 
-  
+
 
   const couleurs = [
-    { nom: 'Pique', symbole: '♠', couleur: 'black' },
-    { nom: 'Trèfle', symbole: '♣', couleur: 'black' },
-    { nom: 'Carreau', symbole: '♦', couleur: 'red' },
-    { nom: 'Coeur', symbole: '♥', couleur: 'red' }
+  { nom: 'Pique', symbole: '♠', couleur: 'black' },
+  { nom: 'Trèfle', symbole: '♣', couleur: 'black' },
+  { nom: 'Carreau', symbole: '♦', couleur: 'red' },
+  { nom: 'Coeur', symbole: '♥', couleur: 'red' }
   ];
 
 
-    // Le joueur 2 (index 1) distribue au départ
-	$: currentDealer = (donneNumber) % players.length;
+  // Le joueur 2 (index 1) distribue au départ
+  $: currentDealer = (donneNumber) % players.length;
 
-	function nextDonne() {
-		donneNumber++;
-    resetDonneState();
-	}
+  function nextDonne() {
+  donneNumber++;
+  resetDonneState();
+  }
 
 
 
-	let annonces = [
-		{ code: 'E8', label: 'Emballage 8 plis', templateResult: 2 },
-        { code: 'E9', label: 'Emballage 9 plis', templateResult: 2 },
-		{ code: 'S6', label: 'Seul 6 plis', templateResult: 1 },
-		{ code: 'E10', label: 'Emballage 10 plis', templateResult: 2 },
-		{ code: 'S7', label: 'Seul 7 plis', templateResult: 1 },
-		{ code: 'E11', label: 'Emballage 11 plis', templateResult: 2 },
-		{ code: 'PM', label: 'Petite misère', templateResult: 3 },
-		{ code: 'PM2', label: 'Petite misère 2 joueurs', templateResult: 4 },
-		{ code: 'E12', label: 'Emballage 12 plis', templateResult: 2 },
-		{ code: 'S8', label: 'Seul 8 plis', templateResult: 1 },
-		{ code: 'S8_D', label: 'Seul 8 plis direct', templateResult: 1 },
-		{ code: 'P', label: 'Piccolo', templateResult: 3 },
-		{ code: 'P2', label: 'Piccolo 2 joueurs', templateResult: 4 },
-		{ code: 'PME', label: 'Petite misère étalée', templateResult: 3 },
-		{ code: 'PME2', label: 'Petite misère étalée 2 joueurs', templateResult: 4 },
-		{ code: 'E13', label: 'Emballage 13 plis', templateResult: 2 },
-		{ code: 'A9', label: 'Abondance 9 plis', templateResult: 3 },
-		{ code: 'TR', label: 'Trou', templateResult: 5 },
-		{ code: 'GM', label: 'Grande misère', templateResult: 3 },
-		{ code: 'GM2', label: 'Grande misère 2 joueurs', templateResult: 4 },
-		{ code: 'A10', label: 'Abondance 10 plis', templateResult: 3 },
-		{ code: 'A11', label: 'Abondance 11 plis', templateResult: 3 },
-		{ code: 'GME', label: 'Grande misère étalée', templateResult: 3 },
-		{ code: 'GME2', label: 'Grande misère étalée 2 joueurs', templateResult: 4 },
-		{ code: 'PC', label: 'Petit chelem', templateResult: 3 },
-		{ code: 'CH', label: 'Chelem', templateResult: 3 },
-		{ code: 'D', label: 'Dames', templateResult: 6 }
-	];
-  
-const ANNONCES_AVEC_ARBITRE = new Set([
-    'GM', 'A10', 'A11', 'GME', 'PC', 'CH', 'GM2', 'GME2'
-]);
+  let annonces = [
+  { code: 'E8', label: 'Emballage 8 plis', templateResult: 2 },
+  { code: 'E9', label: 'Emballage 9 plis', templateResult: 2 },
+  { code: 'S6', label: 'Seul 6 plis', templateResult: 1 },
+  { code: 'E10', label: 'Emballage 10 plis', templateResult: 2 },
+  { code: 'S7', label: 'Seul 7 plis', templateResult: 1 },
+  { code: 'E11', label: 'Emballage 11 plis', templateResult: 2 },
+  { code: 'PM', label: 'Petite misère', templateResult: 3 },
+  { code: 'PM2', label: 'Petite misère 2 joueurs', templateResult: 4 },
+  { code: 'E12', label: 'Emballage 12 plis', templateResult: 2 },
+  { code: 'S8', label: 'Seul 8 plis', templateResult: 1 },
+  { code: 'S8_D', label: 'Seul 8 plis direct', templateResult: 1 },
+  { code: 'P', label: 'Piccolo', templateResult: 3 },
+  { code: 'P2', label: 'Piccolo 2 joueurs', templateResult: 4 },
+  { code: 'PME', label: 'Petite misère étalée', templateResult: 3 },
+  { code: 'PME2', label: 'Petite misère étalée 2 joueurs', templateResult: 4 },
+  { code: 'E13', label: 'Emballage 13 plis', templateResult: 2 },
+  { code: 'A9', label: 'Abondance 9 plis', templateResult: 3 },
+  { code: 'TR', label: 'Trou', templateResult: 5 },
+  { code: 'GM', label: 'Grande misère', templateResult: 3 },
+  { code: 'GM2', label: 'Grande misère 2 joueurs', templateResult: 4 },
+  { code: 'A10', label: 'Abondance 10 plis', templateResult: 3 },
+  { code: 'A11', label: 'Abondance 11 plis', templateResult: 3 },
+  { code: 'GME', label: 'Grande misère étalée', templateResult: 3 },
+  { code: 'GME2', label: 'Grande misère étalée 2 joueurs', templateResult: 4 },
+  { code: 'PC', label: 'Petit chelem', templateResult: 3 },
+  { code: 'CH', label: 'Chelem', templateResult: 3 },
+  { code: 'D', label: 'Dames', templateResult: 6 }
+  ];
 
-	let annonceByPlayer: Record<string, string> = {};
+  const ANNONCES_AVEC_ARBITRE = new Set([
+  'GM', 'A10', 'A11', 'GME', 'PC', 'CH', 'GM2', 'GME2'
+  ]);
+
+  let annonceByPlayer: Record<string, string> = {};
 	let emballes: Record<string, string> = {};
 	let currentTemplate = 0;
 
@@ -1354,130 +1359,130 @@ async function exportFeuillePointsPdf() {
           return totalAutres + value > MAX_DAMES;
           }
 
-         async function validate() {
-    // 1. Construire les infos par joueur
-  const joueursPayload = players
-    .map((p) => {
-        const annonce = annonceByPlayer[p] || null;
-        const infoArbitre = isArbitreRequis(annonce, p);
+          async function validate() {
+          // 1. Construire les infos par joueur
+          const joueursPayload = players
+          .map((p) => {
+          const annonce = annonceByPlayer[p] || null;
+          const infoArbitre = isArbitreRequis(annonce, p);
 
-        return {
-            nom: p,
-            annonce,
-            emballageAvec: emballes[p] || null,
-            plis: typeof plis[p] === 'number' ? plis[p] : null,
-            resultat: resultats[p] || null,
-            dames: typeof dames[p] === 'number' ? dames[p] : null,
-            arbitre: infoArbitre.required   // ⬅️ NEW
-        };
-    })
-    .filter(j =>
-        j.annonce !== null ||
-        j.emballageAvec !== null ||
-        j.plis !== null ||
-        j.resultat !== null ||
-        j.dames !== null
-    );
+          return {
+          nom: p,
+          annonce,
+          emballageAvec: emballes[p] || null,
+          plis: typeof plis[p] === 'number' ? plis[p] : null,
+          resultat: resultats[p] || null,
+          dames: typeof dames[p] === 'number' ? dames[p] : null,
+          arbitre: infoArbitre.required   // ⬅️ NEW
+          };
+          })
+          .filter(j =>
+          j.annonce !== null ||
+          j.emballageAvec !== null ||
+          j.plis !== null ||
+          j.resultat !== null ||
+          j.dames !== null
+          );
 
-    // 3. Si personne n'a rien encodé → on ne fait rien
-    if (joueursPayload.length === 0) {
-        alert("Aucune annonce / aucun résultat encodé pour cette donne.");
-        return;
-    }
+          // 3. Si personne n'a rien encodé → on ne fait rien
+          if (joueursPayload.length === 0) {
+          alert("Aucune annonce / aucun résultat encodé pour cette donne.");
+          return;
+          }
 
-    const payload = {
-        tableName,
-        mancheNumber: Number(mancheNumber),
-        donneNumber,
-        joueurs: joueursPayload
-    };
+          const payload = {
+          tableName,
+          mancheNumber: Number(mancheNumber),
+          donneNumber,
+          joueurs: joueursPayload
+          };
 
-    console.log("Payload envoyé à l'API :", payload);
+          console.log("Payload envoyé à l'API :", payload);
 
-    try {
-        const res = await fetch("http://localhost:5179/api/donne", { // adapte au besoin
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(payload)
-        });
+          try {
+          const res = await fetch("${API_BASE_URL}/api/donne", { // adapte au besoin
+          method: "POST",
+          headers: {
+          "Content-Type": "application/json"
+          },
+          body: JSON.stringify(payload)
+          });
 
-      if (!res.ok) {
-        const text = await res.text();
-        console.error("Erreur API :", text);
-        alert("Erreur lors de l'enregistrement de la donne 😢");
-        return;
-    }
+          if (!res.ok) {
+          const text = await res.text();
+          console.error("Erreur API :", text);
+          alert("Erreur lors de l'enregistrement de la donne 😢");
+          return;
+          }
 
-    alert("Donne enregistrée ✅");
-    
-        // 🔹 Calcul des scores de la donne courante
-    const scoresDonne = computeScoresForState(
-        players,
-        annonceByPlayer,
-        emballes,
-        plis,
-        resultats,
-        dames
-    );
+          alert("Donne enregistrée ✅");
 
-    // 🔹 Préparer le payload des scores à envoyer en DB
-    const scoresPayload = {
-        tableName,
-        mancheNumber: Number(mancheNumber),
-        donneNumber,
-        scores: players.map((p) => {
-            const scoreDonne = scoresDonne[p] ?? 0;
-            const cumulAvant = scoresCumulés[p] ?? 0;   // cumul avant cette donne
-            const cumulApres = cumulAvant + scoreDonne; // cumul après cette donne
+          // 🔹 Calcul des scores de la donne courante
+          const scoresDonne = computeScoresForState(
+          players,
+          annonceByPlayer,
+          emballes,
+          plis,
+          resultats,
+          dames
+          );
 
-            return {
-                joueur: p,
-                score: scoreDonne,
-                cumul: cumulApres
-            };
-        })
-    };
+          // 🔹 Préparer le payload des scores à envoyer en DB
+          const scoresPayload = {
+          tableName,
+          mancheNumber: Number(mancheNumber),
+          donneNumber,
+          scores: players.map((p) => {
+          const scoreDonne = scoresDonne[p] ?? 0;
+          const cumulAvant = scoresCumulés[p] ?? 0;   // cumul avant cette donne
+          const cumulApres = cumulAvant + scoreDonne; // cumul après cette donne
 
-    console.log("Scores envoyés à l'API :", scoresPayload);
+          return {
+          joueur: p,
+          score: scoreDonne,
+          cumul: cumulApres
+          };
+          })
+          };
 
-    try {
-        const resScores = await fetch("http://localhost:5179/api/scores", {
-            method: "POST",
-            headers: {
-                "Content-Type": "application/json"
-            },
-            body: JSON.stringify(scoresPayload)
-        });
+          console.log("Scores envoyés à l'API :", scoresPayload);
 
-        if (!resScores.ok) {
-            const text = await resScores.text();
-            console.error("Erreur API scores:", text);
-            // ici tu peux décider si tu bloques ou pas, pour l'instant on log juste
-        }
-    } catch (err) {
-        console.error("Impossible d'envoyer les scores à l'API 😢", err);
-    }
+          try {
+          const resScores = await fetch("${API_BASE_URL}/api/scores", {
+          method: "POST",
+          headers: {
+          "Content-Type": "application/json"
+          },
+          body: JSON.stringify(scoresPayload)
+          });
 
-    
-    
+          if (!resScores.ok) {
+          const text = await resScores.text();
+          console.error("Erreur API scores:", text);
+          // ici tu peux décider si tu bloques ou pas, pour l'instant on log juste
+          }
+          } catch (err) {
+          console.error("Impossible d'envoyer les scores à l'API 😢", err);
+          }
 
-    // 🔹 Ajouter cette donne à l'historique local
-    const donneHistorique: DonneHistorique = {
-        donneNumber,
-        joueurs: joueursPayload
-    };
-    history = [...history, donneHistorique];
 
-    // 4. On passe à la donne suivante ET on nettoie tout
-    nextDonne();
 
-    } catch (err) {
-        console.error(err);
-        alert("Impossible de contacter l'API 😢");
-    }
-}
+
+          // 🔹 Ajouter cette donne à l'historique local
+          const donneHistorique: DonneHistorique = {
+          donneNumber,
+          joueurs: joueursPayload
+          };
+          history = [...history, donneHistorique];
+
+          // 4. On passe à la donne suivante ET on nettoie tout
+          nextDonne();
+
+          } catch (err) {
+          console.error(err);
+          alert("Impossible de contacter l'API 😢");
+          }
+          }
 
 
 
