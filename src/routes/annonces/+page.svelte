@@ -1400,7 +1400,7 @@ async function exportFeuillePointsPdf() {
           console.log("Payload envoyé à l'API :", payload);
 
           try {
-          const res = await fetch("${API_BASE_URL}/api/donne", { // adapte au besoin
+          const res = await fetch(`${API_BASE_URL}/api/donne`,  { // adapte au besoin
           method: "POST",
           headers: {
           "Content-Type": "application/json"
@@ -1448,7 +1448,7 @@ async function exportFeuillePointsPdf() {
           console.log("Scores envoyés à l'API :", scoresPayload);
 
           try {
-          const resScores = await fetch("${API_BASE_URL}/api/scores", {
+          const resScores = await fetch(`${API_BASE_URL}/api/scores`, {
           method: "POST",
           headers: {
           "Content-Type": "application/json"

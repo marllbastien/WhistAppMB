@@ -20,7 +20,7 @@
 
   onMount(async () => {
   try {
-  const res = await fetch("${API_BASE_URL}/api/joueurs");
+  const res = await fetch(`${API_BASE_URL}/api/joueurs`);
 
   if (!res.ok) {
   throw new Error('HTTP ' + res.status);
