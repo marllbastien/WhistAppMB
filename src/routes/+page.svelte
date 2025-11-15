@@ -158,21 +158,16 @@
 
   .page-logo-center {
   position: absolute;
-  top: 14%;
+  top: 32%;                /* 👉 plus bas, juste au-dessus de la carte */
   left: 50%;
   transform: translateX(-50%);
-  width: 180px;
-  height: 180px;
+  width: 230px;            /* 👉 plus grand */
+  height: 230px;
   object-fit: contain;
-  filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.6));
+  filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.7));
   animation: fadeIn 0.6s ease-out;
   }
 
-  /* Optionnel — petite animation d’apparition douce */
-  @keyframes fadeIn {
-  from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
-  to { opacity: 1; transform: translateX(-50%) translateY(0); }
-  }
 
 
 
