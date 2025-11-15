@@ -155,6 +155,27 @@
   height: 64px;
   }
   }
+
+  .page-logo-center {
+  position: absolute;
+  top: 14%;
+  left: 50%;
+  transform: translateX(-50%);
+  width: 180px;
+  height: 180px;
+  object-fit: contain;
+  filter: drop-shadow(0 0 10px rgba(0, 0, 0, 0.6));
+  animation: fadeIn 0.6s ease-out;
+  }
+
+  /* Optionnel — petite animation d’apparition douce */
+  @keyframes fadeIn {
+  from { opacity: 0; transform: translateX(-50%) translateY(-10px); }
+  to { opacity: 1; transform: translateX(-50%) translateY(0); }
+  }
+
+
+
 </style>
 
 <main class="page">
@@ -162,7 +183,9 @@
 	     Si possible, renomme "Logo tee-shirt.png" en "logo-tee-shirt.png" pour éviter les espaces -->
   <img src="/Logo-tee-shirt.png" alt="Logo club" class="page-logo left" />
   <img src="/logo_iwb.png" alt="Logo IWB" class="page-logo right" />
-
+  
+  <img src="/Logo_App_Rond.png" alt="Logo App" class="page-logo-center" />
+  
   <section class="card">
     <h1>Whist Bridgé</h1>
     <p class="subtitle">Encodage des jeux des Whisteux de Basècles</p>
