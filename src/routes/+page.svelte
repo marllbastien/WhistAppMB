@@ -195,9 +195,9 @@
     <p class="subtitle">Encodage des jeux des Whisteux de Basècles</p>
 
     <div class="input-wrapper">
-      <form on:submit|preventDefault={submit} class="login-form"
+      <form on:submit|preventDefault={submit} class="login-form">
         <input
-          bind:value={code}
+          bind:value={"code"
           type="password"
           placeholder="Renseignez le code ici"
     />
