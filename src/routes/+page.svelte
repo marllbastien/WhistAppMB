@@ -179,8 +179,8 @@
 	     Si possible, renomme "Logo tee-shirt.png" en "logo-tee-shirt.png" pour éviter les espaces -->
   <img src="/Logo-tee-shirt.png" alt="Logo club" class="page-logo left" />
   <img src="/logo_iwb.png" alt="Logo IWB" class="page-logo right" />
-  
-  <img src="/Logo_App_Rond.png" alt="Logo App" class="page-logo-center" />
+
+  /*--<img src="/Logo_App_Rond.png" alt="Logo App" class="page-logo-center" />
   
   <section class="card">
     <h1>Whist Bridgé</h1>
