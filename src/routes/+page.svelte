@@ -180,23 +180,24 @@
   <img src="/Logo-tee-shirt.png" alt="Logo club" class="page-logo left" />
   <img src="/logo_iwb.png" alt="Logo IWB" class="page-logo right" />
 
-  /*--<img src="/Logo_App_Rond.png" alt="Logo App" class="page-logo-center" />
-  
+
+  // img src="/Logo_App_Rond.png" alt="Logo App" class="page-logo-center" />
+
   <section class="card">
     <h1>Whist Bridgé</h1>
     <p class="subtitle">Encodage des jeux des Whisteux de Basècles</p>
 
     <div class="input-wrapper">
-      <input
-      bind:value={code}
-      type="password"
-    placeholder="Renseignez le code ici"
-    on:keydown={(e) => e.key === 'Enter' && submit()}
-        />
+      <form on:submit|preventDefault={"submit"}>
+        <input
+          bind:value={"code"
+          type="password"
+          placeholder="Renseignez le code ici"
+    />
 
-
-        <button on:click={"submit"}>Continuer</button>
-      </div>
+        <button type="submit">Continuer</button>
+      </form>
+    </div>
 
     {#if error}
     <p class="error">{error}</p>
