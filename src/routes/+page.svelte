@@ -169,6 +169,12 @@
   pointer-events: none;        /* (optionnel) pour que ça ne gêne aucun clic */
   }
 
+  .login-form {
+  display: flex;
+  flex-direction: column;   /* 👉 vertical */
+  align-items: center;       /* 👉 centré */
+  gap: 1rem;                 /* 👉 espace entre input et bouton */
+  }
 
 
 
@@ -189,7 +195,7 @@
     <p class="subtitle">Encodage des jeux des Whisteux de Basècles</p>
 
     <div class="input-wrapper">
-      <form on:submit|preventDefault={submit}>
+      <form on:submit|preventDefault={submit}> class="login-form"
         <input
           bind:value={code}
           type="password"
