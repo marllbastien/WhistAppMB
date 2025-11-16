@@ -1931,36 +1931,36 @@ async function exportFeuillePointsPdf() {
 
 <style>
   :root {
-    --primary: #c62828;       /* rouge (échec, boutons spéciaux) */
-    --primary-dark: #b71c1c;
-    --accent: #f5b942;        /* doré */
-    --accent-soft: #fff3c4;
+  --primary: #c62828;       /* rouge (échec, boutons spéciaux) */
+  --primary-dark: #b71c1c;
+  --accent: #f5b942;        /* doré */
+  --accent-soft: #fff3c4;
 
-    --border-soft: rgba(255, 255, 255, 0.08);
-    --border-strong: rgba(255, 255, 255, 0.16);
+  --border-soft: rgba(255, 255, 255, 0.08);
+  --border-strong: rgba(255, 255, 255, 0.16);
 
-    --text-main: #f9fafb;
-    --text-muted: #9ca3af;
+  --text-main: #f9fafb;
+  --text-muted: #9ca3af;
 
-    --radius-sm: 6px;
-    --radius-md: 10px;
-    --radius-lg: 18px;
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 18px;
 
-    --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.45);
+  --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.45);
   }
 
   /* Fond simple, non répétitif */
   :global(body) {
-    margin: 0;
-    font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-      sans-serif;
-    background: linear-gradient(180deg, #020806 0%, #04140c 40%, #020806 100%);
-    color: var(--text-main);
-    font-size: 30px; /* un peu plus grand par défaut */
+  margin: 0;
+  font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
+  sans-serif;
+  background: linear-gradient(180deg, #020806 0%, #04140c 40%, #020806 100%);
+  color: var(--text-main);
+  font-size: 30px; /* un peu plus grand par défaut */
   }
 
   /* --- HEADER + TABLEAU JOUEURS --- */
-.header {
+  .header {
   margin: 0 auto 1.5rem auto;
   padding: 0.9rem 1.6rem 1.3rem;
   max-width: 1100px;
@@ -1972,41 +1972,41 @@ async function exportFeuillePointsPdf() {
   display: flex;
   flex-direction: column;
   gap: 0.6rem;
-}
+  }
 
-.header-top {
+  .header-top {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 1rem;
-}
+  }
 
   .header > div:first-child {
-    display: flex;
-    align-items: center;
-    gap: 0.6rem;
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
   }
 
   .header h2 {
-    margin: 0;
-    font-size: 1.3rem;
-    font-weight: 600;
-    color: var(--text-main);
+  margin: 0;
+  font-size: 1.3rem;
+  font-weight: 600;
+  color: var(--text-main);
   }
 
   .header img {
-    height: 48px;
-    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
+  height: 48px;
+  filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.8));
   }
 
-.header-buttons {
+  .header-buttons {
   display: flex;
   justify-content: center;
   gap: 0.8rem;
   margin-top: 0.2rem;
-}
+  }
 
-.header-buttons button {
+  .header-buttons button {
   padding: 0.5rem 1.4rem;
   border-radius: 999px;
   border: 1px solid var(--accent);
@@ -2018,796 +2018,915 @@ async function exportFeuillePointsPdf() {
   box-shadow: 0 4px 12px rgba(0, 0, 0, 0.7);
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
   transition: transform 0.08s ease, box-shadow 0.15s ease, background 0.15s ease;
-}
+  }
 
-.header-buttons button:hover {
+  .header-buttons button:hover {
   background: radial-gradient(circle at top, #246838 0%, #0b2815 70%, #020806 100%);
   transform: translateY(-1px);
   box-shadow: 0 7px 18px rgba(0, 0, 0, 0.8);
-}
+  }
 
 
-/* Wrapper global : logos + bandeau */
-.page-header-wrapper {
+  /* Wrapper global : logos + bandeau */
+  .page-header-wrapper {
   display: flex;
   align-items: stretch;
   justify-content: center;
   gap: 2rem;
   margin: 0.5rem auto 1.5rem auto;
   max-width: 1400px;       /* largeur totale */
-}
+  }
 
-/* Bandeau central garde ton style existant */
-.header {
+  /* Bandeau central garde ton style existant */
+  .header {
   flex: 0 0 900px;         /* largeur fixe de l'encadré */
-}
+  }
 
-/* Logos sur les côtés */
-.corner-logo {
+  /* Logos sur les côtés */
+  .corner-logo {
   align-self: center;      /* verticalement centré par rapport au header */
   height: 180px;           /* 🔥 tu peux monter à 200 / 220 si tu veux encore plus grand */
   width: auto;
   object-fit: contain;
   filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.7));
-}
+  }
 
-/* optionnel : les coller un peu plus au bord */
-.corner-logo-left {
+  /* optionnel : les coller un peu plus au bord */
+  .corner-logo-left {
   margin-left: 0.5rem;
-}
+  }
 
-.corner-logo-right {
+  .corner-logo-right {
   margin-right: 0.5rem;
-}
+  }
 
 
 
   /* Tableau bien dans le header */
   .players-table {
-    margin: 0.6rem auto 0 auto;
-    border-collapse: collapse;
-    background: rgba(2, 12, 7, 0.98);
-    color: var(--text-main);
-    font-size: 1rem;           /* ✅ un peu plus grand */
-    border-radius: 14px;
-    overflow: hidden;
-    box-shadow: var(--shadow-soft);
-    min-width: 420px;
+  margin: 0.6rem auto 0 auto;
+  border-collapse: collapse;
+  background: rgba(2, 12, 7, 0.98);
+  color: var(--text-main);
+  font-size: 1rem;           /* ✅ un peu plus grand */
+  border-radius: 14px;
+  overflow: hidden;
+  box-shadow: var(--shadow-soft);
+  min-width: 420px;
   }
 
   .players-table th,
   .players-table td {
-    padding: 0.45rem 0.7rem;
-    text-align: center;
-    border-bottom: 1px solid rgba(15, 23, 42, 0.6);
+  padding: 0.45rem 0.7rem;
+  text-align: center;
+  border-bottom: 1px solid rgba(15, 23, 42, 0.6);
   }
 
   .players-table th {
-    background: linear-gradient(to bottom, #0f3820, #071d12);
-    font-weight: 600;
+  background: linear-gradient(to bottom, #0f3820, #071d12);
+  font-weight: 600;
   }
 
   .label-cell {
-    background: #04130b;
-    font-weight: 600;
-    text-align: left;
-    padding-left: 1rem;
+  background: #04130b;
+  font-weight: 600;
+  text-align: left;
+  padding-left: 1rem;
   }
 
   .dealer-icon {
-    margin-right: 0.25rem;
+  margin-right: 0.25rem;
   }
 
   hr {
-    border: 0;
-    border-top: 1px solid rgba(148, 163, 184, 0.3);
-    max-width: 900px;
-    margin: 1.5rem auto;
+  border: 0;
+  border-top: 1px solid rgba(148, 163, 184, 0.3);
+  max-width: 900px;
+  margin: 1.5rem auto;
   }
 
   /* --- DONNE / CARTES D’ANNONCES --- */
   .donne {
-    margin-top: 0.5rem;
+  margin-top: 0.5rem;
   }
 
   .donne h3 {
-    text-align: center;
-    font-size: 1.2rem;
-    font-weight: 600;
-    color: var(--accent);
+  text-align: center;
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--accent);
   }
 
   .choixAnnonce {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 1rem;
-    margin-top: 1rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 1rem;
+  margin-top: 1rem;
   }
 
   .player-block {
-    background: rgba(2, 12, 7, 0.96);
-    border: 1px solid var(--border-soft);
-    border-radius: 18px;
-    padding: 1rem 1.3rem;
-    min-width: 230px;
-    box-shadow: var(--shadow-soft);
-    display: flex;
-    flex-direction: column;
-    align-items: center;
-    gap: 0.5rem;
+  background: rgba(2, 12, 7, 0.96);
+  border: 1px solid var(--border-soft);
+  border-radius: 18px;
+  padding: 1rem 1.3rem;
+  min-width: 230px;
+  box-shadow: var(--shadow-soft);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.5rem;
   }
 
   .player-block strong {
-    font-size: 1.05rem;
-    color: var(--accent);
+  font-size: 1.05rem;
+  color: var(--accent);
   }
 
   .player-block select {
-    padding: 0.45rem 0.9rem;
-    border-radius: 999px;
-    border: 1px solid rgba(148, 163, 184, 0.7);
-    background: #020b06;
-    color: var(--text-main);
-    font-size: 1rem;
-    cursor: pointer;
+  padding: 0.45rem 0.9rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: #020b06;
+  color: var(--text-main);
+  font-size: 1rem;
+  cursor: pointer;
   }
 
   .player-block select:focus {
-    outline: none;
-    border-color: var(--accent);
-    box-shadow: 0 0 0 2px rgba(245, 185, 66, 0.4);
+  outline: none;
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(245, 185, 66, 0.4);
   }
 
   .emballage {
-    width: 100%;
-    margin-top: 0.3rem;
+  width: 100%;
+  margin-top: 0.3rem;
   }
 
   .emballage label {
-    font-size: 0.85rem;
-    color: var(--text-muted);
+  font-size: 0.85rem;
+  color: var(--text-muted);
   }
 
   .emballage select {
-    width: 100%;
-    margin-top: 0.2rem;
+  width: 100%;
+  margin-top: 0.2rem;
   }
 
   /* --- ENCODAGE (gros bloc central) --- */
   .encodage {
-    max-width: 840px;
-    margin: 1.8rem auto 0;
-    padding: 1.3rem 1.7rem 1.7rem;
-    background: rgba(2, 12, 7, 0.97);
-    border-radius: var(--radius-lg);
-    border: 1px solid var(--border-strong);
-    box-shadow: var(--shadow-soft);
+  max-width: 840px;
+  margin: 1.8rem auto 0;
+  padding: 1.3rem 1.7rem 1.7rem;
+  background: rgba(2, 12, 7, 0.97);
+  border-radius: var(--radius-lg);
+  border: 1px solid var(--border-strong);
+  box-shadow: var(--shadow-soft);
   }
 
   .encodage > h3 {
-    margin: 0 0 0.8rem;
-    text-align: center;
-    color: var(--accent);
-    font-size: 1.15rem;
+  margin: 0 0 0.8rem;
+  text-align: center;
+  color: var(--accent);
+  font-size: 1.15rem;
   }
 
   .player-row {
-    display: flex;
-    flex-direction: column;
-    gap: 0.5rem;
-    padding: 0.7rem 0.9rem;
-    border-radius: 12px;
-    background: rgba(4, 20, 12, 0.95);
-    border: 1px solid rgba(31, 64, 50, 0.9);
-    margin-top: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.5rem;
+  padding: 0.7rem 0.9rem;
+  border-radius: 12px;
+  background: rgba(4, 20, 12, 0.95);
+  border: 1px solid rgba(31, 64, 50, 0.9);
+  margin-top: 0.5rem;
   }
 
   .player-row span {
-    font-weight: 600;
-    text-align: center;
-    color: var(--text-main);
-    font-size: 1rem;
+  font-weight: 600;
+  text-align: center;
+  color: var(--text-main);
+  font-size: 1rem;
   }
 
   .emballage-encodage {
-    flex-direction: row;
-    justify-content: space-between;
-    align-items: center;
+  flex-direction: row;
+  justify-content: space-between;
+  align-items: center;
   }
 
   .emballage-encodage span {
-    text-align: left;
+  text-align: left;
   }
 
   .number-buttons,
   .button-group {
-    display: flex;
-    flex-wrap: wrap;
-    justify-content: center;
-    gap: 0.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
   }
 
   .number-buttons button,
   .button-group button {
-    padding: 0.4rem 0.9rem;
-    font-size: 1rem;
-    border-radius: 999px;
-    border: 1px solid rgba(148, 163, 184, 0.7);
-    background: #07170e;
-    color: var(--text-main);
-    cursor: pointer;
-    transition: background 0.12s ease, transform 0.05s ease, border-color 0.12s ease;
+  padding: 0.4rem 0.9rem;
+  font-size: 1rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: #07170e;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.05s ease, border-color 0.12s ease;
   }
 
   .number-buttons button:hover,
   .button-group button:hover {
-    background: #0b2414;
+  background: #0b2414;
   }
 
   .number-buttons button.selected:not(.fail),
   .button-group button.selected:not(.fail) {
-    background: var(--accent);
-    border-color: #facc6b;
-    color: #1c1917;
-    font-weight: 600;
+  background: var(--accent);
+  border-color: #facc6b;
+  color: #1c1917;
+  font-weight: 600;
   }
 
   .number-buttons button.fail,
   .button-group button.fail {
-    color: #fca5a5;
-    border-color: #fca5a5;
-    background: #310c0c;
+  color: #fca5a5;
+  border-color: #fca5a5;
+  background: #310c0c;
   }
 
   .number-buttons button.fail.selected,
   .button-group button.fail.selected {
-    background: var(--primary);
-    border-color: var(--primary-dark);
-    color: #fff;
+  background: var(--primary);
+  border-color: var(--primary-dark);
+  color: #fff;
   }
 
   /* --- BOUTON VALIDER --- */
   .BoutonValidate {
-    display: flex;
-    justify-content: center;
-    margin: 1.7rem 0 0.7rem;
+  display: flex;
+  justify-content: center;
+  margin: 1.7rem 0 0.7rem;
   }
 
   .BoutonValidate button {
-    padding: 0.85rem 2.6rem;
-    font-size: 1rem;
-    font-weight: 600;
-    border-radius: 999px;
-    border: none;
-    background: var(--accent);
-    color: #1a1305;
-    cursor: pointer;
-    box-shadow: 0 10px 25px rgba(0, 0, 0, 0.7);
-    text-transform: uppercase;
-    letter-spacing: 0.08em;
-    transition: background 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
+  padding: 0.85rem 2.6rem;
+  font-size: 1rem;
+  font-weight: 600;
+  border-radius: 999px;
+  border: none;
+  background: var(--accent);
+  color: #1a1305;
+  cursor: pointer;
+  box-shadow: 0 10px 25px rgba(0, 0, 0, 0.7);
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition: background 0.15s ease, transform 0.08s ease, box-shadow 0.15s ease;
   }
 
   .BoutonValidate button:hover:enabled {
-    background: #ffd25e;
-    transform: translateY(-1px);
-    box-shadow: 0 14px 32px rgba(0, 0, 0, 0.8);
+  background: #ffd25e;
+  transform: translateY(-1px);
+  box-shadow: 0 14px 32px rgba(0, 0, 0, 0.8);
   }
 
   .BoutonValidate button:disabled {
-    background: #4b5563;
-    color: #d1d5db;
-    cursor: not-allowed;
-    box-shadow: none;
-    transform: none;
+  background: #4b5563;
+  color: #d1d5db;
+  cursor: not-allowed;
+  box-shadow: none;
+  transform: none;
   }
 
   /* --- PRÉVISUALISATION SCORES --- */
   .preview-scores {
-    max-width: 340px;
-    margin: 1.6rem auto 0;
-    padding: 1rem 1.1rem;
-    border-radius: 14px;
-    background: #020b06;
-    border: 1px solid var(--border-soft);
-    box-shadow: var(--shadow-soft);
-    font-size: 0.95rem;
+  max-width: 340px;
+  margin: 1.6rem auto 0;
+  padding: 1rem 1.1rem;
+  border-radius: 14px;
+  background: #020b06;
+  border: 1px solid var(--border-soft);
+  box-shadow: var(--shadow-soft);
+  font-size: 0.95rem;
   }
 
   .preview-scores h3 {
-    margin-top: 0;
-    margin-bottom: 0.5rem;
-    font-size: 1rem;
-    text-align: center;
-    color: var(--accent);
+  margin-top: 0;
+  margin-bottom: 0.5rem;
+  font-size: 1rem;
+  text-align: center;
+  color: var(--accent);
   }
 
   .preview-scores table {
-    width: 100%;
-    border-collapse: collapse;
+  width: 100%;
+  border-collapse: collapse;
   }
 
   .preview-scores th,
   .preview-scores td {
-    padding: 0.35rem 0.5rem;
-    text-align: center;
-    border-bottom: 1px solid rgba(55, 65, 81, 0.7);
+  padding: 0.35rem 0.5rem;
+  text-align: center;
+  border-bottom: 1px solid rgba(55, 65, 81, 0.7);
   }
 
   .preview-scores th {
-    background: #0b2814;
+  background: #0b2814;
   }
 
   .preview-scores td.positive {
-    color: #4ade80;
-    font-weight: 600;
+  color: #4ade80;
+  font-weight: 600;
   }
 
   .preview-scores td.negative {
-    color: #fca5a5;
-    font-weight: 600;
+  color: #fca5a5;
+  font-weight: 600;
   }
 
   /* --- MODALES (annonces, historique, feuille de points) --- */
   .modal-backdrop {
-    position: fixed;
-    inset: 0;
-    background: rgba(3, 7, 18, 0.75);
-    display: flex;
-    justify-content: center;
-    align-items: center;
-    z-index: 1100;
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 7, 18, 0.75);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  z-index: 1100;
   }
 
   .modal {
-    background: rgba(2, 12, 7, 0.98);
-    color: var(--text-main);
-    padding: 1.4rem 1.5rem 1.2rem;
-    border-radius: var(--radius-lg);
-    max-width: 420px;
-    width: 92%;
-    box-shadow: var(--shadow-soft);
-    font-size: 0.95rem;
+  background: rgba(2, 12, 7, 0.98);
+  color: var(--text-main);
+  padding: 1.4rem 1.5rem 1.2rem;
+  border-radius: var(--radius-lg);
+  max-width: 420px;
+  width: 92%;
+  box-shadow: var(--shadow-soft);
+  font-size: 0.95rem;
   }
 
   .modal h3 {
-    margin-top: 0;
-    margin-bottom: 0.7rem;
-    font-size: 1.05rem;
-    color: var(--accent);
+  margin-top: 0;
+  margin-bottom: 0.7rem;
+  font-size: 1.05rem;
+  color: var(--accent);
   }
 
   .modal button {
-    margin-top: 0.9rem;
-    padding: 0.55rem 1.5rem;
-    border-radius: 999px;
-    border: 1px solid var(--border-soft);
-    background: #0b2814;
-    color: var(--text-main);
-    cursor: pointer;
+  margin-top: 0.9rem;
+  padding: 0.55rem 1.5rem;
+  border-radius: 999px;
+  border: 1px solid var(--border-soft);
+  background: #0b2814;
+  color: var(--text-main);
+  cursor: pointer;
   }
 
   .modal button:hover {
-    background: #114023;
+  background: #114023;
   }
 
   .history-modal {
-    max-width: 760px;
-    width: 94%;
+  max-width: 760px;
+  width: 94%;
   }
 
   .history-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.85rem;
-    margin-top: 0.5rem;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
   }
 
   .history-table th,
   .history-table td {
-    border: 1px solid rgba(55, 65, 81, 0.8);
-    padding: 0.3rem 0.4rem;
-    text-align: center;
+  border: 1px solid rgba(55, 65, 81, 0.8);
+  padding: 0.3rem 0.4rem;
+  text-align: center;
   }
 
   .history-table th {
-    background: #0b2814;
+  background: #0b2814;
   }
 
   .feuille-points-modal {
-    max-width: 900px;
-    width: 95%;
+  max-width: 900px;
+  width: 95%;
   }
 
   .feuille-table {
-    width: 100%;
-    border-collapse: collapse;
-    font-size: 0.85rem;
-    margin-top: 0.5rem;
-    background: #020b06;
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.85rem;
+  margin-top: 0.5rem;
+  background: #020b06;
   }
 
   .feuille-table th,
   .feuille-table td {
-    border: 1px solid rgba(55, 65, 81, 0.9);
-    padding: 0.3rem 0.45rem;
-    text-align: center;
+  border: 1px solid rgba(55, 65, 81, 0.9);
+  padding: 0.3rem 0.45rem;
+  text-align: center;
   }
 
   .feuille-table th {
-    background: #0b2814;
-    color: var(--text-main);
+  background: #0b2814;
+  color: var(--text-main);
   }
 
   .feuille-table tbody tr:nth-child(even) {
-    background: #04140b;
+  background: #04140b;
   }
-  
-    /* Noms des joueurs : plus visibles */
+
+  /* Noms des joueurs : plus visibles */
   .feuille-table th.col-player {
-    background: linear-gradient(to bottom, #14532d, #052e16);
-    color: #fef9c3;
-    font-size: 0.95rem;
-    font-weight: 700;
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
-    border-bottom: 2px solid #facc15;
+  background: linear-gradient(to bottom, #14532d, #052e16);
+  color: #fef9c3;
+  font-size: 0.95rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+  border-bottom: 2px solid #facc15;
   }
 
   /* Ligne "Score / Cumul" un peu plus discrète pour faire ressortir les noms */
   .feuille-table thead tr:nth-child(2) th {
-    background: #04130b;
-    font-size: 0.75rem;
-    color: #9ca3af;
-    font-weight: 500;
+  background: #04130b;
+  font-size: 0.75rem;
+  color: #9ca3af;
+  font-weight: 500;
   }
-/* Séparateur vertical entre les joueurs */
-.feuille-table th.col-player,
-.feuille-table td:nth-child(4),
-.feuille-table td:nth-child(6),
-.feuille-table td:nth-child(8),
-.feuille-table td:nth-child(10) {
+  /* Séparateur vertical entre les joueurs */
+  .feuille-table th.col-player,
+  .feuille-table td:nth-child(4),
+  .feuille-table td:nth-child(6),
+  .feuille-table td:nth-child(8),
+  .feuille-table td:nth-child(10) {
   border-left: 1.3px solid rgba(250, 204, 21, 0.35) !important; /* doré subtil */
-}
+  }
 
-/* Renforce un peu la séparation mais très discret */
-.feuille-table th.col-player {
+  /* Renforce un peu la séparation mais très discret */
+  .feuille-table th.col-player {
   border-right: 2px solid rgba(250, 204, 21, 0.25) !important;
-}
+  }
 
 
-/* Dernière ligne de la feuille de points (totaux) */
-.feuille-table tr.total-row {
+  /* Dernière ligne de la feuille de points (totaux) */
+  .feuille-table tr.total-row {
   background: var(--accent-soft) !important;  /* fond beige */
   color: #111827 !important;                  /* texte quasi noir */
   font-weight: 700;
-}
+  }
 
-/* Cellules "cumul" de la dernière ligne : encore plus lisibles */
-.feuille-table tr.total-row td.cell-cumul-final {
+  /* Cellules "cumul" de la dernière ligne : encore plus lisibles */
+  .feuille-table tr.total-row td.cell-cumul-final {
   background: radial-gradient(circle at top, #fff7cf 0%, #ffd46a 45%, #f59e0b 100%) !important;
   color: #111 !important;
   font-weight: 900;
   font-size: 0.98rem;
   border: 2px solid #fbbf24;
   box-shadow:
-    0 0 0 1px #78350f inset,
-    0 0 10px rgba(250, 204, 21, .55);
-}
-/* Tous les textes de la dernière ligne : bien foncés */
-.feuille-table tr.total-row td,
-.feuille-table tr.total-row th {
+  0 0 0 1px #78350f inset,
+  0 0 10px rgba(250, 204, 21, .55);
+  }
+  /* Tous les textes de la dernière ligne : bien foncés */
+  .feuille-table tr.total-row td,
+  .feuille-table tr.total-row th {
   color: #000 !important;
-}
+  }
   .col-donne,
   .cell-donne {
-    min-width: 50px;
+  min-width: 50px;
   }
 
   .col-annonce,
   .cell-annonce {
-    min-width: 55px;
+  min-width: 55px;
   }
 
   .annonces-list {
-    list-style: none;
-    padding: 0.4rem 0;
-    margin: 0;
-    max-height: 260px;
-    overflow-y: auto;
-    border-top: 1px solid var(--border-soft);
-    border-bottom: 1px solid var(--border-soft);
+  list-style: none;
+  padding: 0.4rem 0;
+  margin: 0;
+  max-height: 260px;
+  overflow-y: auto;
+  border-top: 1px solid var(--border-soft);
+  border-bottom: 1px solid var(--border-soft);
   }
 
   .annonce-item {
-    display: flex;
-    align-items: center;
-    gap: 0.7rem;
-    padding: 0.2rem 0;
+  display: flex;
+  align-items: center;
+  gap: 0.7rem;
+  padding: 0.2rem 0;
   }
 
   .annonce-code {
-    width: 3rem;
-    text-align: center;
-    font-weight: 700;
+  width: 3rem;
+  text-align: center;
+  font-weight: 700;
   }
 
   .tr-circle {
-    display: inline-block;
-    border: 2px solid red;
-    border-radius: 999px;
-    padding: 0.1rem 0.45rem;
+  display: inline-block;
+  border: 2px solid red;
+  border-radius: 999px;
+  padding: 0.1rem 0.45rem;
   }
 
   .force-couleurs {
-    text-align: center;
-    margin-top: 0.7rem;
+  text-align: center;
+  margin-top: 0.7rem;
   }
 
   .force-couleurs p {
-    display: inline-block;
-    padding: 0.35rem 0.8rem;
-    border-radius: 999px;
-    background: #020b06;
-    border: 1px solid var(--border-soft);
+  display: inline-block;
+  padding: 0.35rem 0.8rem;
+  border-radius: 999px;
+  background: #020b06;
+  border: 1px solid var(--border-soft);
   }
 
   /* RESPONSIVE */
-  @media (max-width: 700px) {
-    .header {
-      margin: 0.3rem 0.5rem 1.2rem;
-      border-radius: 18px;
-    }
+  /* RESPONSIVE MOBILE */
+  @media (max-width: 768px) {
+  /* Police générale moins énorme sur téléphone */
+  :global(body) {
+  font-size: 16px;
+  }
 
-    .players-table {
-      min-width: auto;
-      width: 100%;
-    }
+  /* Header + logos en colonne */
+  .page-header-wrapper {
+  flex-direction: column;
+  align-items: center;
+  gap: 0.6rem;
+  margin: 0.4rem auto 0.8rem;
+  max-width: 100%;
+  }
 
-    .emballage-encodage {
-      flex-direction: column;
-      align-items: center;
-    }
+  /* Logos du haut plus petits */
+  .corner-logo {
+  height: 90px;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
+  }
 
-    .encodage {
-      margin: 1.2rem 0.6rem 0;
-    }
+  .header {
+  flex: 1;
+  width: calc(100% - 1rem);
+  margin: 0;
+  border-radius: 16px;
+  padding: 0.7rem 0.9rem 1rem;
+  }
+
+  .header-top {
+  justify-content: center;
+  }
+
+  .header h2 {
+  font-size: 1.05rem;
+  text-align: center;
+  }
+
+  /* Boutons d’onglets : 2 par ligne max */
+  .header-buttons {
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin-top: 0.8rem;
+  }
+
+  .header-buttons button {
+  flex: 1 1 45%;
+  font-size: 0.8rem;
+  padding: 0.4rem 0.6rem;
+  }
+
+  /* Tableau des joueurs : pleine largeur et texte réduit */
+  .players-table {
+  width: 100%;
+  min-width: auto;
+  font-size: 0.85rem;
+  }
+
+  .players-table th,
+  .players-table td {
+  padding: 0.35rem 0.4rem;
+  }
+
+  /* Titre de la donne */
+  .donne h3 {
+  font-size: 1.2rem;
+  margin-top: 1rem;
+  margin-bottom: 1rem;
+  }
+
+  /* Cartes annonces joueurs en colonne, pleine largeur */
+  .choixAnnonce {
+  flex-direction: column;
+  align-items: stretch;
+  margin: 0 0.6rem;
+  }
+
+  .player-block {
+  width: 100%;
+  min-width: 0;
+  padding: 0.8rem 1rem;
+  }
+
+  /* Bloc encodage : pleine largeur et moins de padding */
+  .encodage {
+  max-width: none;
+  margin: 1.2rem 0.6rem 0;
+  padding: 1rem 1rem 1.3rem;
+  }
+
+  .player-row {
+  padding: 0.6rem 0.7rem;
+  }
+
+  .player-row span {
+  font-size: 0.95rem;
+  }
+
+  .number-buttons button,
+  .button-group button {
+  font-size: 0.85rem;
+  padding: 0.35rem 0.7rem;
+  }
+
+  /* Preview des scores : largeur écran, pas un petit bloc au centre */
+  .preview-scores {
+  max-width: none;
+  margin: 1.4rem 0.6rem 1.2rem;
+  font-size: 0.9rem;
+  }
+
+  /* Bouton "Valider la donne" bien centré mais pas gigantesque */
+  .BoutonValidate button {
+  width: auto;
+  padding: 0.75rem 2rem;
+  font-size: 0.9rem;
+  }
+
+  /* Modales : adaptatives, scrollables si besoin */
+  .modal {
+  max-width: 100%;
+  width: 94%;
+  max-height: 90vh;
+  overflow: auto;
+  padding: 1rem 0.9rem 0.9rem;
+  }
+
+  .history-modal,
+  .feuille-points-modal {
+  max-width: 100%;
+  width: 100%;
+  }
+
+  .history-table,
+  .feuille-table {
+  font-size: 0.8rem;
+  }
   }
 
 
 
-/* Wrapper autour de l'encodage et des logos */
-.encodage-wrapper {
+  /* Wrapper autour de l'encodage et des logos */
+  .encodage-wrapper {
   display: flex;
   justify-content: center;
   align-items: stretch;
   gap: 2rem;
   margin-top: 2rem;
-}
+  }
 
-/* Logos géants */
-.side-logo {
+  /* Logos géants */
+  .side-logo {
   height: 270px;           /* ✅ GROS – tu peux augmenter à 300 / 350 si tu veux */
   width: auto;
   object-fit: contain;
   filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.55));
   opacity: 0.95;
-}
+  }
 
-.side-logo.left {
+  .side-logo.left {
   margin-right: 1rem;
-}
+  }
 
-.side-logo.right {
+  .side-logo.right {
   margin-left: 1rem;
-}
+  }
 
-/* Encodage plus large pour mieux équilibrer avec les logos */
-.encodage {
+  /* Encodage plus large pour mieux équilibrer avec les logos */
+  .encodage {
   flex: 0 0 650px;        /* largeur fixe élégante */
-}
+  }
 
-/* Titre */
-.preview-scores h3 {
+  /* Titre */
+  .preview-scores h3 {
   font-size: 1.25rem;  /* plus grand */
-}
+  }
 
-/* Lignes du tableau */
-.preview-scores table {
+  /* Lignes du tableau */
+  .preview-scores table {
   font-size: 1.15rem;  /* 🔥 beaucoup plus lisible */
-}
+  }
 
-/* Scores positifs / négatifs plus visibles */
-.preview-scores td.positive {
+  /* Scores positifs / négatifs plus visibles */
+  .preview-scores td.positive {
   font-size: 1.2rem;
   font-weight: 700;
-}
+  }
 
-.preview-scores td.negative {
+  .preview-scores td.negative {
   font-size: 1.2rem;
   font-weight: 700;
-}
+  }
 
-.preview-scores h3 {
+  .preview-scores h3 {
   font-size: 1.25rem;
-}
+  }
 
-.preview-scores table {
+  .preview-scores table {
   font-size: 1.15rem;
-}
+  }
 
-.preview-scores td.positive,
-.preview-scores td.negative {
+  .preview-scores td.positive,
+  .preview-scores td.negative {
   font-size: 1.2rem;
   font-weight: 700;
-}
-/* Titre "Encodage" un peu plus grand */
-.encodage > h3 {
+  }
+  /* Titre "Encodage" un peu plus grand */
+  .encodage > h3 {
   font-size: 1.45rem;
-}
+  }
 
-/* Nom du joueur / annonce dans les lignes d'encodage */
-.player-row span {
+  /* Nom du joueur / annonce dans les lignes d'encodage */
+  .player-row span {
   font-size: 1.15rem;
-}
+  }
 
-/* Boutons 6 7 8 9 10 11 12 Capot plus grands */
-.number-buttons button,
-.button-group button {
+  /* Boutons 6 7 8 9 10 11 12 Capot plus grands */
+  .number-buttons button,
+  .button-group button {
   font-size: 1.1rem;
   padding: 0.45rem 1.05rem;
-}
-.header-top {
+  }
+  .header-top {
   display: flex;
   justify-content: center;   /* centre le contenu */
-}
+  }
 
-.header-top h2 {
+  .header-top h2 {
   font-size: 1.7rem;         /* plus grand */
   text-align: center;
   width: 100%;
   margin: 0;
-}
-/* Tableau un peu plus “présent” + large et colonnes uniformes */
-.players-table {
+  }
+  /* Tableau un peu plus “présent” + large et colonnes uniformes */
+  .players-table {
   width: 100%;
   table-layout: fixed;  /* répartit les colonnes de façon égale */
   border: 1px solid rgba(148, 163, 184, 0.6);   /* contour un peu plus visible */
-}
+  }
 
-/* Première colonne (label "Résultats") un peu moins large */
-.players-table th:first-child,
-.players-table td:first-child {
+  /* Première colonne (label "Résultats") un peu moins large */
+  .players-table th:first-child,
+  .players-table td:first-child {
   width: 22%;
-}
+  }
 
-/* Les colonnes joueurs se partagent le reste de manière égale */
-.players-table th:not(:first-child),
-.players-table td:not(:first-child) {
+  /* Les colonnes joueurs se partagent le reste de manière égale */
+  .players-table th:not(:first-child),
+  .players-table td:not(:first-child) {
   width: auto;
-}
+  }
 
-/* Lignes un peu mieux délimitées */
-.players-table th,
-.players-table td {
+  /* Lignes un peu mieux délimitées */
+  .players-table th,
+  .players-table td {
   border-bottom: 1px solid rgba(75, 85, 99, 0.8);
-}
+  }
 
-/* Espace sous le tableau des résultats */
-.players-table {
+  /* Espace sous le tableau des résultats */
+  .players-table {
   margin-bottom: 2.2rem !important;   /* plus d'espace */
-}
+  }
 
-/* Espace sous le numéro de donne */
-.donne-title {
+  /* Espace sous le numéro de donne */
+  .donne-title {
   margin-bottom: 2.4rem !important;
-}
+  }
 
-/* 1️⃣ Donne n° X / Y : plus grand + plus d'espace */
-.donne {
+  /* 1️⃣ Donne n° X / Y : plus grand + plus d'espace */
+  .donne {
   margin-top: 2.2rem;              /* espace entre le header et "Donne n°" */
-}
+  }
 
-.donne h3 {
+  .donne h3 {
   text-align: center;
   font-size: 1.8rem;               /* ✅ plus gros */
   font-weight: 700;
   color: var(--accent);
   margin-top: 0.5rem;
   margin-bottom: 2.2rem;           /* espace sous "Donne n°" avant les blocs joueurs */
-}
+  }
 
-/* 2️⃣ Plus d'espace entre les boutons (Ordre/Historique/Feuille) et le tableau */
-.header .players-table {
+  /* 2️⃣ Plus d'espace entre les boutons (Ordre/Historique/Feuille) et le tableau */
+  .header .players-table {
   margin-top: 1.4rem;              /* au lieu de 0.6rem */
-}
+  }
 
-/* 3️⃣ Un peu plus d'espacement entre les blocs d'annonces des joueurs */
-.choixAnnonce {
+  /* 3️⃣ Un peu plus d'espacement entre les blocs d'annonces des joueurs */
+  .choixAnnonce {
   margin-top: 1.6rem;              /* les cartes descendent un peu sous "Donne n°" */
-}
+  }
 
-/* 4️⃣ Lignes rouges du bas : plus d'espace avant l'encodage */
-hr {
+  /* 4️⃣ Lignes rouges du bas : plus d'espace avant l'encodage */
+  hr {
   margin: 2.2rem auto;             /* espace entre les annonces et le bloc Encodage */
-}
-/* Espace autour des boutons et du tableau d'en-tête */
+  }
+  /* Espace autour des boutons et du tableau d'en-tête */
 
-/* On descend un peu les 3 boutons sous le titre */
-.header-buttons {
+  /* On descend un peu les 3 boutons sous le titre */
+  .header-buttons {
   margin-top: 1.4rem;          /* avant : 0.2rem → ils descendent un peu */
-}
+  }
 
-/* On rapproche le tableau de la suite de la page */
-.header .players-table {
+  /* On rapproche le tableau de la suite de la page */
+  .header .players-table {
   margin-top: 1rem;            /* léger espace au-dessus */
   margin-bottom: 0.5rem;       /* 🔥 moins d’espace en dessous */
-}
+  }
 
-/* On réduit aussi un peu l’espace avant le bloc "Donne n°" */
-hr {
+  /* On réduit aussi un peu l’espace avant le bloc "Donne n°" */
+  hr {
   margin: 1.6rem auto;         /* au lieu de 2.2rem */
-}
+  }
 
-/* Réduit fortement l'espace entre le tableau et la ligne rouge */
-.header .players-table {
+  /* Réduit fortement l'espace entre le tableau et la ligne rouge */
+  .header .players-table {
   margin-bottom: 0.6rem !important;   /* était trop grand, on réduit */
-}
+  }
 
-hr {
+  hr {
   margin-top: 0.6rem !important;      /* espace minimal au-dessus */
   margin-bottom: 1.8rem;              /* laisse l’espace normal dessous */
-}
+  }
 
-.players-table {
+  .players-table {
   border: 1px solid rgba(0, 255, 140, 0.35);      /* vert clair lumineux */
   border-radius: 14px;
   box-shadow:
-    0 0 14px rgba(0, 255, 120, 0.25),             /* halo large et clair */
-    0 0 4px rgba(0, 255, 140, 0.45) inset;         /* fine lueur interne */
+  0 0 14px rgba(0, 255, 120, 0.25),             /* halo large et clair */
+  0 0 4px rgba(0, 255, 140, 0.45) inset;         /* fine lueur interne */
   overflow: hidden;
   background: rgba(0, 40, 20, 0.45);               /* léger vert sombre derrière */
-}
-/* Uniformisation de l'arrière-plan des cellules du tableau pour que la bordure soit visible partout */
-.players-table th,
-.players-table td {
+  }
+  /* Uniformisation de l'arrière-plan des cellules du tableau pour que la bordure soit visible partout */
+  .players-table th,
+  .players-table td {
   background: transparent !important;
-}
+  }
 
-/* Highlight du/des gagnant(s) dans le tableau des résultats */
-/* Highlight discret du gagnant */
-/* Effet gold discret sur le joueur en tête (nom + score) */
-/* Effet gold très discret et élégant */
-.players-table .leader {
+  /* Highlight du/des gagnant(s) dans le tableau des résultats */
+  /* Highlight discret du gagnant */
+  /* Effet gold discret sur le joueur en tête (nom + score) */
+  /* Effet gold très discret et élégant */
+  .players-table .leader {
   background: transparent !important;
   color: #e7c76a;                    /* or doux, pas jaune fluo */
   font-weight: 700;
 
   text-shadow:
-    0 0 2px rgba(231, 199, 106, 0.55),
-    0 0 6px rgba(231, 199, 106, 0.25);
-}
+  0 0 2px rgba(231, 199, 106, 0.55),
+  0 0 6px rgba(231, 199, 106, 0.25);
+  }
 
-/* Optionnel : scintillement ultra discret */
-@keyframes goldSoftPulse {
+  /* Optionnel : scintillement ultra discret */
+  @keyframes goldSoftPulse {
   0% {
-    text-shadow:
-      0 0 2px rgba(231, 199, 106, 0.45),
-      0 0 5px rgba(231, 199, 106, 0.2);
+  text-shadow:
+  0 0 2px rgba(231, 199, 106, 0.45),
+  0 0 5px rgba(231, 199, 106, 0.2);
   }
   100% {
-    text-shadow:
-      0 0 4px rgba(231, 199, 106, 0.65),
-      0 0 9px rgba(231, 199, 106, 0.30);
+  text-shadow:
+  0 0 4px rgba(231, 199, 106, 0.65),
+  0 0 9px rgba(231, 199, 106, 0.30);
   }
-}
+  }
 
-.players-table .leader {
+  .players-table .leader {
   animation: goldSoftPulse 2.5s ease-in-out infinite alternate;
   /* Tu peux enlever l’animation si tu veux un effet figé */
-}
+  }
 
 
 
