@@ -190,7 +190,7 @@
     <div class="input-wrapper">
       <form on:submit|preventDefault={"submit"}>
         <input
-          bind:value={"code"
+          bind:value={code}
           type="password"
           placeholder="Renseignez le code ici"
     />
