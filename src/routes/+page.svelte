@@ -158,7 +158,7 @@
 
   .page-logo-center {
   position: absolute;
-  top: 23%;                    /* 👉 Légèrement plus haut pour ne pas toucher le titre */
+  top: 24%;                    /* 👉 Légèrement plus haut pour ne pas toucher le titre */
   left: 50%;
   transform: translateX(-50%);
   width: 230px;
