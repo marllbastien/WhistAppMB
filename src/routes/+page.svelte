@@ -4,7 +4,7 @@
   let code = '';
   let error = '';
 
-  const CORRECT_CODE = 'WhistMB'; // TODO: appel API pour le code du jour
+  const CORRECT_CODE = 'WhistMarl'; // TODO: appel API pour le code du jour
 
   function submit() {
   if (code.trim() === CORRECT_CODE) {
