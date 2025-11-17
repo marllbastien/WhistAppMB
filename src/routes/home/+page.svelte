@@ -2,17 +2,27 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
 
-
   const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
 
+  // 🔹 Modèle venant de l'API
+  type ApiPlayer = {
+  id: number;      // Joueur_Pk
+  alias: string;   // Joueur_Alias_Cd
+  };
 
   let tableName = '';
   let mancheNumber: number | '' = '';
   let playerCount: string | null = null; // "4" | "5" | "6"
+
+  // 🔹 Alias choisis pour la table (affichage / clé logique côté front)
   let players: string[] = [];
 
-  let availablePlayers: string[] = [];
+  // 🔹 PK alignés sur players (même index que players)
+  let playerIds: (number | null)[] = [];
+
+  // 🔹 Liste complète venant de l'API
+  let availablePlayers: ApiPlayer[] = [];
   let isLoadingPlayers = true;
   let playersLoadError = '';
 
@@ -25,7 +35,9 @@
   if (!res.ok) {
   throw new Error('HTTP ' + res.status);
   }
-  availablePlayers = await res.json();
+
+  const data = (await res.json()) as ApiPlayer[];
+  availablePlayers = data;
   } catch (err) {
   console.error('Erreur chargement joueurs :', err);
   playersLoadError = 'Impossible de charger la liste des joueurs.';
@@ -34,19 +46,25 @@
   }
   });
 
-  // Adapter la taille du tableau players quand le nombre de joueurs change
+  // 🔁 Adapter la taille des tableaux players / playerIds quand le nombre de joueurs change
   $: {
   const count = Number(playerCount ?? 0);
+
   if (count > 0) {
   players = Array(count)
   .fill('')
   .map((_, i) => players[i] ?? '');
+
+  playerIds = Array(count)
+  .fill(null)
+  .map((_, i) => playerIds[i] ?? null);
   } else {
   players = [];
+  playerIds = [];
   }
   }
 
-  // Calcul de canContinue
+  // 🔁 Calcul de canContinue
   $: {
   const count = Number(playerCount ?? 0);
   const manche = mancheNumber === '' ? 0 : Number(mancheNumber);
@@ -63,8 +81,21 @@
   }
 
   function updatePlayer(index: number, value: string) {
+  // Met à jour l'alias
   players[index] = value;
-  players = [...players]; // force la réactivité
+
+  // Cherche le joueur correspondant dans la liste API pour récupérer son PK
+  const found = availablePlayers.find((p) => p.alias === value);
+  playerIds[index] = found ? found.id : null;
+
+  // Force la réactivité
+  players = [...players];
+  playerIds = [...playerIds];
+
+  console.log('Sélection joueur index', index, {
+  alias: value,
+  id: playerIds[index]
+  });
   }
 
   function continueToNext() {
@@ -74,9 +105,11 @@
   tableName,
   mancheNumber: String(mancheNumber),
   playerCount: String(playerCount),
-  players: JSON.stringify(players)
+  players: JSON.stringify(players),      // alias pour le front
+  playerIds: JSON.stringify(playerIds)   // PK pour la DB
   });
 
+  console.log('Navigation vers /annonces avec params :', Object.fromEntries(params));
   goto(`/annonces?${params.toString()}`);
   }
 </script>
@@ -141,8 +174,8 @@
           }
           >
           <option value="">-- Sélectionner un joueur --</option>
-          {#each availablePlayers as name}
-          <option value={name}>{name}</option>
+          {#each availablePlayers as p}
+          <option value={p.alias}>{p.alias}</option>
           {/each}
         </select>
       </div>
@@ -166,7 +199,6 @@
   justify-content: center;
   align-items: flex-start;
   padding: 3rem 1.5rem 4rem;
-  /* même esprit que la page d’accueil */
   background: radial-gradient(circle at top, #125c2a 0%, #04140a 40%, #020506 100%);
   }
 
@@ -179,8 +211,8 @@
   box-shadow: 0 18px 60px rgba(0, 0, 0, 0.75);
   border: 1px solid rgba(255, 255, 255, 0.06);
   color: #f7f7f7;
-  font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI',
-  sans-serif;
+  font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont,
+  'Segoe UI', sans-serif;
   }
 
   h2 {
@@ -214,7 +246,9 @@
   background-color: #07150a;
   color: #f7f7f7;
   outline: none;
-  transition: border-color 0.15s ease, box-shadow 0.15s ease,
+  transition:
+  border-color 0.15s ease,
+  box-shadow 0.15s ease,
   background-color 0.15s ease;
   }
 
@@ -288,7 +322,9 @@
   letter-spacing: 0.08em;
   text-transform: uppercase;
   box-shadow: 0 10px 25px rgba(0, 0, 0, 0.65);
-  transition: background-color 0.15s ease, transform 0.12s ease,
+  transition:
+  background-color 0.15s ease,
+  transform 0.12s ease,
   box-shadow 0.12s ease;
   }
 

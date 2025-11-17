@@ -2,18 +2,20 @@
   import { onMount } from 'svelte';
   import jsPDF from 'jspdf';
   import autoTable from 'jspdf-autotable';
-  
-  
+
+
   const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
-  
-  
+
+
   let tableName = '';
   let mancheNumber = '';
   let players: string[] = [];
   let playerCount = 0;
   let rows = 0;
   let donneNumber = 1; // numéro de la donne actuelle
+  let playerIds: (number | null)[] = [];  
+
 
 
 
@@ -25,6 +27,9 @@
   let showFeuillePoints = false;
   let showArbitreModal = false;
   let arbitreMessage = "";
+  let mancheTerminee = false;
+  let showEndOfMancheModal = false;
+
 
 
 
@@ -39,10 +44,45 @@
   // Le joueur 2 (index 1) distribue au départ
   $: currentDealer = (donneNumber) % players.length;
 
-  function nextDonne() {
+  // 🔹 Renvoie les joueurs qui NE jouent PAS cette donne
+  function getInactivePlayersForDonne(donne: number, allPlayers: string[]): string[] {
+  const n = allPlayers.length;
+  if (n <= 4) return []; // à 4, tout le monde joue
+
+  // Même logique que currentDealer : dealer = index du donneur
+  const dealerIndex = donne % n;
+
+  if (n === 5) {
+  // À 5 : seul le donneur ne joue pas
+  return [allPlayers[dealerIndex]];
+  }
+
+  if (n === 6) {
+  // À 6 : le donneur ET le 3ᵉ joueur après lui ne jouent pas
+  const otherIndex = (dealerIndex + 3) % n;
+  return [allPlayers[dealerIndex], allPlayers[otherIndex]];
+  }
+
+  // Autres cas non prévus → tout le monde joue
+  return [];
+  }
+
+  // 🔹 Liste réactive des joueurs inactifs pour la donne courante
+  $: inactivePlayersCurrentDonne = getInactivePlayersForDonne(donneNumber, players);
+
+
+function nextDonne() {
+  // Si on est déjà à la dernière donne, on ne va pas plus loin
+  if (donneNumber >= rows) {
+    mancheTerminee = true;
+    showEndOfMancheModal = true;
+    return;
+  }
+
   donneNumber++;
   resetDonneState();
-  }
+}
+
 
 
 
@@ -489,17 +529,30 @@ const GRILLE_RESULTATS: GrilleRow[] = [
 ];
 
 
-	onMount(() => {
-		const url = new URL(window.location.href);
-		tableName = url.searchParams.get('tableName') || 'A';
-		mancheNumber = url.searchParams.get('mancheNumber') || '1';
-		playerCount = Number(url.searchParams.get('playerCount') || 4);
-		players = JSON.parse(url.searchParams.get('players') || '["Alice","Bob","Claire","David"]');
-		donneNumber = Number(url.searchParams.get('donneNumber') || 1);
+onMount(() => {
+  const url = new URL(window.location.href);
+  tableName = url.searchParams.get('tableName') || 'A';
+  mancheNumber = url.searchParams.get('mancheNumber') || '1';
+  playerCount = Number(url.searchParams.get('playerCount') || 4);
+  players = JSON.parse(
+    url.searchParams.get('players') ||
+      '["Alice","Bob","Claire","David"]'
+  );
+  donneNumber = Number(url.searchParams.get('donneNumber') || 1);
 
-		// Donnes max par manche
-		rows = playerCount === 4 ? 16 : playerCount === 5 ? 20 : 24;
-	});
+  // 🔹 Nouveau : récupération des IDs (PK)
+  const playerIdsParam = url.searchParams.get('playerIds');
+  playerIds = playerIdsParam
+    ? JSON.parse(playerIdsParam)
+    : players.map(() => null); // fallback si absent
+
+  // Donnes max par manche
+  rows = playerCount === 4 ? 16 : playerCount === 5 ? 20 : 24;
+});
+
+
+
+
 
 	function getTemplateForAnnonce(code: string): number {
 		return annonces.find(a => a.code === code)?.templateResult || 0;
@@ -762,14 +815,20 @@ function computeScoresForState(
     emballesMap: Record<string, string>,
     plisMap: Record<string, number>,
     resultatsMap: Record<string, string>,
-    damesMap: Record<string, number>
+    damesMap: Record<string, number>,
+    inactivePlayers: string[] = []
 ): Record<string, number> {
+    const inactiveSet = new Set(inactivePlayers);
+    const activePlayers = playersList.filter(p => !inactiveSet.has(p));
+
+    // Toujours un objet score pour tous les joueurs
     const scores: Record<string, number> = {};
     for (const p of playersList) {
         scores[p] = 0;
     }
 
-    const joueursAvecAnnonce = playersList.filter((p) => !!annonceMap[p]);
+    // On ne regarde que ceux qui jouent
+    const joueursAvecAnnonce = activePlayers.filter((p) => !!annonceMap[p]);
     if (joueursAvecAnnonce.length === 0) {
         return scores;
     }
@@ -790,7 +849,8 @@ function computeScoresForState(
         } else {
             // EMBALLAGE : l'annonceur + son partenaire
             const partenaire = emballesMap[premier];
-            if (!partenaire) {
+            if (!partenaire || inactiveSet.has(partenaire)) {
+                // partenaire inexistant ou inactif → on ne score pas cette donne
                 return scores;
             }
             joueursDedans = [premier, partenaire];
@@ -803,22 +863,23 @@ function computeScoresForState(
         }
 
         const row = findRowPlis(code, plisRef, nbJoueursDedans);
-        if (!row) {
-            return scores;
-        }
+        if (!row) return scores;
 
         const s = row.resultatInd;
         const total = row.resultatJeu;
-        const A = nbJoueursDedans;
-        const N = playersList.length - A;
 
+        const A = nbJoueursDedans;
+        const N = activePlayers.length - A;
+
+        // points des joueurs "dedans"
         for (const p of joueursDedans) {
             scores[p] += s;
         }
 
+        // répartition sur les autres joueurs actifs
         if (N > 0) {
             const y = (total - A * s) / N;
-            for (const p of playersList) {
+            for (const p of activePlayers) {
                 if (!joueursDedans.includes(p)) {
                     scores[p] += y;
                 }
@@ -832,25 +893,22 @@ function computeScoresForState(
     if (code === 'TR') {
         const annonceur = premier;
         const partenaire = emballesMap[annonceur];
-        if (!partenaire) {
+
+        if (!partenaire || inactiveSet.has(partenaire)) {
             return scores;
         }
 
         const etat = resultatsMap[annonceur] as EtatJeu | undefined;
-        if (!etat) {
-            return scores;
-        }
+        if (!etat) return scores;
 
         const row = findRowEtat('TR', etat, 2);
-        if (!row) {
-            return scores;
-        }
+        if (!row) return scores;
 
         const joueursDedans = [annonceur, partenaire];
         const s = row.resultatInd;
         const total = row.resultatJeu;
         const A = 2;
-        const N = playersList.length - A;
+        const N = activePlayers.length - A;
 
         for (const p of joueursDedans) {
             scores[p] += s;
@@ -858,7 +916,7 @@ function computeScoresForState(
 
         if (N > 0) {
             const y = (total - A * s) / N;
-            for (const p of playersList) {
+            for (const p of activePlayers) {
                 if (!joueursDedans.includes(p)) {
                     scores[p] += y;
                 }
@@ -870,7 +928,7 @@ function computeScoresForState(
 
     // ===== DAMES (template 6) =====
     if (template === 6) {
-        const totalDames = playersList.reduce(
+        const totalDames = activePlayers.reduce(
             (acc, p) => acc + (damesMap[p] ?? 0),
             0
         );
@@ -879,20 +937,24 @@ function computeScoresForState(
             return scores;
         }
 
-        const everyoneHasOne = playersList.every((p) => (damesMap[p] ?? 0) === 1);
+        const everyoneHasOne = activePlayers.every(
+            (p) => (damesMap[p] ?? 0) === 1
+        );
 
         if (everyoneHasOne) {
-            for (const p of playersList) {
+            for (const p of activePlayers) {
                 scores[p] += -3;
             }
             return scores;
         }
 
         const totalDamesNeg = -3 * totalDames;
-        const zeroDamesPlayers = playersList.filter((p) => (damesMap[p] ?? 0) === 0);
+        const zeroDamesPlayers = activePlayers.filter(
+            (p) => (damesMap[p] ?? 0) === 0
+        );
         const nbZero = zeroDamesPlayers.length;
 
-        for (const p of playersList) {
+        for (const p of activePlayers) {
             const nb = damesMap[p] ?? 0;
             if (nb > 0) {
                 scores[p] += -3 * nb;
@@ -909,7 +971,7 @@ function computeScoresForState(
         return scores;
     }
 
-    // ===== AUTRES JEUX À ÉTAT (PM, PM2, P, P2, GM, GM2, etc.) =====
+    // ===== AUTRES JEUX À ÉTAT (PM, PM2, P, P2, GM, GM2, PME2, GME2, etc.) =====
     const joueursCode = joueursAvecAnnonce.filter((p) => annonceMap[p] === code);
     const nbJoueursDedans = joueursCode.length;
 
@@ -918,15 +980,10 @@ function computeScoresForState(
     }
 
     const etat = getEtatJeuPourCode(code, joueursCode, resultatsMap);
-    if (!etat) {
-        return scores;
-    }
-
+    if (!etat) return scores;
 
     const row = findRowEtat(code, etat, nbJoueursDedans);
-    if (!row) {
-        return scores;
-    }
+    if (!row) return scores;
 
     const total = row.resultatJeu;
 
@@ -936,14 +993,14 @@ function computeScoresForState(
 
         const s = row.resultatInd;
         const A = gagnants.length + perdants.length;
-        const N = playersList.length - A;
+        const N = activePlayers.length - A;
 
         for (const p of gagnants) scores[p] += s;
         for (const p of perdants) scores[p] -= s;
 
         if (N > 0) {
             const y = total / N;
-            for (const p of playersList) {
+            for (const p of activePlayers) {
                 if (!gagnants.includes(p) && !perdants.includes(p)) {
                     scores[p] += y;
                 }
@@ -953,7 +1010,7 @@ function computeScoresForState(
     } else {
         const s = row.resultatInd;
         const A = nbJoueursDedans;
-        const N = playersList.length - A;
+        const N = activePlayers.length - A;
 
         for (const p of joueursCode) {
             scores[p] += s;
@@ -961,7 +1018,7 @@ function computeScoresForState(
 
         if (N > 0) {
             const y = (total - A * s) / N;
-            for (const p of playersList) {
+            for (const p of activePlayers) {
                 if (!joueursCode.includes(p)) {
                     scores[p] += y;
                 }
@@ -972,15 +1029,17 @@ function computeScoresForState(
 }
 
 
-
 function computePreviewScores(): Record<string, number> {
+    const inactive = getInactivePlayersForDonne(donneNumber, players);
+
     return computeScoresForState(
         players,
         annonceByPlayer,
         emballes,
         plis,
         resultats,
-        dames
+        dames,
+        inactive
     );
 }
 
@@ -1026,14 +1085,19 @@ function recomputeFeuillePoints() {
             if (j.dames !== null && j.dames !== undefined) damesMap[j.nom] = j.dames;
         }
 
-        const scoresDonne = computeScoresForState(
-            players,
-            annonceMap,
-            emballesMap,
-            plisMap,
-            resultatsMap,
-            damesMap
-        );
+     const inactive = getInactivePlayersForDonne(donne.donneNumber, players);
+
+const scoresDonne = computeScoresForState(
+    players,
+    annonceMap,
+    emballesMap,
+    plisMap,
+    resultatsMap,
+    damesMap,
+    inactive
+);
+
+
 // Trouver l’annonce principale de la donne
 let annoncePrincipale: string | null = null;
 const joueurAnnonceur = donne.joueurs.find(j => j.annonce);
@@ -1082,140 +1146,182 @@ $: scoresCumulés = (() => {
 
     const last = feuillePoints[feuillePoints.length - 1];
 
-    const result: Record<string, number> = {};
-    for (const p of players) {
-        result[p] = last.scores[p]?.cumul ?? 0;
-    }
+    const result: Record<string, number>
+      = {};
+      for (const p of players) {
+      result[p] = last.scores[p]?.cumul ?? 0;
+      }
 
-    return result;
-})();
+      return result;
+      })();
 
-// Score maximum actuel (pour surligner le/les gagnant(s))
-$: leaderScore = players.length
-    ? Math.max(...players.map((p) => scoresCumulés[p] ?? 0))
-    : 0;
-    
-    
-// Bouton visible dès qu'au moins une annonce est choisie
-$: showValidateButton = players.some((p) => annonceByPlayer[p]);
+      // Score maximum actuel (pour surligner le/les gagnant(s))
+      $: leaderScore = players.length
+      ? Math.max(...players.map((p) => scoresCumulés[p] ?? 0))
+      : 0;
 
-// Bouton cliquable seulement si tout est correctement encodé 
-$: canValidateDonne = (() => { 
-const joueursAvecAnnonce = players.filter((p) => 
-annonceByPlayer[p]); 
-if (joueursAvecAnnonce.length === 0) return false; 
+      type ClassementItem = {
+      nom: string;
+      score: number;
+      };
 
-for (const p of joueursAvecAnnonce) { 
-const code = annonceByPlayer[p]; 
-const template = getTemplateForAnnonce(code); 
+      let classementFinal: ClassementItem[] = [];
+      let winnerNames = '';
 
-// Template 1 & 2 : annonces à plis 
-if (template === 1 || template === 2) { 
-if (typeof plis[p] !== 'number') return false; 
-// si emballage, partenaire obligatoire 
-if (template === 2 && !emballes[p]) return false; 
-} 
+      $: classementFinal = players
+      .map((p) => ({
+      nom: p,
+      score: scoresCumulés[p] ?? 0
+      }))
+      .sort((a, b) => b.score - a.score);
 
-// Trou : partenaire obligatoire aussi, même si template = 5 
-if (code === 'TR' && !emballes[p]) { 
-return false; 
-} 
+      $: winnerNames = classementFinal.length
+      ? classementFinal
+      .filter((j) => j.score === leaderScore)
+      .map((j) => j.nom)
+      .join(', ')
+      : '';
 
-// Template 3, 4, 5 : Réussi / Raté / Capot 
-if (template === 3 || template === 4 || template === 5) { 
-if (!resultats[p]) return false; 
-} 
 
-// Template 6 : Dames 
-if (template === 6) { 
-if (typeof dames[p] !== 'number') return false; 
-} 
-} 
-
-    // 🔥 RÈGLE SUPPLÉMENTAIRE POUR LES JEUX À 2 JOUEURS (template 4)
-    const joueursTemplate4 = joueursAvecAnnonce.filter(
-        (p) => getTemplateForAnnonce(annonceByPlayer[p]) === 4
-    );
-
-    if (joueursTemplate4.length === 1) {
-        // Un seul joueur a choisi un jeu à 2 → donne invalide
-        return false;
-    }
-
-    if (joueursTemplate4.length > 0) {
-        const codes4 = joueursTemplate4.map((p) => annonceByPlayer[p]);
-        const firstCode4 = codes4[0];
-
-        // Tous les joueurs template 4 doivent avoir la même annonce
-        if (!codes4.every((c) => c === firstCode4)) {
-            return false;
-        }
-
-        // Par sécurité : pas plus de 2 joueurs
-        if (joueursTemplate4.length > 2) {
-            return false;
-        }
-    }
+      // Bouton visible dès qu'au moins une annonce est choisie
+      $: showValidateButton = !mancheTerminee && players.some((p) => annonceByPlayer[p]);
 
 
 
+      // Bouton cliquable seulement si tout est correctement encodé
+      $: canValidateDonne = (() => {
+      const joueursAvecAnnonce = players.filter((p) => annonceByPlayer[p]);
+      if (joueursAvecAnnonce.length === 0) return false;
 
-// 🔥 RÈGLE SUPPLÉMENTAIRE POUR LES DAMES : 
-// S'il y a au moins une annonce de type D (template 6), 
-// la somme des dames sur ces joueurs doit être EXACTEMENT 4. 
-const joueursDames = players.filter( 
-(p) => annonceByPlayer[p] && 
-getTemplateForAnnonce(annonceByPlayer[p]) === 6 
-); 
+      for (const p of joueursAvecAnnonce) {
+      const code = annonceByPlayer[p];
+      const template = getTemplateForAnnonce(code);
 
-if (joueursDames.length > 0) { 
-const totalDames = joueursDames.reduce(
-(acc, p) => acc + (dames[p] ?? 0), 
-0 
-); 
-if (totalDames !== MAX_DAMES) { 
-return false; 
-} 
-} 
-return true; 
-})();
+      // Template 1 & 2 : annonces à plis
+      if (template === 1 || template === 2) {
+      // un joueur inactif ne devrait pas avoir d'annonce
+      if (inactivePlayersCurrentDonne.includes(p)) {
+      return false;
+      }
+
+      if (typeof plis[p] !== 'number') return false;
+      // si emballage, partenaire obligatoire
+      if (template === 2 && !emballes[p]) return false;
+      }
+
+      // Trou : partenaire obligatoire aussi, même si template = 5
+      if (code === 'TR' && !emballes[p]) {
+      return false;
+      }
+
+      // Template 3, 4, 5 : Réussi / Raté / Capot
+      if (template === 3 || template === 4 || template === 5) {
+      if (inactivePlayersCurrentDonne.includes(p)) {
+      // joueur inactif → ne devrait pas avoir de résultat
+      if (resultats[p]) return false;
+      continue;
+      }
+
+      if (!resultats[p]) return false;
+      }
+
+      // Template 6 : Dames
+      if (template === 6) {
+      // si joueur inactif → on n'exige rien pour lui
+      if (inactivePlayersCurrentDonne.includes(p)) {
+      continue;
+      }
+
+      if (typeof dames[p] !== 'number') return false;
+      }
+      }
+
+      // 🔥 RÈGLE SUPPLÉMENTAIRE POUR LES JEUX À 2 JOUEURS (template 4)
+      const joueursTemplate4 = joueursAvecAnnonce.filter(
+      (p) =>
+      !inactivePlayersCurrentDonne.includes(p) &&
+      getTemplateForAnnonce(annonceByPlayer[p]) === 4
+      );
+
+      if (joueursTemplate4.length === 1) {
+      // Un seul joueur a choisi un jeu à 2 → donne invalide
+      return false;
+      }
+
+      if (joueursTemplate4.length > 0) {
+      const codes4 = joueursTemplate4.map((p) => annonceByPlayer[p]);
+      const firstCode4 = codes4[0];
+
+      // Tous les joueurs template 4 doivent avoir la même annonce
+      if (!codes4.every((c) => c === firstCode4)) {
+      return false;
+      }
+
+      // Par sécurité : pas plus de 2 joueurs
+      if (joueursTemplate4.length > 2) {
+      return false;
+      }
+      }
+
+      // 🔥 RÈGLE SUPPLÉMENTAIRE POUR LES DAMES :
+      // On ne regarde que les joueurs ACTIFS qui ont D
+      const joueursDames = players.filter(
+      (p) =>
+      annonceByPlayer[p] &&
+      getTemplateForAnnonce(annonceByPlayer[p]) === 6 &&
+      !inactivePlayersCurrentDonne.includes(p)
+      );
+
+      if (joueursDames.length > 0) {
+      const totalDames = joueursDames.reduce(
+      (acc, p) => acc + (dames[p] ?? 0),
+      0
+      );
+      if (totalDames !== MAX_DAMES) {
+      return false;
+      }
+      }
+
+      return true;
+      })();
 
 
 
 
-function handleInput(player: string, value: string | number) {
-    const template = getTemplateForAnnonce(annonceByPlayer[player]);
 
-    if (template === 1 || template === 2) {
-        plis[player] = +value;
-        plis = { ...plis };
-    } else if (template === 3 || template === 4 || template === 5) {
-        resultats[player] = value as string;
-        resultats = { ...resultats };
-    } else if (template === 6) {
-        dames[player] = +value;
-        dames = { ...dames };
-    }
-}
+      function handleInput(player: string, value: string | number) {
+      const template = getTemplateForAnnonce(annonceByPlayer[player]);
+
+      if (template === 1 || template === 2) {
+      plis[player] = +value;
+      plis = { ...plis };
+      } else if (template === 3 || template === 4 || template === 5) {
+      resultats[player] = value as string;
+      resultats = { ...resultats };
+      } else if (template === 6) {
+      dames[player] = +value;
+      dames = { ...dames };
+      }
+      }
 
 
-//
-async function exportFeuillePointsPdf() {
-    if (!feuillePoints.length) {
-        alert("Aucune donne pour la feuille de points.");
-        return;
-    }
+      //
+      async function exportFeuillePointsPdf() {
+      if (!feuillePoints.length) {
+      alert("Aucune donne pour la feuille de points.");
+      return;
+      }
 
-    const doc = new jsPDF('l', 'pt', 'a4'); // paysage
-    const pageWidth = doc.internal.pageSize.getWidth();
-    const pageHeight = doc.internal.pageSize.getHeight();
+      const doc = new jsPDF('l', 'pt', 'a4'); // paysage
+      const pageWidth = doc.internal.pageSize.getWidth();
+      const pageHeight = doc.internal.pageSize.getHeight();
 
-    try {
-        // 🔹 Charger le logo comme image classique
-        const img = new Image();
-        img.src = "/logo_iwb.png"; // sert le fichier depuis /static
+      try {
+      // 🔹 Charger le logo comme image classique
+      const img = new Image();
+      img.src = "/logo_iwb.png"; // sert le fichier depuis /static
 
-        await new Promise<void>((resolve, reject) => {
+      await new Promise<void>((resolve, reject) => {
             img.onload = () => resolve();
             img.onerror = (e) => reject(e);
         });
@@ -1361,28 +1467,50 @@ async function exportFeuillePointsPdf() {
 
           async function validate() {
           // 1. Construire les infos par joueur
-          const joueursPayload = players
-          .map((p) => {
-          const annonce = annonceByPlayer[p] || null;
-          const infoArbitre = isArbitreRequis(annonce, p);
+         const joueursPayload = players
+  .map((p, index) => {
+    const annonce = annonceByPlayer[p] || null;
+    const infoArbitre = isArbitreRequis(annonce, p);
 
-          return {
-          nom: p,
-          annonce,
-          emballageAvec: emballes[p] || null,
-          plis: typeof plis[p] === 'number' ? plis[p] : null,
-          resultat: resultats[p] || null,
-          dames: typeof dames[p] === 'number' ? dames[p] : null,
-          arbitre: infoArbitre.required   // ⬅️ NEW
-          };
-          })
-          .filter(j =>
-          j.annonce !== null ||
-          j.emballageAvec !== null ||
-          j.plis !== null ||
-          j.resultat !== null ||
-          j.dames !== null
-          );
+    // 🔹 ID du joueur courant
+    const joueurPk = playerIds[index] ?? null;
+
+    // 🔹 Partenaire (nom + recherche de son ID)
+    const partenaireAlias = emballes[p] || null;
+    let partenairePk: number | null = null;
+
+    if (partenaireAlias) {
+      const idxPartenaire = players.indexOf(partenaireAlias);
+      if (idxPartenaire !== -1) {
+        partenairePk = playerIds[idxPartenaire] ?? null;
+      }
+    }
+
+    return {
+      // anciens champs (pour compatibilité)
+      nom: p,
+      emballageAvec: partenaireAlias,
+
+      // nouveaux champs PK
+      joueurPk,
+      partenairePk,
+
+      annonce,
+      plis: typeof plis[p] === 'number' ? plis[p] : null,
+      resultat: resultats[p] || null,
+      dames: typeof dames[p] === 'number' ? dames[p] : null,
+      arbitre: infoArbitre.required
+    };
+  })
+  .filter(
+    (j) =>
+      j.annonce !== null ||
+      j.emballageAvec !== null ||
+      j.plis !== null ||
+      j.resultat !== null ||
+      j.dames !== null
+  );
+
 
           // 3. Si personne n'a rien encodé → on ne fait rien
           if (joueursPayload.length === 0) {
@@ -1417,33 +1545,43 @@ async function exportFeuillePointsPdf() {
 
           alert("Donne enregistrée ✅");
 
-          // 🔹 Calcul des scores de la donne courante
+          // 🔹 Calcul des scores de la donne courante (en tenant compte des joueurs inactifs)
+          const inactive = getInactivePlayersForDonne(donneNumber, players);
+
           const scoresDonne = computeScoresForState(
           players,
           annonceByPlayer,
           emballes,
           plis,
           resultats,
-          dames
+          dames,
+          inactive
           );
+
 
           // 🔹 Préparer le payload des scores à envoyer en DB
           const scoresPayload = {
-          tableName,
-          mancheNumber: Number(mancheNumber),
-          donneNumber,
-          scores: players.map((p) => {
-          const scoreDonne = scoresDonne[p] ?? 0;
-          const cumulAvant = scoresCumulés[p] ?? 0;   // cumul avant cette donne
-          const cumulApres = cumulAvant + scoreDonne; // cumul après cette donne
+  tableName,
+  mancheNumber: Number(mancheNumber),
+  donneNumber,
+  scores: players.map((p, index) => {
+    const scoreDonne = scoresDonne[p] ?? 0;
+    const cumulAvant = scoresCumulés[p] ?? 0;
+    const cumulApres = cumulAvant + scoreDonne;
 
-          return {
-          joueur: p,
-          score: scoreDonne,
-          cumul: cumulApres
-          };
-          })
-          };
+    return {
+      // alias, comme avant
+      joueur: p,
+
+      // 🔹 nouveau : PK
+      joueurPk: playerIds[index] ?? null,
+
+      score: scoreDonne,
+      cumul: cumulApres
+    };
+  })
+};
+
 
           console.log("Scores envoyés à l'API :", scoresPayload);
 
@@ -1475,8 +1613,17 @@ async function exportFeuillePointsPdf() {
           };
           history = [...history, donneHistorique];
 
+          // 🔚 Si c'était la dernière donne de la manche → on termine ici
+          if (donneNumber >= rows) {
+          mancheTerminee = true;
+          showEndOfMancheModal = true;
+          resetDonneState();      // on vide les encodages de la donne courante
+          return;                 // surtout ne pas appeler nextDonne()
+          }
+
           // 4. On passe à la donne suivante ET on nettoie tout
           nextDonne();
+
 
           } catch (err) {
           console.error(err);
@@ -1716,6 +1863,51 @@ async function exportFeuillePointsPdf() {
     </div>
 {/if}
 
+{#if showEndOfMancheModal}
+<div class="modal-backdrop" on:click={() =>
+  showEndOfMancheModal = false}>
+  <div class="modal end-manche-modal" on:click|stopPropagation>
+    <h3>Manche terminée 🎉</h3>
+
+    <p class="end-manche-text">
+      La manche est terminée après {rows} donnes.<br />
+      Voici le classement final :
+    </p>
+
+    <table class="end-manche-table">
+      <thead>
+        <tr>
+          <th>#</th>
+          <th>Joueur</th>
+          <th>Score</th>
+        </tr>
+      </thead>
+      <tbody>
+        {#each classementFinal as j, i}
+        <tr class:winner-row={j.score === leaderScore}>
+          <td>{i + 1}</td>
+          <td>{j.nom}</td>
+          <td>{j.score}</td>
+        </tr>
+        {/each}
+      </tbody>
+    </table>
+
+    {#if winnerNames}
+    <p class="end-manche-congrats">
+      🎰 Bravo à
+      <span class="end-manche-winner">{winnerNames}</span>
+      pour cette manche gagnée !
+    </p>
+    {/if}
+
+    <button on:click={() =>
+      showEndOfMancheModal = false}>
+      Fermer
+    </button>
+  </div>
+</div>
+{/if}
 
 
 <div class="donne">
@@ -1726,10 +1918,16 @@ async function exportFeuillePointsPdf() {
 				<div class="player-block">
 					<strong>{p}</strong>
 
-					<!-- Sélection de l’annonce -->
+          {#if inactivePlayersCurrentDonne.includes(p)}
+          <div class="inactive-note">Ne joue pas cette donne</div>
+          {/if}
+          
+
+          <!-- Sélection de l’annonce -->
 <select
     value={annonceByPlayer[p] || ''}
     on:change={(e) => handleAnnonceChange(p, (e.target as HTMLSelectElement).value)}
+    disabled={inactivePlayersCurrentDonne.includes(p)}
 >
     <option value="">-- Choisir annonce --</option>
    {#each (annoncesParJoueur[p] ?? annonces) as a}
@@ -1743,24 +1941,28 @@ async function exportFeuillePointsPdf() {
 
 
 		<!-- Emballage OU Trou : on choisit un partenaire -->
-{#if annonceByPlayer[p] && (
-    getTemplateForAnnonce(annonceByPlayer[p]) === 2
-    || annonceByPlayer[p] === 'TR'
-)}
-    <div class="emballage">
-        <label>
-            Avec qui ?
-            <select bind:value={emballes[p]}>
+          {#if annonceByPlayer[p] && (
+          getTemplateForAnnonce(annonceByPlayer[p]) === 2
+          || annonceByPlayer[p] === 'TR'
+          )}
+          <div class="emballage">
+            <label>
+              Avec qui ?
+              <select bind:value={emballes[p]}>
                 <option value="">-- Choisir joueur --</option>
-                {#each players.filter(x => x !== p) as other}
-                    <option value={other}>{other}</option>
+                {#each players
+                .filter(
+                x => x !== p && !inactivePlayersCurrentDonne.includes(x)
+                ) as other}
+                <option value={other}>{other}</option>
                 {/each}
-            </select>
-        </label>
-    </div>
-{/if}
+              </select>
+            </label>
+          </div>
+          {/if}
 
-				</div>
+
+        </div>
 			</div>
 		{/each}
 	</div>
@@ -1860,30 +2062,32 @@ async function exportFeuillePointsPdf() {
 
 
             <!-- Template 6 : Dames (nouvelle version) -->
-            {#if getTemplateForAnnonce(annonceByPlayer[p]) === 6}
-                <div class="player-row">
-                   <span>{getDisplayName(p)}</span>
+  <!-- Template 6 : Dames (nouvelle version) -->
+  {#if getTemplateForAnnonce(annonceByPlayer[p]) === 6
+  && !inactivePlayersCurrentDonne.includes(p)}
+  <div class="player-row">
+    <span>{getDisplayName(p)} (D)</span>
 
-                    <div class="number-buttons">
-                        {#each Array.from({ length: 5 }, (_, i) => i) as n}
-                            <button
-                                on:click={() => selectDames(p, n)}
-                                class:selected={dames[p] === n}
-                                disabled={isDamesDisabled(p, n)}
-                            >
-                                {n}
-                            </button>
-                        {/each}
-                    </div>
-                </div>
-            {/if}
+    <div class="number-buttons">
+      {#each Array.from({ length: 5 }, (_, i) => i) as n}
+      <button
+          on:click={() =>
+        selectDames(p, n)}
+        class:selected={dames[p] === n}
+        disabled={isDamesDisabled(p, n)}
+        >
+        {n}
+      </button>
+      {/each}
+    </div>
+  </div>
+  {/if}
+  {/if}
+  {/each}
 
-		{/if}
-	{/each}
 
-  
-{#if players.length}
-    <div class="preview-scores">
+  {#if players.length}
+  <div class="preview-scores">
         <h3>Prévisualisation des scores</h3>
         <table>
             <thead>
@@ -1896,12 +2100,17 @@ async function exportFeuillePointsPdf() {
                 {#each players as p}
                     <tr>
                         <td>{p}</td>
-                        <td
-                            class:positive={previewScores[p] > 0}
-                            class:negative={previewScores[p] < 0}
-                        >
-                            {previewScores[p] ?? 0}
-                        </td>
+                      <td
+               class:positive={previewScores[p] > 0}
+               class:negative={previewScores[p] < 0}
+            >
+              {#if inactivePlayersCurrentDonne.includes(p)}
+    -
+  {:else}
+    {previewScores[p] ?? 0}
+  {/if}
+                      </td>
+
                     </tr>
                 {/each}
             </tbody>
@@ -2930,7 +3139,77 @@ async function exportFeuillePointsPdf() {
 
 
 
+  .inactive-note {
+  margin-top: 0.2rem;
+  font-size: 0.8rem;
+  color: #9ca3af;
+  font-style: italic;
+  }
 
+  .end-manche-modal {
+  max-width: 520px;
+  width: 95%;
+  text-align: center;
+  background: radial-gradient(circle at top, #052e16 0%, #020b06 65%, #000 100%);
+  border: 1px solid rgba(250, 204, 21, 0.6);
+  box-shadow:
+  0 0 25px rgba(0, 0, 0, 0.9),
+  0 0 18px rgba(250, 204, 21, 0.4);
+  }
+
+  .end-manche-text {
+  margin-top: 0.3rem;
+  margin-bottom: 0.9rem;
+  font-size: 0.95rem;
+  color: var(--text-muted);
+  }
+
+  .end-manche-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin: 0.4rem 0 0.8rem;
+  font-size: 0.9rem;
+  background: #020b06;
+  }
+
+  .end-manche-table th,
+  .end-manche-table td {
+  border: 1px solid rgba(55, 65, 81, 0.9);
+  padding: 0.35rem 0.5rem;
+  text-align: center;
+  }
+
+  .end-manche-table th {
+  background: linear-gradient(to bottom, #14532d, #052e16);
+  color: #fef9c3;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.78rem;
+  }
+
+  .end-manche-table tr:nth-child(even) {
+  background: #04130b;
+  }
+
+  .end-manche-table tr.winner-row {
+  background: radial-gradient(circle at top, #fff7cf 0%, #facc15 45%, #f97316 100%);
+  color: #111827;
+  font-weight: 700;
+  box-shadow: 0 0 10px rgba(250, 204, 21, 0.6);
+  }
+
+  .end-manche-congrats {
+  margin-top: 0.4rem;
+  margin-bottom: 0.4rem;
+  font-size: 0.95rem;
+  color: #e5e7eb;
+  }
+
+  .end-manche-winner {
+  color: #facc15;
+  font-weight: 700;
+  text-shadow: 0 0 6px rgba(250, 204, 21, 0.8);
+  }
 
 
 </style>
