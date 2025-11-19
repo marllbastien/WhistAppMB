@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, onDestroy } from 'svelte';
   import jsPDF from 'jspdf';
   import autoTable from 'jspdf-autotable';
 
@@ -7,6 +7,14 @@
   const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
 
+  // --- Gestion des brouillons ("draft") ---
+  const DRAFT_STORAGE_PREFIX = 'whist-draft';
+
+  import { goto } from '$app/navigation';  // ⬅️ à ajouter si pas déjà présent
+
+
+  let draftSaveTimer: number | null = null;
+  let isHydratingFromDraft = false; // pour ne pas re-sauvegarder pendant un load
 
   let tableName = '';
   let mancheNumber = '';
@@ -14,13 +22,14 @@
   let playerCount = 0;
   let rows = 0;
   let donneNumber = 1; // numéro de la donne actuelle
-  let playerIds: (number | null)[] = [];  
+  let playerIds: (number | null)[] = [];
 
-
+  let SessionId = '';
 
 
   let soloPlayer: string | null = null;
 
+  let showConfetti = false;
 
   let showAnnonceOrder = false; // Permet d'afficher la latte des annonces
   let showHistorique = false; // Permet d'afficher le tableau des scores complet
@@ -29,25 +38,64 @@
   let arbitreMessage = "";
   let mancheTerminee = false;
   let showEndOfMancheModal = false;
+  let resultatSectionEl: HTMLDivElement | null = null;
+  let mancheStartTime: string | null = null;
+
+  let mancheEndTime: string | null = null; // heure de Fin de la manche
+  let dureeManche: string | null = null;
 
 
+  function scrollToResultSection() {
+  if (typeof window === 'undefined') return;
+
+  if (resultatSectionEl) {
+  resultatSectionEl.scrollIntoView({
+  behavior: 'smooth',
+  block: 'start'
+  });
+  }
+  }
+
+  function formatHeure(date: Date): string {
+  return date.toLocaleTimeString('fr-FR', {
+  hour: '2-digit',
+  minute: '2-digit'
+  });
+  }
 
 
-  const couleurs = [
-  { nom: 'Pique', symbole: '♠', couleur: 'black' },
-  { nom: 'Trèfle', symbole: '♣', couleur: 'black' },
-  { nom: 'Carreau', symbole: '♦', couleur: 'red' },
-  { nom: 'Coeur', symbole: '♥', couleur: 'red' }
-  ];
+  // Validation de la manche par joueur
+  let validations: Record<string, boolean>
+    = {};
+
+    // Tous les joueurs ont-ils validé ?
+    $: allPlayersValidated =
+    players.length > 0 && players.every((p) => validations[p]);
+
+    // Réinitialiser les validations quand le modal s’ouvre
+    $: if (showEndOfMancheModal) {
+    validations = {};
+    for (const row of classementFinal) {
+    validations[row.nom] = false;
+    }
+    }
 
 
-  // Le joueur 2 (index 1) distribue au départ
-  $: currentDealer = (donneNumber) % players.length;
+    const couleurs = [
+    { nom: 'Pique', symbole: '♠', couleur: 'black' },
+    { nom: 'Trèfle', symbole: '♣', couleur: 'black' },
+    { nom: 'Carreau', symbole: '♦', couleur: 'red' },
+    { nom: 'Coeur', symbole: '♥', couleur: 'red' }
+    ];
 
-  // 🔹 Renvoie les joueurs qui NE jouent PAS cette donne
-  function getInactivePlayersForDonne(donne: number, allPlayers: string[]): string[] {
-  const n = allPlayers.length;
-  if (n <= 4) return []; // à 4, tout le monde joue
+
+    // Le joueur 2 (index 1) distribue au départ
+    $: currentDealer = (donneNumber) % players.length;
+
+    // 🔹 Renvoie les joueurs qui NE jouent PAS cette donne
+    function getInactivePlayersForDonne(donne: number, allPlayers: string[]): string[] {
+    const n = allPlayers.length;
+    if (n <= 4) return []; // à 4, tout le monde joue
 
   // Même logique que currentDealer : dealer = index du donneur
   const dealerIndex = donne % n;
@@ -70,6 +118,14 @@
   // 🔹 Liste réactive des joueurs inactifs pour la donne courante
   $: inactivePlayersCurrentDonne = getInactivePlayersForDonne(donneNumber, players);
 
+function scrollToTop() {
+  window.scrollTo({
+    top: 0,
+    behavior: "smooth"
+  });
+}
+
+
 
 function nextDonne() {
   // Si on est déjà à la dernière donne, on ne va pas plus loin
@@ -81,7 +137,10 @@ function nextDonne() {
 
   donneNumber++;
   resetDonneState();
+  saveDraftLocallyAndRemotely(); // on sauvegarde l'état "vide" de la nouvelle donne
+  scrollToTop();
 }
+
 
 
 
@@ -304,112 +363,114 @@ function getDisplayName(p: string): string {
 
     // Cas normal : un seul joueur
     return `${p} (${code})`;
-}
+    }
 
 
-  
-  
-  
-  function resetDonneState() {
+
+
+
+    function resetDonneState() {
     annonceByPlayer = {};
     emballes = {};
     plis = {};
     resultats = {};
     dames = {};
     soloPlayer = null;
-}
-  
 
-// --- Types pour la grille de résultats ---
-
-type EtatJeu = 'Réussi' | 'Raté' | 'Capot' | 'RéussiRaté';
+    saveDraftLocallyAndRemotely();
+    }
 
 
-type GrilleRowPlis = {
+    // --- Types pour la grille de résultats ---
+
+    type EtatJeu = 'Réussi' | 'Raté' | 'Capot' | 'RéussiRaté';
+
+
+    type GrilleRowPlis = {
     kind: 'plis';
     code: string;             // E8, S6, A9, ...
     nbJoueursDedans: number;  // 1 = solo, 2 = emballage, etc.
     plisFaits: number;        // Nb de plis réalisés (8+ -> 8)
     resultatInd: number;      // GR_ResultatInd_Qt
     resultatJeu: number;      // GR_ResultatJeu_Qt
-};
+    };
 
-type GrilleRowEtat = {
+    type GrilleRowEtat = {
     kind: 'etat';
     code: string;             // PM, PM2, GM, GM2, TR, ...
     nbJoueursDedans: number;  // 1 ou 2
     etat: EtatJeu;            // Réussi / Raté / Capot / RéussiRaté
     resultatInd: number;      // GR_ResultatInd_Qt
     resultatJeu: number;      // GR_ResultatJeu_Qt
-};
+    };
 
-type GrilleRow = GrilleRowPlis | GrilleRowEtat;
+    type GrilleRow = GrilleRowPlis | GrilleRowEtat;
 
-const GRILLE_RESULTATS: GrilleRow[] = [
+    const GRILLE_RESULTATS: GrilleRow[] = [
     // --- EXEMPLES JEUX À PLIS ---
 
     // Emballage E8
-	  { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 4, resultatInd: -19, resultatJeu: 0 },
-     { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 5, resultatInd: -16, resultatJeu: 0 },
-   { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 6, resultatInd: -13, resultatJeu: 0 },
-   { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 7, resultatInd: -10, resultatJeu: 0 },
+    { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 4, resultatInd: -19, resultatJeu: 0 },
+    { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 5, resultatInd: -16, resultatJeu: 0 },
+    { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 6, resultatInd: -13, resultatJeu: 0 },
+    { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 7, resultatInd: -10, resultatJeu: 0 },
     { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 8, resultatInd: 7,   resultatJeu: 14 },
     { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 9, resultatInd: 10,  resultatJeu: 20 },
-	{ kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 10, resultatInd: 13,  resultatJeu: 26 },
-	{ kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 11, resultatInd: 16,  resultatJeu: 32 },
-	{ kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 12, resultatInd: 19,  resultatJeu: 38 },
-	{ kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 13, resultatInd: 30,  resultatJeu: 60 },
-  
-     // Emballage E9
-	 { kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 5, resultatInd: -22, resultatJeu: 0 },
-	 { kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 6, resultatInd: -19, resultatJeu: 0 },
+    { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 10, resultatInd: 13,  resultatJeu: 26 },
+    { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 11, resultatInd: 16,  resultatJeu: 32 },
+    { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 12, resultatInd: 19,  resultatJeu: 38 },
+    { kind: 'plis', code: 'E8', nbJoueursDedans: 2, plisFaits: 13, resultatInd: 30,  resultatJeu: 60 },
+
+    // Emballage E9
+    { kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 5, resultatInd: -22, resultatJeu: 0 },
+    { kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 6, resultatInd: -19, resultatJeu: 0 },
     { kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 7, resultatInd: -16, resultatJeu: 0 },
     { kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 8, resultatInd: -13,   resultatJeu: 0 },
     { kind: 'plis', code: 'E9', nbJoueursDedans:2, plisFaits: 9, resultatInd: 10,  resultatJeu: 20 },
-	{ kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 10, resultatInd: 13,  resultatJeu: 26 },
-	{ kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 11, resultatInd: 16,  resultatJeu: 32 },
-	{ kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 12, resultatInd: 19,  resultatJeu: 38 },
-	{ kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 13, resultatInd: 30,  resultatJeu: 60 },
+    { kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 10, resultatInd: 13,  resultatJeu: 26 },
+    { kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 11, resultatInd: 16,  resultatJeu: 32 },
+    { kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 12, resultatInd: 19,  resultatJeu: 38 },
+    { kind: 'plis', code: 'E9', nbJoueursDedans: 2, plisFaits: 13, resultatInd: 30,  resultatJeu: 60 },
 
 
-	   // Emballage E10
-	   { kind: 'plis', code: 'E10', nbJoueursDedans: 2, plisFaits: 6, resultatInd: -25, resultatJeu: 0 },
+    // Emballage E10
+    { kind: 'plis', code: 'E10', nbJoueursDedans: 2, plisFaits: 6, resultatInd: -25, resultatJeu: 0 },
     { kind: 'plis', code: 'E10', nbJoueursDedans: 2, plisFaits: 7, resultatInd: -22, resultatJeu: 0 },
     { kind: 'plis', code: 'E10', nbJoueursDedans: 2, plisFaits: 8, resultatInd: -19,   resultatJeu: 0 },
     { kind: 'plis', code: 'E10', nbJoueursDedans: 2, plisFaits: 9, resultatInd: -16,  resultatJeu: 0 },
-	{ kind: 'plis', code: 'E10', nbJoueursDedans: 2, plisFaits: 10, resultatInd: 13,  resultatJeu: 26 },
-	{ kind: 'plis', code: 'E10', nbJoueursDedans: 2, plisFaits: 11, resultatInd: 16,  resultatJeu: 32 },
-	{ kind: 'plis', code: 'E10', nbJoueursDedans: 2, plisFaits: 12, resultatInd: 19,  resultatJeu: 38 },
-	{ kind: 'plis', code: 'E10', nbJoueursDedans: 2, plisFaits: 13, resultatInd: 30,  resultatJeu: 60 },
+    { kind: 'plis', code: 'E10', nbJoueursDedans: 2, plisFaits: 10, resultatInd: 13,  resultatJeu: 26 },
+    { kind: 'plis', code: 'E10', nbJoueursDedans: 2, plisFaits: 11, resultatInd: 16,  resultatJeu: 32 },
+    { kind: 'plis', code: 'E10', nbJoueursDedans: 2, plisFaits: 12, resultatInd: 19,  resultatJeu: 38 },
+    { kind: 'plis', code: 'E10', nbJoueursDedans: 2, plisFaits: 13, resultatInd: 30,  resultatJeu: 60 },
 
 
-	   // Emballage E11
+    // Emballage E11
     { kind: 'plis', code: 'E11', nbJoueursDedans: 2, plisFaits: 7, resultatInd: -28, resultatJeu: 0 },
     { kind: 'plis', code: 'E11', nbJoueursDedans: 2, plisFaits: 8, resultatInd: -25,   resultatJeu: 0 },
     { kind: 'plis', code: 'E11', nbJoueursDedans: 2, plisFaits: 9, resultatInd: -22,  resultatJeu: 0 },
-	{ kind: 'plis', code: 'E11', nbJoueursDedans: 2, plisFaits: 10, resultatInd: -19,  resultatJeu: 0 },
-	{ kind: 'plis', code: 'E11', nbJoueursDedans: 2, plisFaits: 11, resultatInd: 16,  resultatJeu: 32 },
-	{ kind: 'plis', code: 'E11', nbJoueursDedans: 2, plisFaits: 12, resultatInd: 19,  resultatJeu: 38 },
-	{ kind: 'plis', code: 'E11', nbJoueursDedans: 2, plisFaits: 13, resultatInd: 30,  resultatJeu: 60 },
+    { kind: 'plis', code: 'E11', nbJoueursDedans: 2, plisFaits: 10, resultatInd: -19,  resultatJeu: 0 },
+    { kind: 'plis', code: 'E11', nbJoueursDedans: 2, plisFaits: 11, resultatInd: 16,  resultatJeu: 32 },
+    { kind: 'plis', code: 'E11', nbJoueursDedans: 2, plisFaits: 12, resultatInd: 19,  resultatJeu: 38 },
+    { kind: 'plis', code: 'E11', nbJoueursDedans: 2, plisFaits: 13, resultatInd: 30,  resultatJeu: 60 },
 
 
-	   // Emballage E12
- 
+    // Emballage E12
+
     { kind: 'plis', code: 'E12', nbJoueursDedans: 2, plisFaits: 8, resultatInd: -31,   resultatJeu: 0 },
     { kind: 'plis', code: 'E12', nbJoueursDedans: 2, plisFaits: 9, resultatInd: -28,  resultatJeu: 0 },
-	{ kind: 'plis', code: 'E12', nbJoueursDedans: 2, plisFaits: 10, resultatInd: -25,  resultatJeu: 0 },
-	{ kind: 'plis', code: 'E12', nbJoueursDedans: 2, plisFaits: 11, resultatInd: -22,  resultatJeu: 0 },
-	{ kind: 'plis', code: 'E12', nbJoueursDedans: 2, plisFaits: 12, resultatInd: 19,  resultatJeu: 38 },
-	{ kind: 'plis', code: 'E12', nbJoueursDedans: 2, plisFaits: 13, resultatInd: 30,  resultatJeu: 60 },
+    { kind: 'plis', code: 'E12', nbJoueursDedans: 2, plisFaits: 10, resultatInd: -25,  resultatJeu: 0 },
+    { kind: 'plis', code: 'E12', nbJoueursDedans: 2, plisFaits: 11, resultatInd: -22,  resultatJeu: 0 },
+    { kind: 'plis', code: 'E12', nbJoueursDedans: 2, plisFaits: 12, resultatInd: 19,  resultatJeu: 38 },
+    { kind: 'plis', code: 'E12', nbJoueursDedans: 2, plisFaits: 13, resultatInd: 30,  resultatJeu: 60 },
 
 
-	   // Emballage E13
-   
+    // Emballage E13
+
     { kind: 'plis', code: 'E13', nbJoueursDedans: 2, plisFaits: 9, resultatInd: -34,  resultatJeu: 0 },
-	{ kind: 'plis', code: 'E13', nbJoueursDedans: 2, plisFaits: 10, resultatInd: -31,  resultatJeu: 0 },
-	{ kind: 'plis', code: 'E13', nbJoueursDedans: 2, plisFaits: 11, resultatInd: -28,  resultatJeu: 0 },
-	{ kind: 'plis', code: 'E13', nbJoueursDedans: 2, plisFaits: 12, resultatInd: -25,  resultatJeu: 0 },
-	{ kind: 'plis', code: 'E13', nbJoueursDedans: 2, plisFaits: 13, resultatInd: 30,  resultatJeu: 60 },
+    { kind: 'plis', code: 'E13', nbJoueursDedans: 2, plisFaits: 10, resultatInd: -31,  resultatJeu: 0 },
+    { kind: 'plis', code: 'E13', nbJoueursDedans: 2, plisFaits: 11, resultatInd: -28,  resultatJeu: 0 },
+    { kind: 'plis', code: 'E13', nbJoueursDedans: 2, plisFaits: 12, resultatInd: -25,  resultatJeu: 0 },
+    { kind: 'plis', code: 'E13', nbJoueursDedans: 2, plisFaits: 13, resultatInd: 30,  resultatJeu: 60 },
 
 
     // Solo S6
@@ -420,7 +481,7 @@ const GRILLE_RESULTATS: GrilleRow[] = [
     { kind: 'plis', code: 'S6', nbJoueursDedans: 1, plisFaits: 7, resultatInd: 15,  resultatJeu: 15 },
     { kind: 'plis', code: 'S6', nbJoueursDedans: 1, plisFaits: 8, resultatInd: 18,  resultatJeu: 18 }, // 8+ -> 8
 
-	
+
     // Solo S7
     { kind: 'plis', code: 'S7', nbJoueursDedans: 1, plisFaits: 4, resultatInd: -24, resultatJeu: 24 },
     { kind: 'plis', code: 'S7', nbJoueursDedans: 1, plisFaits: 5, resultatInd: -21, resultatJeu: 21 },
@@ -428,14 +489,14 @@ const GRILLE_RESULTATS: GrilleRow[] = [
     { kind: 'plis', code: 'S7', nbJoueursDedans: 1, plisFaits: 7, resultatInd: 15,  resultatJeu: 15 },
     { kind: 'plis', code: 'S7', nbJoueursDedans: 1, plisFaits: 8, resultatInd: 18,  resultatJeu: 18 }, // 8+ -> 8
 
-	
+
     // Solo S8
     { kind: 'plis', code: 'S8', nbJoueursDedans: 1, plisFaits: 5, resultatInd: -30, resultatJeu: 30 },
     { kind: 'plis', code: 'S8', nbJoueursDedans: 1, plisFaits: 6, resultatInd: -27, resultatJeu: 27 },
     { kind: 'plis', code: 'S8', nbJoueursDedans: 1, plisFaits: 7, resultatInd: -24,  resultatJeu: 24 },
     { kind: 'plis', code: 'S8', nbJoueursDedans: 1, plisFaits: 8, resultatInd: 18,  resultatJeu: 18 }, // 8+ -> 8
 
-	   // Solo S8
+    // Solo S8
     { kind: 'plis', code: 'S8_D', nbJoueursDedans: 1, plisFaits: 5, resultatInd: -30, resultatJeu: 30 },
     { kind: 'plis', code: 'S8_D', nbJoueursDedans: 1, plisFaits: 6, resultatInd: -27, resultatJeu: 27 },
     { kind: 'plis', code: 'S8_D', nbJoueursDedans: 1, plisFaits: 7, resultatInd: -24,  resultatJeu: 24 },
@@ -449,43 +510,43 @@ const GRILLE_RESULTATS: GrilleRow[] = [
     { kind: 'etat', code: 'PM', nbJoueursDedans: 1, etat: 'Raté',   resultatInd: -18, resultatJeu: 18 },
 
 
-	    // Grande misère (GM) : Réussi / Raté
+    // Grande misère (GM) : Réussi / Raté
     { kind: 'etat', code: 'GM', nbJoueursDedans: 1, etat: 'Réussi', resultatInd: 36,  resultatJeu: 36 },
     { kind: 'etat', code: 'GM', nbJoueursDedans: 1, etat: 'Raté',   resultatInd: -36, resultatJeu: 36 },
 
-	
+
     // Petite misère étalée (PME) : Réussi / Raté
     { kind: 'etat', code: 'PME', nbJoueursDedans: 1, etat: 'Réussi', resultatInd: 27,  resultatJeu: 27 },
     { kind: 'etat', code: 'PME', nbJoueursDedans: 1, etat: 'Raté',   resultatInd: -27, resultatJeu: 27 },
 
 
-	    // Grande misère étalée (GME) : Réussi / Raté
+    // Grande misère étalée (GME) : Réussi / Raté
     { kind: 'etat', code: 'GME', nbJoueursDedans: 1, etat: 'Réussi', resultatInd: 75,  resultatJeu: 75 },
     { kind: 'etat', code: 'GME', nbJoueursDedans: 1, etat: 'Raté',   resultatInd: -75, resultatJeu: 75 },
 
 
-	    // Picolo (P) : Réussi / Raté
+    // Picolo (P) : Réussi / Raté
     { kind: 'etat', code: 'P', nbJoueursDedans: 1, etat: 'Réussi', resultatInd: 24,  resultatJeu: 24 },
     { kind: 'etat', code: 'P', nbJoueursDedans: 1, etat: 'Raté',   resultatInd: -24, resultatJeu: 24 },
 
 
-	  // Abondance 9 (A9) : Réussi / Raté
+    // Abondance 9 (A9) : Réussi / Raté
     { kind: 'etat', code: 'A9', nbJoueursDedans: 1, etat: 'Réussi', resultatInd: 30,  resultatJeu: 30 },
     { kind: 'etat', code: 'A9', nbJoueursDedans: 1, etat: 'Raté',   resultatInd: -30, resultatJeu: 30 },
 
-	  // Abondance 10 (A10) : Réussi / Raté
+    // Abondance 10 (A10) : Réussi / Raté
     { kind: 'etat', code: 'A10', nbJoueursDedans: 1, etat: 'Réussi', resultatInd: 42,  resultatJeu: 42 },
     { kind: 'etat', code: 'A10', nbJoueursDedans: 1, etat: 'Raté',   resultatInd: -42, resultatJeu: 42 },
-	
-	// Abondance 11 (A11) : Réussi / Raté
+
+    // Abondance 11 (A11) : Réussi / Raté
     { kind: 'etat', code: 'A11', nbJoueursDedans: 1, etat: 'Réussi', resultatInd: 60,  resultatJeu: 60 },
     { kind: 'etat', code: 'A11', nbJoueursDedans: 1, etat: 'Raté',   resultatInd: -60, resultatJeu: 60 },
 
-	// Petit Chelem (PC) : Réussi / Raté
+    // Petit Chelem (PC) : Réussi / Raté
     { kind: 'etat', code: 'PC', nbJoueursDedans: 1, etat: 'Réussi', resultatInd: 100,  resultatJeu: 100 },
     { kind: 'etat', code: 'PC', nbJoueursDedans: 1, etat: 'Raté',   resultatInd: -100, resultatJeu: 50 },
 
-		// Chelem (CH) : Réussi / Raté
+    // Chelem (CH) : Réussi / Raté
     { kind: 'etat', code: 'CH', nbJoueursDedans: 1, etat: 'Réussi', resultatInd: 200,  resultatJeu: 200 },
     { kind: 'etat', code: 'CH', nbJoueursDedans: 1, etat: 'Raté',   resultatInd: -200, resultatJeu: 40 },
 
@@ -496,9 +557,9 @@ const GRILLE_RESULTATS: GrilleRow[] = [
 
     // --- EXEMPLES JEUX À 2 JOUEURS AVEC CAS MIXTE ---
 
-    
-	
-	// Petite misère 2 joueurs (PM2)
+
+
+    // Petite misère 2 joueurs (PM2)
     // les valeurs viennent directement de ton CSV :
     // PM2_18  => Réussi/Réussi (18, 36)
     // PM2_-18 => Raté/Raté    (-18, 0)
@@ -517,7 +578,7 @@ const GRILLE_RESULTATS: GrilleRow[] = [
     { kind: 'etat', code: 'GM2', nbJoueursDedans: 2, etat: 'Raté',       resultatInd: -36, resultatJeu: 0 },
     { kind: 'etat', code: 'GM2', nbJoueursDedans: 2, etat: 'RéussiRaté', resultatInd: 36, resultatJeu: 48 },
 
-        { kind: 'etat', code: 'PME2', nbJoueursDedans: 2, etat: 'Réussi',     resultatInd: 27, resultatJeu: 54 },
+    { kind: 'etat', code: 'PME2', nbJoueursDedans: 2, etat: 'Réussi',     resultatInd: 27, resultatJeu: 54 },
     { kind: 'etat', code: 'PME2', nbJoueursDedans: 2, etat: 'Raté',       resultatInd: -27, resultatJeu: 0 },
     { kind: 'etat', code: 'PME2', nbJoueursDedans: 2, etat: 'RéussiRaté', resultatInd: 27, resultatJeu: 36 },
 
@@ -526,58 +587,284 @@ const GRILLE_RESULTATS: GrilleRow[] = [
     { kind: 'etat', code: 'GME2', nbJoueursDedans: 2, etat: 'Raté',       resultatInd: -75, resultatJeu: 0 },
     { kind: 'etat', code: 'GME2', nbJoueursDedans: 2, etat: 'RéussiRaté', resultatInd: 75, resultatJeu: 100 },
 
-];
+    ];
 
 
-onMount(() => {
-  const url = new URL(window.location.href);
-  tableName = url.searchParams.get('tableName') || 'A';
-  mancheNumber = url.searchParams.get('mancheNumber') || '1';
-  playerCount = Number(url.searchParams.get('playerCount') || 4);
-  players = JSON.parse(
-    url.searchParams.get('players') ||
-      '["Alice","Bob","Claire","David"]'
-  );
-  donneNumber = Number(url.searchParams.get('donneNumber') || 1);
+    onMount(() => {
+    if (typeof window === 'undefined') return;
 
-  // 🔹 Nouveau : récupération des IDs (PK)
-  const playerIdsParam = url.searchParams.get('playerIds');
-  playerIds = playerIdsParam
+    const url = new URL(window.location.href);
+
+    // --- paramètres de base ---
+    tableName = url.searchParams.get('tableName') ?? 'A';
+    mancheNumber = Number(url.searchParams.get('mancheNumber') ?? '1') as any;
+    playerCount = Number(url.searchParams.get('playerCount') ?? '4');
+    donneNumber = Number(url.searchParams.get('donneNumber') ?? '1');
+
+    // --- joueurs (alias) ---
+    const playersParam = url.searchParams.get('players');
+    players = playersParam
+    ? JSON.parse(playersParam)
+    : ['Alice', 'Bob', 'Claire', 'David'];
+
+    // --- IDs (PK) alignés sur players ---
+    const playerIdsParam = url.searchParams.get('playerIds');
+    playerIds = playerIdsParam
     ? JSON.parse(playerIdsParam)
-    : players.map(() => null); // fallback si absent
+    : players.map(() => null);
 
-  // Donnes max par manche
-  rows = playerCount === 4 ? 16 : playerCount === 5 ? 20 : 24;
-});
+    // --- nombre de donnes max ---
+    rows = playerCount === 4 ? 16 : playerCount === 5 ? 20 : 24;
 
-
-
-
-
-	function getTemplateForAnnonce(code: string): number {
-		return annonces.find(a => a.code === code)?.templateResult || 0;
-	}
-  
-  function getSoloBasePlis(code: string): number {
-    switch (code) {
-        case "S6":
-            return 6;
-        case "S7":
-            return 7;
-        case "S8":
-        case "S8_D":
-            return 8;
-        default:
-            // valeur par défaut si jamais
-            return 6;
+    // --- SessionId : identifiant unique côté navigateur ---
+    let storedId = localStorage.getItem('whistSessionId');
+    if (!storedId) {
+    storedId =
+    (crypto as any).randomUUID?.() ??
+    `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+    localStorage.setItem('whistSessionId', storedId);
     }
+    SessionId = storedId;
+
+    // --- tenter de restaurer un brouillon pour cette donne ---
+    loadDraft();
+    });
+
+
+    function getDraftStorageKey() {
+    // 🔹 Un brouillon par table + manche (le dernier état connu)
+    return `${DRAFT_STORAGE_PREFIX}-${tableName}-m${mancheNumber}`;
+    }
+
+
+    // Ce qu'on stocke comme "état de la donne"
+    function buildDraftPayload() {
+    return {
+    tableName,
+    mancheNumber,
+    donneNumber,
+    playerCount,
+    players,
+    playerIds,
+    annonceByPlayer,
+    emballes,
+    plis,
+    resultats,
+    dames,
+    history,
+    mancheStartTime
+    };
+    }
+
+    // Appliquer un brouillon sur l'écran
+    function applyDraft(payload: any) {
+    if (!payload) return;
+
+    try {
+    isHydratingFromDraft = true;
+
+    if (payload.tableName !== undefined) tableName = payload.tableName;
+    if (payload.mancheNumber !== undefined) mancheNumber = payload.mancheNumber as any;
+    if (payload.donneNumber !== undefined) donneNumber = payload.donneNumber;
+    if (payload.playerCount !== undefined) {
+    playerCount = payload.playerCount;
+    if (payload.mancheStartTime !== undefined) {
+    mancheStartTime = payload.mancheStartTime;
+    }
+
+
+    // 👉 IMPORTANT : recalcul du nombre total de donnes
+    rows = playerCount === 4 ? 16 : playerCount === 5 ? 20 : 24;
+    }
+
+    if (payload.players) players = payload.players;
+    if (payload.playerIds) playerIds = payload.playerIds;
+
+    if (payload.annonceByPlayer) annonceByPlayer = payload.annonceByPlayer;
+    if (payload.emballes) emballes = payload.emballes;
+    if (payload.plis) plis = payload.plis;
+    if (payload.resultats) resultats = payload.resultats;
+    if (payload.dames) dames = payload.dames;
+
+    if (payload.history) history = payload.history;
+
+    } finally {
+    isHydratingFromDraft = false;
+    }
+    }
+
+
+    // Chargement : d'abord localStorage, puis API si rien
+    async function loadDraft() {
+    if (typeof window === 'undefined') return;
+
+    const key = getDraftStorageKey();
+
+    // 1) LocalStorage
+    const local = localStorage.getItem(key);
+    if (local) {
+    try {
+    const payload = JSON.parse(local);
+    applyDraft(payload);
+    return;
+    } catch (e) {
+    console.error('Erreur parse draft local', e);
+    }
+    }
+
+    // 2) API
+    try {
+    const res = await fetch(`${API_BASE_URL}/api/draft/load`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+    SessionId,
+    tableName,
+    mancheNumber: Number(mancheNumber)
+    })
+    });
+
+    if (!res.ok) return;
+
+    const dto = await res.json();
+    if (dto && dto.found && dto.payloadJson) {
+    const payload = JSON.parse(dto.payloadJson);
+    applyDraft(payload);
+    }
+    } catch (err) {
+    console.error('Erreur chargement draft API', err);
+    }
+    }
+
+    // Sauvegarde locale + serveur (debouncée)
+    function saveDraftLocallyAndRemotely() {
+    if (typeof window === 'undefined' || isHydratingFromDraft) return;
+
+    const key = getDraftStorageKey();
+    const payload = buildDraftPayload();
+    const json = JSON.stringify(payload);
+
+    // Local
+    localStorage.setItem(key, json);
+
+    // Serveur (on attend 1s après la dernière modif)
+    if (draftSaveTimer) {
+    clearTimeout(draftSaveTimer);
+    }
+    draftSaveTimer = window.setTimeout(() => {
+    sendDraftToServer(json).catch((e) =>
+    console.error('Erreur save draft API', e)
+    );
+    }, 1000);
+    }
+
+    async function sendDraftToServer(payloadJson: string) {
+    await fetch(`${API_BASE_URL}/api/draft/save`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+    SessionId,
+    tableName,
+    mancheNumber: Number(mancheNumber),
+    playerCount,
+    payloadJson
+    })
+    });
+    }
+
+
+
+
+
+    function getTemplateForAnnonce(code: string): number {
+    return annonces.find(a => a.code === code)?.templateResult || 0;
+    }
+
+    function getSoloBasePlis(code: string): number {
+    switch (code) {
+    case "S6":
+    return 6;
+    case "S7":
+    return 7;
+    case "S8":
+    case "S8_D":
+    return 8;
+    default:
+    // valeur par défaut si jamais
+    return 6;
+    }
+    }
+
+
+
+    function calculerDuree(heureString: string): string | null {
+    if (!heureString) return null;
+
+    // Sépare heures/minutes
+    const [h, m] = heureString.split(':').map(Number);
+
+    if (isNaN(h) || isNaN(m)) return null;
+
+    // Date du début
+    const debut = new Date();
+    debut.setHours(h, m, 0, 0);
+
+    // Maintenant
+    const now = new Date();
+
+    // Différence en minutes
+    const diffMs = now.getTime() - debut.getTime();
+    if (diffMs < 0) return null; // sécurité si bug
+
+    const diffMin = Math.floor(diffMs / 60000);
+    const diffH = Math.floor(diffMin / 60);
+    const minRestantes = diffMin % 60;
+
+    // Format intelligent
+    if (diffH === 0) {
+        return `${diffMin} min`;
+    } else {
+        return `${diffH}h${minRestantes.toString().padStart(2, '0')}`;
+    }
+}
+
+      function calculerDureeEntre(heureDebut: string, dateFin: Date): string {
+  const [h, m] = heureDebut.split(':').map(Number);
+  const debut = new Date();
+  debut.setHours(h, m, 0, 0);
+
+  const diffMs = dateFin.getTime() - debut.getTime();
+  if (diffMs <= 0) return '0 min';
+
+  const totalMin = Math.round(diffMs / 60000);
+  const heures = Math.floor(totalMin / 60);
+  const minutes = totalMin % 60;
+
+  if (heures === 0) return `${totalMin} min`;
+  if (minutes === 0) return `${heures} h`;
+  return `${heures} h ${minutes} min`;
 }
 
 
 
 
+$: duree = calculerDuree(mancheStartTime);
 
+ let interval;
 
+onMount(() => {
+    interval = setInterval(() => {
+        // force Svelte à recalculer la durée
+        duree = calculerDuree(mancheStartTime);
+    }, 60000); // toutes les 60 secondes
+});
+
+onDestroy(() => {
+    clearInterval(interval);
+});
+     
+      
+      
 
 
 function getSoloButtons(code: string): number[] {
@@ -646,116 +933,144 @@ function clearPlayerData(player: string) {
     const newPlis: Record<string, number> = {};
     const newResultats: Record<string, string> = {};
     const newDames: Record<string, number> = {};
-    const newEmb: Record<string, string> = {};
+    const newEmb: Record<string, string>
+      = {};
 
-    for (const p of players) {
-        newPlis[p] = undefined;
-        newResultats[p] = undefined;
-        newDames[p] = undefined;
-        newEmb[p] = "";
+      for (const p of players) {
+      newPlis[p] = undefined;
+      newResultats[p] = undefined;
+      newDames[p] = undefined;
+      newEmb[p] = "";
+      }
+
+      plis = newPlis;
+      resultats = newResultats;
+      dames = newDames;
+      emballes = newEmb;
+      }
+
+
+      function handleAnnonceChange(player: string, code: string) {
+
+      // Est-ce qu'il y avait déjà au moins une annonce AVANT ce changement ?
+      const hadAnnonceBefore = players.some((p) => annonceByPlayer[p]);
+
+      // Petite fonction utilitaire : si c'est la première annonce,
+      // on descend vers la zone d'encodage
+      const scrollIfFirstAnnonce = () => {
+      const hasAnnonceNow = players.some((p) => annonceByPlayer[p]);
+      if (!hadAnnonceBefore && hasAnnonceNow) {
+      scrollToResultSection();
+      }
+      };
+
+
+
+
+
+      // Si l'utilisateur efface l'annonce
+      if (!code) {
+      clearPlayerData(player);
+      annonceByPlayer = { ...annonceByPlayer, [player]: "" };
+      saveDraftLocallyAndRemotely();
+      return;
+      }
+
+      // ⏰ Si c'est la première annonce de la donne 1,
+      // on mémorise l'heure de début de la manche
+      if (!mancheStartTime && donneNumber === 1) {
+      const now = new Date();
+      mancheStartTime  = formatHeure(now);
+      }
+
+      const template = getTemplateForAnnonce(code);
+      const copy = { ...annonceByPlayer };
+
+      // On nettoie toujours les données du joueur qui change d'annonce
+      clearPlayerData(player);
+
+      // 🔥 RÈGLE 3 : DAMES = TOUT LE MONDE D
+      if (code === "D") {
+      clearAllPlayersData();
+
+      for (const p of players) {
+      copy[p] = "D";
+      }
+      annonceByPlayer = copy;
+      soloPlayer = null;
+
+      saveDraftLocallyAndRemotely();
+      scrollIfFirstAnnonce();
+      return;
+      }
+
+      // 🔥 RÈGLE 1 : Templates 1,2,3 + TROU → UN SEUL joueur
+      if (template === 1 || template === 2 || template === 3 || code === "TR") {
+      for (const p of players) {
+      if (p !== player) {
+      copy[p] = "";
+      clearPlayerData(p);
+      }
+      }
+      copy[player] = code;
+      annonceByPlayer = copy;
+      soloPlayer = player;
+      checkArbitreRequirement(code, player);
+
+      saveDraftLocallyAndRemotely();
+      scrollIfFirstAnnonce();
+      return;
+      }
+
+      // 🔥 RÈGLE 2 : Templates 4 (jeux à 2 joueurs)
+      if (template === 4) {
+      for (const p of players) {
+      if (p !== player && getTemplateForAnnonce(copy[p]) !== 4) {
+        copy[p] = "";
+        clearPlayerData(p);
+      }
     }
 
-    plis = newPlis;
-    resultats = newResultats;
-    dames = newDames;
-    emballes = newEmb;
-}
+    const joueursAvecTemplate4 = Object.entries(copy).filter(
+      ([_, c]) => getTemplateForAnnonce(c) === 4
+    );
 
-      
-function handleAnnonceChange(player: string, code: string) {
-    // Si l'utilisateur efface l'annonce
-    if (!code) {
-        clearPlayerData(player);
-        annonceByPlayer = { ...annonceByPlayer, [player]: "" };
-        return;
-    }
-    
-    // 🔔 Annonces qui nécessitent un appel à l'arbitre
-    
-    const template = getTemplateForAnnonce(code);
-    const copy = { ...annonceByPlayer };
-
-    // On nettoie toujours les données du joueur qui change d'annonce
-    clearPlayerData(player);
-
-    // 🔥 RÈGLE 3 : DAMES = TOUT LE MONDE D
-    if (code === "D") {
-        // on nettoie tout le monde pour repartir propre
-        clearAllPlayersData();
-
-        for (const p of players) {
-            copy[p] = "D";
-        }
-        annonceByPlayer = copy;
-        soloPlayer = null;
-        return;
+    if (
+      joueursAvecTemplate4.length >= 2 &&
+      !joueursAvecTemplate4.some(([p]) => p === player)
+    ) {
+      alert("Seulement deux joueurs peuvent choisir cette annonce à 2 joueurs.");
+      return;
     }
 
-    // 🔥 RÈGLE 1 : Templates 1,2,3 + TROU → UN SEUL joueur
-    if (template === 1 || template === 2 || template === 3 || code === "TR") {
-        for (const p of players) {
-            if (p !== player) {
-                copy[p] = "";
-                clearPlayerData(p);   // on nettoie aussi les autres annonces (ex: Dames)
-            }
-        }
-        copy[player] = code;
-        annonceByPlayer = copy;
-        soloPlayer = player;
-             checkArbitreRequirement(code, player);
-        return;
+    const autre = joueursAvecTemplate4.find(
+      ([p]) => p !== player && copy[p] !== code
+    );
+    if (autre) {
+      alert(
+        `L'autre joueur a déjà choisi ${autre[1]}. Vous devez choisir la même annonce.`
+      );
+      return;
     }
 
-    // 🔥 RÈGLE 2 : Templates 4 (annonces à 2 joueurs : PM2, P2, PME2, GM2, GME2)
-    if (template === 4) {
-        // 1) On enlève toutes les annonces qui ne sont PAS template 4
-        //    (plus de Trou, solo, emballage, dames en même temps)
-        for (const p of players) {
-            if (p !== player && getTemplateForAnnonce(copy[p]) !== 4) {
-                copy[p] = "";
-                clearPlayerData(p);
-            }
-        }
-
-        const joueursAvecTemplate4 = Object.entries(copy).filter(
-            ([_, c]) => getTemplateForAnnonce(c) === 4
-        );
-
-        // 2) S'il y a déjà 2 joueurs sur un jeu à 2 et que ce n'est pas "player" → interdit
-        if (
-            joueursAvecTemplate4.length >= 2 &&
-            !joueursAvecTemplate4.some(([p]) => p === player)
-        ) {
-            alert("Seulement deux joueurs peuvent choisir cette annonce à 2 joueurs.");
-            return;
-        }
-
-        // 3) S'il existe déjà un autre joueur template 4 avec une annonce DIFFERENTE → interdit
-        const autre = joueursAvecTemplate4.find(
-            ([p]) => p !== player && copy[p] !== code
-        );
-        if (autre) {
-            alert(
-                `L'autre joueur a déjà choisi ${autre[1]}. Vous devez choisir la même annonce.`
-            );
-            return;
-        }
-
-        // 4) OK, on enregistre
-        copy[player] = code;
-        annonceByPlayer = copy;
-        soloPlayer = null;
-        
-             checkArbitreRequirement(code, player);
-        return;
-    }
-
-
-    // 🔥 Autres cas → simple assignation
     copy[player] = code;
     annonceByPlayer = copy;
     soloPlayer = null;
-         checkArbitreRequirement(code, player);
+    checkArbitreRequirement(code, player);
+
+    saveDraftLocallyAndRemotely();
+     scrollIfFirstAnnonce();
+    return;
+  }
+
+  // 🔥 Autres cas → simple assignation
+  copy[player] = code;
+  annonceByPlayer = copy;
+  soloPlayer = null;
+  checkArbitreRequirement(code, player);
+
+  saveDraftLocallyAndRemotely();
+   scrollIfFirstAnnonce();
 }
 
 
@@ -1288,21 +1603,23 @@ $: scoresCumulés = (() => {
 
 
 
+function handleInput(player: string, value: string | number) {
+  const template = getTemplateForAnnonce(annonceByPlayer[player]);
 
-      function handleInput(player: string, value: string | number) {
-      const template = getTemplateForAnnonce(annonceByPlayer[player]);
+  if (template === 1 || template === 2) {
+    plis[player] = +value;
+    plis = { ...plis };
+  } else if (template === 3 || template === 4 || template === 5) {
+    resultats[player] = value as string;
+    resultats = { ...resultats };
+  } else if (template === 6) {
+    dames[player] = +value;
+    dames = { ...dames };
+  }
 
-      if (template === 1 || template === 2) {
-      plis[player] = +value;
-      plis = { ...plis };
-      } else if (template === 3 || template === 4 || template === 5) {
-      resultats[player] = value as string;
-      resultats = { ...resultats };
-      } else if (template === 6) {
-      dames[player] = +value;
-      dames = { ...dames };
-      }
-      }
+  saveDraftLocallyAndRemotely();
+}
+
 
 
       //
@@ -1446,29 +1763,37 @@ $: scoresCumulés = (() => {
 
     const MAX_DAMES = 4;
 
-    function selectDames(player: string, value: number) {
-        // Calcul du total des autres joueurs
-        const totalAutres = Object.keys(dames)
-            .filter(p => p !== player)
-            .reduce((acc, p) => acc + (dames[p] || 0), 0);
+function selectDames(player: string, value: number) {
+  const totalAutres = Object.keys(dames)
+    .filter((p) => p !== player)
+    .reduce((acc, p) => acc + (dames[p] || 0), 0);
 
-        if (totalAutres + value <= MAX_DAMES) {
-          dames[player] = value;
-          dames = { ...dames }; // déclenche la réactivité
-          }
-          }
+  if (totalAutres + value <= MAX_DAMES) {
+    dames[player] = value;
+    dames = { ...dames };
+    saveDraftLocallyAndRemotely();
+    }
+    }
 
-          function isDamesDisabled(player: string, value: number) {
-          const totalAutres = Object.keys(dames)
-          .filter(p => p !== player)
-          .reduce((acc, p) => acc + (dames[p] || 0), 0);
-          return totalAutres + value > MAX_DAMES;
-          }
 
-          async function validate() {
-          // 1. Construire les infos par joueur
-         const joueursPayload = players
-  .map((p, index) => {
+    function isDamesDisabled(player: string, value: number) {
+    const totalAutres = Object.keys(dames)
+    .filter(p => p !== player)
+    .reduce((acc, p) => acc + (dames[p] || 0), 0);
+    return totalAutres + value > MAX_DAMES;
+    }
+
+
+
+    function initValidations() {
+    validations = {};
+    for (const p of players) validations[p] = false;
+    }
+
+    async function validate() {
+    // 1. Construire les infos par joueur
+    const joueursPayload = players
+    .map((p, index) => {
     const annonce = annonceByPlayer[p] || null;
     const infoArbitre = isArbitreRequis(annonce, p);
 
@@ -1480,156 +1805,280 @@ $: scoresCumulés = (() => {
     let partenairePk: number | null = null;
 
     if (partenaireAlias) {
-      const idxPartenaire = players.indexOf(partenaireAlias);
-      if (idxPartenaire !== -1) {
-        partenairePk = playerIds[idxPartenaire] ?? null;
-      }
+    const idxPartenaire = players.indexOf(partenaireAlias);
+    if (idxPartenaire !== -1) {
+    partenairePk = playerIds[idxPartenaire] ?? null;
+    }
     }
 
     return {
-      // anciens champs (pour compatibilité)
-      nom: p,
-      emballageAvec: partenaireAlias,
+    // anciens champs (pour compatibilité)
+    nom: p,
+    emballageAvec: partenaireAlias,
 
-      // nouveaux champs PK
-      joueurPk,
-      partenairePk,
+    // nouveaux champs PK
+    joueurPk,
+    partenairePk,
 
-      annonce,
-      plis: typeof plis[p] === 'number' ? plis[p] : null,
-      resultat: resultats[p] || null,
-      dames: typeof dames[p] === 'number' ? dames[p] : null,
-      arbitre: infoArbitre.required
+    annonce,
+    plis: typeof plis[p] === 'number' ? plis[p] : null,
+    resultat: resultats[p] || null,
+    dames: typeof dames[p] === 'number' ? dames[p] : null,
+    arbitre: infoArbitre.required
     };
-  })
-  .filter(
+    })
+    .filter(
     (j) =>
-      j.annonce !== null ||
-      j.emballageAvec !== null ||
-      j.plis !== null ||
-      j.resultat !== null ||
-      j.dames !== null
-  );
+    j.annonce !== null ||
+    j.emballageAvec !== null ||
+    j.plis !== null ||
+    j.resultat !== null ||
+    j.dames !== null
+    );
 
 
-          // 3. Si personne n'a rien encodé → on ne fait rien
-          if (joueursPayload.length === 0) {
-          alert("Aucune annonce / aucun résultat encodé pour cette donne.");
-          return;
-          }
+    // 3. Si personne n'a rien encodé → on ne fait rien
+    if (joueursPayload.length === 0) {
+    alert("Aucune annonce / aucun résultat encodé pour cette donne.");
+    return;
+    }
 
-          const payload = {
-          tableName,
-          mancheNumber: Number(mancheNumber),
-          donneNumber,
-          joueurs: joueursPayload
-          };
+    const payload = {
+    tableName,
+    mancheNumber: Number(mancheNumber),
+    donneNumber,
+    SessionId,
+    joueurs: joueursPayload
+    };
 
-          console.log("Payload envoyé à l'API :", payload);
+    console.log("Payload envoyé à l'API :", payload);
 
-          try {
-          const res = await fetch(`${API_BASE_URL}/api/donne`,  { // adapte au besoin
-          method: "POST",
-          headers: {
-          "Content-Type": "application/json"
-          },
-          body: JSON.stringify(payload)
-          });
+    try {
+    const res = await fetch(`${API_BASE_URL}/api/donne`,  { // adapte au besoin
+    method: "POST",
+    headers: {
+    "Content-Type": "application/json"
+    },
+    body: JSON.stringify(payload)
+    });
 
-          if (!res.ok) {
-          const text = await res.text();
-          console.error("Erreur API :", text);
-          alert("Erreur lors de l'enregistrement de la donne 😢");
-          return;
-          }
+    if (!res.ok) {
+    const text = await res.text();
+    console.error("Erreur API :", text);
+    alert("Erreur lors de l'enregistrement de la donne 😢");
+    return;
+    }
 
-          alert("Donne enregistrée ✅");
+    alert("Donne enregistrée ✅");
 
-          // 🔹 Calcul des scores de la donne courante (en tenant compte des joueurs inactifs)
-          const inactive = getInactivePlayersForDonne(donneNumber, players);
+    // 🔹 Calcul des scores de la donne courante (en tenant compte des joueurs inactifs)
+    const inactive = getInactivePlayersForDonne(donneNumber, players);
 
-          const scoresDonne = computeScoresForState(
-          players,
-          annonceByPlayer,
-          emballes,
-          plis,
-          resultats,
-          dames,
-          inactive
-          );
+    const scoresDonne = computeScoresForState(
+    players,
+    annonceByPlayer,
+    emballes,
+    plis,
+    resultats,
+    dames,
+    inactive
+    );
 
 
-          // 🔹 Préparer le payload des scores à envoyer en DB
-          const scoresPayload = {
-  tableName,
-  mancheNumber: Number(mancheNumber),
-  donneNumber,
-  scores: players.map((p, index) => {
+    // 🔹 Préparer le payload des scores à envoyer en DB
+    const scoresPayload = {
+    tableName,
+    mancheNumber: Number(mancheNumber),
+    donneNumber,
+    SessionId ,
+    scores: players.map((p, index) => {
     const scoreDonne = scoresDonne[p] ?? 0;
     const cumulAvant = scoresCumulés[p] ?? 0;
     const cumulApres = cumulAvant + scoreDonne;
 
     return {
-      // alias, comme avant
-      joueur: p,
+    // alias, comme avant
+    joueur: p,
 
-      // 🔹 nouveau : PK
-      joueurPk: playerIds[index] ?? null,
+    // 🔹 nouveau : PK
+    joueurPk: playerIds[index] ?? null,
 
-      score: scoreDonne,
-      cumul: cumulApres
+    score: scoreDonne,
+    cumul: cumulApres
     };
-  })
-};
+    })
+    };
 
 
-          console.log("Scores envoyés à l'API :", scoresPayload);
+    console.log("Scores envoyés à l'API :", scoresPayload);
 
-          try {
-          const resScores = await fetch(`${API_BASE_URL}/api/scores`, {
-          method: "POST",
-          headers: {
-          "Content-Type": "application/json"
-          },
-          body: JSON.stringify(scoresPayload)
-          });
+    try {
+    const resScores = await fetch(`${API_BASE_URL}/api/scores`, {
+    method: "POST",
+    headers: {
+    "Content-Type": "application/json"
+    },
+    body: JSON.stringify(scoresPayload)
+    });
 
-          if (!resScores.ok) {
-          const text = await resScores.text();
-          console.error("Erreur API scores:", text);
-          // ici tu peux décider si tu bloques ou pas, pour l'instant on log juste
-          }
-          } catch (err) {
-          console.error("Impossible d'envoyer les scores à l'API 😢", err);
-          }
-
-
+    if (!resScores.ok) {
+    const text = await resScores.text();
+    console.error("Erreur API scores:", text);
+    // ici tu peux décider si tu bloques ou pas, pour l'instant on log juste
+    }
+    } catch (err) {
+    console.error("Impossible d'envoyer les scores à l'API 😢", err);
+    }
 
 
-          // 🔹 Ajouter cette donne à l'historique local
-          const donneHistorique: DonneHistorique = {
-          donneNumber,
-          joueurs: joueursPayload
-          };
-          history = [...history, donneHistorique];
-
-          // 🔚 Si c'était la dernière donne de la manche → on termine ici
-          if (donneNumber >= rows) {
-          mancheTerminee = true;
-          showEndOfMancheModal = true;
-          resetDonneState();      // on vide les encodages de la donne courante
-          return;                 // surtout ne pas appeler nextDonne()
-          }
-
-          // 4. On passe à la donne suivante ET on nettoie tout
-          nextDonne();
 
 
-          } catch (err) {
-          console.error(err);
-          alert("Impossible de contacter l'API 😢");
-          }
-          }
+    // 🔹 Ajouter cette donne à l'historique local
+    const donneHistorique: DonneHistorique = {
+    donneNumber,
+    joueurs: joueursPayload
+    };
+    history = [...history, donneHistorique];
+
+    // 🔚 Si c'était la dernière donne de la manche → on termine ici
+    if (donneNumber >= rows) {
+    mancheTerminee = true;
+
+
+    const now = new Date();
+    mancheEndTime = formatHeure(now);
+
+    if (mancheStartTime) {
+    dureeManche = calculerDureeEntre(mancheStartTime, now);
+    } else {
+    dureeManche = null;
+    }
+
+
+    // Initialiser les validations à false pour chaque joueur
+    const v: Record<string, boolean>
+    = {};
+    for (const p of players) {
+    v[p] = false;
+    }
+    validations = v;
+
+    showEndOfMancheModal = true;
+
+    // 🎉 Lancer les confettis
+    showConfetti = true;
+    setTimeout(() => {
+    showConfetti = false;
+    }, 4000); // 4 secondes de confettis
+
+
+
+    resetDonneState();      // on vide les encodages de la donne courante
+    return;                 // surtout ne pas appeler nextDonne()
+    }
+
+
+    // 4. On passe à la donne suivante ET on nettoie tout
+    nextDonne();
+    // On sauvegarde l'état (nouvelle donne vide ou manche terminée)
+    saveDraftLocallyAndRemotely();
+
+
+
+    } catch (err) {
+    console.error(err);
+    alert("Impossible de contacter l'API 😢");
+    }
+    }
+
+
+    async function goToNextManche() {
+    if (typeof window !== 'undefined') {
+    try {
+    // Préfixe de toutes les clés localStorage pour cette manche
+    const prefix = `${DRAFT_STORAGE_PREFIX}-${tableName}-m${mancheNumber}`;
+
+    // On parcourt toutes les clés du localStorage
+    for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i);
+        if (key && key.startsWith(prefix)) {
+          localStorage.removeItem(key);
+        }
+      }
+    } catch (e) {
+      console.error("Erreur lors du nettoyage des drafts locaux :", e);
+    }
+  }
+  
+  
+  // 2️ Nettoyage serveur (WhistDonneDraft)
+  try {
+    await fetch(`${API_BASE_URL}/api/draft/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        SessionId,
+        tableName,
+        mancheNumber: Number(mancheNumber)
+      })
+    });
+  } catch (err) {
+    console.error("Erreur lors du nettoyage du draft serveur :", err);
+  }
+
+  // Retour page d’accueil
+  goto('/home');
+}
+
+async function goBackHome() {
+  // Nettoyage drafts locaux
+  try {
+    const prefix = `${DRAFT_STORAGE_PREFIX}-${tableName}-m${mancheNumber}`;
+    for (let i = 0; i < localStorage.length; i++) {
+      const key = localStorage.key(i);
+      if (key && key.startsWith(prefix)) {
+        localStorage.removeItem(key);
+      }
+    }
+  } catch (e) {
+    console.error("Erreur nettoyage localStorage :", e);
+  }
+
+  // Nettoyage serveur
+  try {
+    await fetch(`${API_BASE_URL}/api/draft/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        SessionId,
+        tableName,
+        mancheNumber: Number(mancheNumber)
+      })
+    });
+  } catch (e) {
+    console.error("Erreur nettoyage draft serveur :", e);
+  }
+
+  goto('/');
+}
+
+function openScoreSheet() {
+  // On ferme le modal de fin de manche si besoin
+  showEndOfMancheModal = false;
+
+  // Et on ouvre la feuille de points (le même mécanisme que ton bouton du haut)
+  showFeuillePoints = true;
+}
+
+
+function closeFeuillePoints() {
+  showFeuillePoints = false;
+
+  // 💛 On restaure la modale Fin de Manche si elle était ouverte
+  if (mancheTerminee) {
+    showEndOfMancheModal = true;
+  }
+}
 
 
 
@@ -1657,14 +2106,14 @@ $: scoresCumulés = (() => {
     <tr>
       <th></th>
       {#each players as p, i}
-        <th
-          class:leader={leaderScore !== 0 && scoresCumulés[p] === leaderScore}
+      <th
+          class:leader={leaderScore !== 0  && scoresCumulés[p] === leaderScore}
         >
-          {#if i === currentDealer}
-            <span class="dealer-icon">🖐️</span>
-          {/if}
-          {p}
-        </th>
+        {#if i === currentDealer}
+        <span class="dealer-icon">🖐️</span>
+        {/if}
+        {p}
+      </th>
       {/each}
     </tr>
   </thead>
@@ -1681,9 +2130,22 @@ $: scoresCumulés = (() => {
     </tr>
   </tbody>
 </table>
-
+    <!-- Texte centré sous le tableau -->
+    {#if mancheStartTime}
+  <div class="manche-info minimal">
+    <span>Début de la manche :</span>
+    <strong>{mancheStartTime}</strong>
+    {#if duree}
+    <span class="duree">(⏱ {duree})</span>
+    {/if}
+  </div>
+    {/if}
   </div>
 
+
+
+
+  
   <!-- Logo droit (extérieur) -->
   <img src="/logo_iwb.png" alt="Logo IWB" class="corner-logo corner-logo-right" />
 </div>
@@ -1836,10 +2298,11 @@ $: scoresCumulés = (() => {
     <button on:click={exportFeuillePointsPdf}>
         Exporter en PDF
     </button>
-    <button on:click={() => showFeuillePoints = false}>
-        Fermer
-    </button>
-</div>
+             <button on:click={closeFeuillePoints}>
+               Fermer
+             </button>
+
+           </div>
 
         </div>
     </div>
@@ -1863,6 +2326,18 @@ $: scoresCumulés = (() => {
     </div>
 {/if}
 
+
+{#if showConfetti}
+<div class="confetti-container">
+  {#each Array.from({ length: 40 }) as _, i}
+  <div class="confetti-piece confetti-{i + 1}"></div>
+  {/each}
+</div>
+{/if}
+
+
+
+
 {#if showEndOfMancheModal}
 <div class="modal-backdrop" on:click={() =>
   showEndOfMancheModal = false}>
@@ -1873,13 +2348,26 @@ $: scoresCumulés = (() => {
       La manche est terminée après {rows} donnes.<br />
       Voici le classement final :
     </p>
-
+    <div class="manche-infos">
+      <span>
+        Début : <strong>{mancheStartTime ?? '-'}</strong>
+      </span>
+      <span>
+        Fin : <strong>{mancheEndTime ?? '-'}</strong>
+      </span>
+      {#if dureeManche}
+      <span>
+        Durée : <strong>{dureeManche}</strong>
+      </span>
+      {/if}
+    </div>
     <table class="end-manche-table">
       <thead>
         <tr>
           <th>#</th>
           <th>Joueur</th>
           <th>Score</th>
+          <th>Validation</th>
         </tr>
       </thead>
       <tbody>
@@ -1888,6 +2376,15 @@ $: scoresCumulés = (() => {
           <td>{i + 1}</td>
           <td>{j.nom}</td>
           <td>{j.score}</td>
+          <td>
+            <label class="validation-check">
+              <input
+                type="checkbox"
+                bind:checked={validations[j.nom]}
+              />
+              ✔️
+            </label>
+          </td>
         </tr>
         {/each}
       </tbody>
@@ -1901,13 +2398,29 @@ $: scoresCumulés = (() => {
     </p>
     {/if}
 
-    <button on:click={() =>
-      showEndOfMancheModal = false}>
-      Fermer
-    </button>
+    <div class="end-manche-buttons">
+      <button on:click={goBackHome}>
+        Fermer
+      </button>
+
+
+      <button on:click={openScoreSheet}>
+        Feuille de points
+      </button>
+      
+      
+      <button
+        class="btn-next-manche"
+        on:click={goToNextManche}
+        disabled={!allPlayersValidated}
+      >
+        Manche suivante
+      </button>
+    </div>
   </div>
 </div>
 {/if}
+
 
 
 <div class="donne">
@@ -1970,9 +2483,8 @@ $: scoresCumulés = (() => {
 
 <hr />
 
-<div class="encodage">
-    <h3>Encodage</h3>
-
+<div class="encodage" bind:this={resultatSectionEl}>
+  <h3>Encodage</h3>
 	{#each players as p}
 		{#if annonceByPlayer[p]}
             <!-- Template 1 : solo -->
@@ -2171,7 +2683,7 @@ $: scoresCumulés = (() => {
   /* --- HEADER + TABLEAU JOUEURS --- */
   .header {
   margin: 0 auto 1.5rem auto;
-  padding: 0.9rem 1.6rem 1.3rem;
+  padding: 0.9rem 1.6rem 0.9rem;
   max-width: 1100px;
   background: rgba(2, 8, 4, 0.96);
   backdrop-filter: blur(10px);
@@ -2273,7 +2785,7 @@ $: scoresCumulés = (() => {
 
   /* Tableau bien dans le header */
   .players-table {
-  margin: 0.6rem auto 0 auto;
+  margin: 0.6rem auto 0.2 auto;
   border-collapse: collapse;
   background: rgba(2, 12, 7, 0.98);
   color: var(--text-main);
@@ -2644,10 +3156,39 @@ $: scoresCumulés = (() => {
   text-align: center;
   }
 
+
   .feuille-table th {
   background: #0b2814;
   color: var(--text-main);
   }
+
+
+  /* Lignes verticales dorées entre les joueurs (après chaque Cumul) */
+  .feuille-table th.col-cumul,
+  .feuille-table td.cell-cumul {
+  border-right: 3px solid rgba(245, 185, 66, 0.35); /* trait doré plus visible */
+  }
+
+  /* Mais pour le tout dernier joueur, on remet une bordure "normale" */
+  .feuille-table th.col-cumul:last-child,
+  .feuille-table td.cell-cumul:last-child {
+  border-right: 1px solid rgba(55, 65, 81, 0.9); /* même style que les autres bordures */
+  }
+
+  /* Ligne bleue verticale entre Annonce et les joueurs */
+  .feuille-table th.col-annonce,
+  .feuille-table td.cell-annonce {
+  border-right: 3px solid rgba(55, 65, 81, 0.9)!important; /* Bleu joli */
+  }
+
+
+  /* Lignes verticales dorées entre les joueurs */
+  .feuille-table td.cumul-col,
+  .feuille-table th.cumul-col {
+  border-right: 3px solid rgba(245, 185, 66, 0.35); /* ligne dorée */
+  }
+
+
 
   .feuille-table tbody tr:nth-child(even) {
   background: #04140b;
@@ -3197,6 +3738,14 @@ $: scoresCumulés = (() => {
   font-weight: 700;
   box-shadow: 0 0 10px rgba(250, 204, 21, 0.6);
   }
+  .end-manche-table th.validation-col {
+  width: 60px;              /* tu peux descendre à 90 si tu veux plus petit */
+  }
+
+  .end-manche-table th.score-col{
+  width: 240px;   /* augmente si tu veux plus large */
+  }
+
 
   .end-manche-congrats {
   margin-top: 0.4rem;
@@ -3210,7 +3759,248 @@ $: scoresCumulés = (() => {
   font-weight: 700;
   text-shadow: 0 0 6px rgba(250, 204, 21, 0.8);
   }
+  .validation-check {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  color: #e5e7eb;
+  }
 
+  .validation-check input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  cursor: pointer;
+  }
+
+  .end-manche-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.6rem;
+  margin-top: 0.8rem;
+  }
+
+  .end-manche-buttons button {
+  padding: 0.55rem 1.6rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: #0b2814;
+  color: #f9fafb;
+  cursor: pointer;
+  font-size: 0.9rem;
+  font-weight: 600;
+  }
+
+  .end-manche-buttons button:hover:enabled {
+  background: #14532d;
+  }
+
+  .end-manche-buttons .btn-next-manche {
+  background: #f5b942;
+  border-color: #facc6b;
+  color: #1c1917;
+  }
+
+  .end-manche-buttons .btn-next-manche:disabled {
+  background: #4b5563;
+  color: #d1d5db;
+  cursor: not-allowed;
+  border-color: #374151;
+  }
+
+  /* Réduire la colonne validation */
+  .col-validation {
+  width: 60px;
+  text-align: center;
+  }
+
+  /* Agrandir Score */
+  .col-score {
+  width: 120px;
+  }
+
+  /* Alignement du score */
+  .score-value {
+  font-weight: 600;
+  text-align: right;
+  }
+
+  /* Cellule validation */
+  .validation-cell {
+  text-align: center;
+  }
+
+  /* Style checkbox custom */
+  .validation-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.25rem;
+  font-size: 0.85rem;
+  }
+  .validation-check input[type="checkbox"] {
+  width: 16px;
+  height: 16px;
+  cursor: pointer;
+  }
+
+  .validation-check .checkmark {
+  width: 22px;
+  height: 22px;
+  border-radius: 6px;
+  background-color: #143017; /* vert foncé casino */
+  border: 2px solid #2f6f38;
+  transition: 0.2s ease;
+  position: relative;
+  }
+
+  .validation-check input:checked + .checkmark {
+  background-color: #1fa247;
+  border-color: #35ce61;
+  box-shadow: 0 0 8px #1fa247aa;
+  }
+
+  .validation-check input:checked + .checkmark::after {
+  content: "✔";
+  position: absolute;
+  left: 4px;
+  top: -1px;
+  font-size: 18px;
+  color: white;
+  font-weight: bold;
+  }
+
+  /* Le ✔ violet qui s’allume quand validé */
+  .validation-check span {
+  opacity: 0.15;
+  color: #a855f7;               /* violet */
+  font-size: 0.95rem;
+  transition: opacity 0.15s ease;
+  }
+
+  .validation-check span.validated {
+  opacity: 1;
+  }
+  /* === CONFETTIS VERT-OR === */
+  .confetti-container {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  overflow: hidden;
+  z-index: 1200; /* au-dessus du fond, mais derrière le contenu du modal si tu veux, à ajuster */
+  }
+
+  /* Base confettis */
+  .confetti-piece {
+  position: absolute;
+  width: 8px;
+  height: 14px;
+  border-radius: 2px;
+  opacity: 0.9;
+  animation: confettiFall 2.8s linear infinite;
+  }
+
+  /* Couleurs vert/or alternées */
+  .confetti-piece:nth-child(odd) {
+  background: #22c55e; /* vert vif */
+  }
+  .confetti-piece:nth-child(even) {
+  background: #facc15; /* or */
+  }
+
+  /* Positions et vitesses différentes (un peu randomisées) */
+  .confetti-1  { left: 5%;  animation-duration: 2.4s; }
+  .confetti-2  { left: 10%; animation-duration: 3.0s; }
+  .confetti-3  { left: 15%; animation-duration: 2.7s; }
+  .confetti-4  { left: 20%; animation-duration: 2.9s; }
+  .confetti-5  { left: 25%; animation-duration: 2.5s; }
+  .confetti-6  { left: 30%; animation-duration: 3.1s; }
+  .confetti-7  { left: 35%; animation-duration: 2.6s; }
+  .confetti-8  { left: 40%; animation-duration: 3.2s; }
+  .confetti-9  { left: 45%; animation-duration: 2.8s; }
+  .confetti-10 { left: 50%; animation-duration: 3.0s; }
+  .confetti-11 { left: 55%; animation-duration: 2.5s; }
+  .confetti-12 { left: 60%; animation-duration: 3.1s; }
+  .confetti-13 { left: 65%; animation-duration: 2.7s; }
+  .confetti-14 { left: 70%; animation-duration: 3.3s; }
+  .confetti-15 { left: 75%; animation-duration: 2.9s; }
+  .confetti-16 { left: 80%; animation-duration: 2.6s; }
+  .confetti-17 { left: 85%; animation-duration: 3.2s; }
+  .confetti-18 { left: 90%; animation-duration: 2.4s; }
+  .confetti-19 { left: 12%; animation-duration: 3.4s; }
+  .confetti-20 { left: 28%; animation-duration: 2.3s; }
+  .confetti-21 { left: 38%; animation-duration: 3.2s; }
+  .confetti-22 { left: 48%; animation-duration: 2.6s; }
+  .confetti-23 { left: 58%; animation-duration: 3.3s; }
+  .confetti-24 { left: 68%; animation-duration: 2.7s; }
+  .confetti-25 { left: 78%; animation-duration: 3.1s; }
+  .confetti-26 { left: 88%; animation-duration: 2.5s; }
+  .confetti-27 { left: 8%;  animation-duration: 3.0s; }
+  .confetti-28 { left: 18%; animation-duration: 2.8s; }
+  .confetti-29 { left: 27%; animation-duration: 3.1s; }
+  .confetti-30 { left: 37%; animation-duration: 2.6s; }
+  .confetti-31 { left: 47%; animation-duration: 2.9s; }
+  .confetti-32 { left: 57%; animation-duration: 3.2s; }
+  .confetti-33 { left: 67%; animation-duration: 2.7s; }
+  .confetti-34 { left: 77%; animation-duration: 3.0s; }
+  .confetti-35 { left: 87%; animation-duration: 2.5s; }
+  .confetti-36 { left: 95%; animation-duration: 3.3s; }
+  .confetti-37 { left: 3%;  animation-duration: 2.9s; }
+  .confetti-38 { left: 22%; animation-duration: 3.2s; }
+  .confetti-39 { left: 42%; animation-duration: 2.6s; }
+  .confetti-40 { left: 62%; animation-duration: 3.1s; }
+
+  @keyframes confettiFall {
+  0% {
+  transform: translate3d(0, -120%, 0) rotateZ(0deg);
+  }
+  50% {
+  transform: translate3d(10px, 40vh, 0) rotateZ(180deg);
+  }
+  100% {
+  transform: translate3d(-10px, 110vh, 0) rotateZ(360deg);
+  }
+  }
+
+  .heure-manche-centree {
+  margin-top: 12px;
+  text-align: center;
+  color: #e7c671;
+  font-size: 1.1rem;
+  font-weight: 500;
+  }
+
+
+  .manche-info.minimal {
+  margin-top: 14px;
+  text-align: center;
+  font-size: 1rem;
+  color: #d5d5d5;
+  }
+
+  .manche-info.minimal strong {
+  color: #d5d5d5;
+  font-weight: 600;
+  }
+
+  .manche-info.minimal .duree {
+  margin-left: 4px;
+  color: #9AD9B6;
+  font-size: 0.95rem;
+  }
+
+  .manche-infos {
+  display: flex;
+  justify-content: center;
+  gap: 1.5rem;
+  margin: 0.6rem 0 1rem;
+  font-size: 0.9rem;
+  color: #d1d5db; /* gris doux */
+  }
+
+  .manche-infos strong {
+  color: #fbbf24; /* doré */
+  }
 
 </style>
 

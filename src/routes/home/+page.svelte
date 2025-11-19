@@ -5,37 +5,45 @@
   const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
 
-  // 🔹 Modèle venant de l'API
   type ApiPlayer = {
-  id: number;      // Joueur_Pk
-  alias: string;   // Joueur_Alias_Cd
+  id: number;
+  alias: string;
   };
 
   let tableName = '';
   let mancheNumber: number | '' = '';
-  let playerCount: string | null = null; // "4" | "5" | "6"
+  let playerCount: string | null = null;
 
-  // 🔹 Alias choisis pour la table (affichage / clé logique côté front)
   let players: string[] = [];
-
-  // 🔹 PK alignés sur players (même index que players)
   let playerIds: (number | null)[] = [];
 
-  // 🔹 Liste complète venant de l'API
   let availablePlayers: ApiPlayer[] = [];
   let isLoadingPlayers = true;
   let playersLoadError = '';
 
   let canContinue = false;
+  let perSlotOptions: ApiPlayer[][] = [];
+
+  // 🔹 SessionId pour la config
+  let sessionId = '';
 
   onMount(async () => {
+  // -- SessionId : généré une fois et gardé en localStorage
+  let stored = localStorage.getItem('whistSessionId');
+  if (!stored) {
+  stored =
+  (crypto as any).randomUUID?.() ??
+  `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  localStorage.setItem('whistSessionId', stored);
+  }
+  sessionId = stored;
+
+  // -- Chargement des joueurs
   try {
   const res = await fetch(`${API_BASE_URL}/api/joueurs`);
-
   if (!res.ok) {
   throw new Error('HTTP ' + res.status);
   }
-
   const data = (await res.json()) as ApiPlayer[];
   availablePlayers = data;
   } catch (err) {
@@ -46,7 +54,7 @@
   }
   });
 
-  // 🔁 Adapter la taille des tableaux players / playerIds quand le nombre de joueurs change
+  // 🔁 adapter players / playerIds quand playerCount change
   $: {
   const count = Number(playerCount ?? 0);
 
@@ -64,7 +72,7 @@
   }
   }
 
-  // 🔁 Calcul de canContinue
+  // 🔁 canContinue
   $: {
   const count = Number(playerCount ?? 0);
   const manche = mancheNumber === '' ? 0 : Number(mancheNumber);
@@ -81,14 +89,22 @@
   }
 
   function updatePlayer(index: number, value: string) {
-  // Met à jour l'alias
+  // 1) On pose la valeur pour ce slot
   players[index] = value;
 
-  // Cherche le joueur correspondant dans la liste API pour récupérer son PK
+  // 2) On enlève ce joueur des autres slots
+  for (let i = 0; i < players.length; i++) {
+    if (i !== index && players[i] === value) {
+  players[i] = '';
+  playerIds[i] = null;
+  }
+  }
+
+  // 3) On met à jour le PK du joueur pour ce slot
   const found = availablePlayers.find((p) => p.alias === value);
   playerIds[index] = found ? found.id : null;
 
-  // Force la réactivité
+  // 4) On force la réactivité
   players = [...players];
   playerIds = [...playerIds];
 
@@ -98,21 +114,96 @@
   });
   }
 
-  function continueToNext() {
+
+
+
+// 🔁 Options filtrées par slot (pour ne pas voir les joueurs déjà choisis ailleurs)
+$: perSlotOptions = players.map((_, index) => {
+  const used = new Set(
+    players
+      .map((alias, i) => (i === index ? null : alias)) // on ignore le slot courant
+      .filter((p): p is string => !!p && p.trim() !== '')
+  );
+
+  const list = availablePlayers.filter(p => !used.has(p.alias));
+
+  // Debug (enlève si tu veux)
+  console.log(
+    'Slot', index,
+    'used =', [...used],
+    'list =', list.map(x => x.alias)
+  );
+
+  return list;
+});
+
+
+
+
+
+
+
+  // 🔹 Enregistrer la config + aller sur /annonces
+  async function continueToNext() {
   if (!canContinue) return;
 
   const params = new URLSearchParams({
   tableName,
   mancheNumber: String(mancheNumber),
   playerCount: String(playerCount),
-  players: JSON.stringify(players),      // alias pour le front
-  playerIds: JSON.stringify(playerIds)   // PK pour la DB
+  players: JSON.stringify(players),
+  playerIds: JSON.stringify(playerIds)
   });
 
-  console.log('Navigation vers /annonces avec params :', Object.fromEntries(params));
+  const payload = {
+  tableName,
+  mancheNumber: Number(mancheNumber),
+  playerCount: Number(playerCount),
+
+  Joueur1: players[0],
+  Joueur2: players[1],
+  Joueur3: players[2],
+  Joueur4: players[3],
+  Joueur5: players[4] ?? null,
+  Joueur6: players[5] ?? null,
+
+  Joueur1Pk: playerIds[0],
+  Joueur2Pk: playerIds[1],
+  Joueur3Pk: playerIds[2],
+  Joueur4Pk: playerIds[3],
+  Joueur5Pk: playerIds[4] ?? null,
+  Joueur6Pk: playerIds[5] ?? null,
+
+  SessionId: sessionId,
+  CreatedByUserAgent:
+  typeof navigator !== 'undefined' ? navigator.userAgent : null
+  // DateSaisie, CreatedByIp : à calculer côté C# (GETDATE(), RemoteIpAddress)
+  };
+
+  try {
+  const res = await fetch(`${API_BASE_URL}/api/table-config`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify(payload)
+  });
+
+  if (!res.ok) {
+  console.error('Erreur API /api/table-config', await res.text());
+  // tu peux éventuellement faire: return; si tu veux bloquer la navigation
+  }
+  } catch (err) {
+  console.error('Erreur réseau table-config', err);
+  // idem : à toi de voir si tu fais return; ou pas
+  }
+
+  console.log(
+  'Navigation vers /annonces avec params :',
+  Object.fromEntries(params)
+  );
   goto(`/annonces?${params.toString()}`);
   }
 </script>
+
 
 <main class="page">
   <section class="card">
@@ -174,7 +265,7 @@
           }
           >
           <option value="">-- Sélectionner un joueur --</option>
-          {#each availablePlayers as p}
+          {#each perSlotOptions[i] ?? [] as p}
           <option value={p.alias}>{p.alias}</option>
           {/each}
         </select>

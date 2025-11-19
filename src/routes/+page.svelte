@@ -191,8 +191,8 @@
 
 
   <section class="card">
-    <h1>Whist Bridgé</h1>
-    <p class="subtitle">Encodage des jeux des Whisteux de Basècles</p>
+    <h1>Whist Bridgé Scoring</h1>
+    <p class="subtitle">Encodage des jeux</p>
 
     <div class="input-wrapper">
       <form on:submit|preventDefault={submit} class="login-form">
