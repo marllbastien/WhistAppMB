@@ -2165,6 +2165,17 @@ function closeFeuillePoints() {
     <div class="header-top">
       <h2>Table {tableName} — Manche {mancheNumber}</h2>
     </div>
+    
+    <!-- 🔥 Version mobile du titre + logos (sera visible uniquement en mobile via CSS) -->
+    <div class="header-top-mobile">
+      <img class="corner-logo-mobile left" src="/Logo_App_Rond.png" />
+
+      <div class="header-top-mobile-title">
+        Table {tableName} — Manche {mancheNumber}
+      </div>
+
+      <!--      <img class="corner-logo-mobile right" src="/logo_iwb.png" /> -->
+    </div>
 
     <div class="header-buttons">
       <button on:click={() => showAnnonceOrder = true}>Ordre des annonces</button>
@@ -3380,22 +3391,42 @@ function closeFeuillePoints() {
 
   /* RESPONSIVE */
   /* RESPONSIVE MOBILE */
+
+  /* 🔥 Mobile : garder logos gauche + titre + logo droite */
   @media (max-width: 768px) {
-  /* Header + logos en colonne */
+
+  /* On ne met PAS toute la zone en colonne !
+  On ne change que la disposition de la première ligne */
   .page-header-wrapper {
-  flex-direction: column;
+  display: flex;
+  flex-direction: column; /* par défaut mobile */
   align-items: center;
-  gap: 0.6rem;
-  margin: 0.4rem auto 0.8rem;
-  max-width: 100%;
+  width: 100%;
   }
 
-  /* Logos du haut plus petits */
+  /* 1️⃣ Ligne avec logo gauche — titre — logo droite */
+  .header-top-mobile {
+  width: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 0 0.5rem;
+  margin-bottom: 0.6rem;
+  }
+
   .corner-logo {
-  height: 90px;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
+  height: 70px;
+  width: auto;
   }
 
+  .header-top-mobile-title {
+  flex: 1;
+  text-align: center;
+  font-size: 1.7rem;
+  line-height: 1.2;
+  }
+
+ 
   .header {
   flex: 1;
   width: calc(100% - 1rem);
@@ -3407,7 +3438,7 @@ function closeFeuillePoints() {
   .header-top {
   justify-content: center;
   }
- 
+
 
   .header h2 {
   font-size: 1.05rem;
