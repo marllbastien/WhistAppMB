@@ -43,6 +43,9 @@
 
   let mancheEndTime: string | null = null; // heure de Fin de la manche
   let dureeManche: string | null = null;
+  // Dates complètes (pour la DB)
+  let mancheStartDate: string | null = null; // ISO string
+  let mancheEndDate: string | null = null;   // ISO string
 
 
   function scrollToResultSection() {
@@ -55,6 +58,22 @@
   });
   }
   }
+
+  let previewSectionEl: HTMLDivElement | null = null;
+
+  function scrollToPreviewScores() {
+  if (typeof window === 'undefined') return;
+
+  if (previewSectionEl) {
+  previewSectionEl.scrollIntoView({
+  behavior: 'smooth',
+  block: 'start'
+  });
+  }
+  }
+
+
+
 
   function formatHeure(date: Date): string {
   return date.toLocaleTimeString('fr-FR', {
@@ -260,7 +279,7 @@ let history: DonneHistorique[] = [];
 
 // Jeux nécessitant TOUJOURS l'arbitre
 const ARBITRE_CODES = new Set([
-    'GM', 'GM2', 'A10', 'A11', 'GME', 'GME2', 'PC', 'CH'
+    'E11','E12','E13','GM', 'GM2', 'A10', 'A11', 'GME', 'GME2', 'PC', 'CH'
 ]);
 
 // Tous les jeux "individuels" concernés par la règle des 2 ratés
@@ -772,6 +791,39 @@ function getDisplayName(p: string): string {
     });
     }
 
+    // 🔄 Envoi des infos de timing de la manche vers la DB (WhistTableConfig)
+    async function saveMancheTimingToServer(dureeMinutes: number) {
+    if (!mancheStartDate || !mancheEndDate) {
+    console.warn("Timing manche incomplet, rien envoyé à l'API.");
+    return;
+    }
+
+    const payload = {
+    TableName: tableName,
+    MancheNumber: Number(mancheNumber),
+    SessionId,                 // ton SessionId déjà géré côté front
+    StartTime: mancheStartDate, // string ISO
+    EndTime: mancheEndDate,     // string ISO
+    DureeMinutes: dureeMinutes
+    };
+
+    console.log("Envoi timing manche à l'API :", payload);
+
+    try {
+    const res = await fetch(`${API_BASE_URL}/api/table-config/timing`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+    const text = await res.text();
+    console.error("Erreur API timing manche :", text);
+    }
+    } catch (err) {
+    console.error("Impossible d'envoyer le timing de manche à l'API 😢", err);
+    }
+    }
 
 
 
@@ -952,22 +1004,6 @@ function clearPlayerData(player: string) {
 
       function handleAnnonceChange(player: string, code: string) {
 
-      // Est-ce qu'il y avait déjà au moins une annonce AVANT ce changement ?
-      const hadAnnonceBefore = players.some((p) => annonceByPlayer[p]);
-
-      // Petite fonction utilitaire : si c'est la première annonce,
-      // on descend vers la zone d'encodage
-      const scrollIfFirstAnnonce = () => {
-      const hasAnnonceNow = players.some((p) => annonceByPlayer[p]);
-      if (!hadAnnonceBefore && hasAnnonceNow) {
-      scrollToResultSection();
-      }
-      };
-
-
-
-
-
       // Si l'utilisateur efface l'annonce
       if (!code) {
       clearPlayerData(player);
@@ -981,6 +1017,8 @@ function clearPlayerData(player: string) {
       if (!mancheStartTime && donneNumber === 1) {
       const now = new Date();
       mancheStartTime  = formatHeure(now);
+      // Pour la DB
+      mancheStartDate = now.toISOString();
       }
 
       const template = getTemplateForAnnonce(code);
@@ -1000,7 +1038,7 @@ function clearPlayerData(player: string) {
       soloPlayer = null;
 
       saveDraftLocallyAndRemotely();
-      scrollIfFirstAnnonce();
+      scrollToResultSection();
       return;
       }
 
@@ -1018,7 +1056,11 @@ function clearPlayerData(player: string) {
       checkArbitreRequirement(code, player);
 
       saveDraftLocallyAndRemotely();
-      scrollIfFirstAnnonce();
+      // ❗ Ici : SI c’est un emballage (template 2) ou TR,
+      // on NE scroll PAS (on attend le choix "Avec qui ?")
+      if (template !== 2 && code !== "TR") {
+      scrollToResultSection();
+      }
       return;
       }
 
@@ -1059,7 +1101,15 @@ function clearPlayerData(player: string) {
     checkArbitreRequirement(code, player);
 
     saveDraftLocallyAndRemotely();
-     scrollIfFirstAnnonce();
+    
+    // ✅ Scroll UNIQUEMENT quand on vient d'atteindre 2 joueurs sur ce template
+    const nbTemplate4 = Object.values(annonceByPlayer).filter(
+      (c) => getTemplateForAnnonce(c) === 4
+    ).length;
+
+    if (nbTemplate4 === 2) {
+      scrollToResultSection();
+    }
     return;
   }
 
@@ -1070,9 +1120,19 @@ function clearPlayerData(player: string) {
   checkArbitreRequirement(code, player);
 
   saveDraftLocallyAndRemotely();
-   scrollIfFirstAnnonce();
+   scrollToResultSection();
 }
 
+function handleEmballageChange(player: string) {
+  // si un partenaire est choisi
+  if (emballes[player]) {
+    saveDraftLocallyAndRemotely();
+    scrollToResultSection();
+  } else {
+    // juste sauvegarder si on efface le partenaire
+    saveDraftLocallyAndRemotely();
+  }
+}
 
 
 function findRowPlis(code: string, plisFaits: number, nbJoueursDedans: number): GrilleRowPlis | undefined {
@@ -1618,6 +1678,7 @@ function handleInput(player: string, value: string | number) {
   }
 
   saveDraftLocallyAndRemotely();
+   scrollToPreviewScores();
 }
 
 
@@ -1942,18 +2003,28 @@ function selectDames(player: string, value: number) {
 
     // 🔚 Si c'était la dernière donne de la manche → on termine ici
     if (donneNumber >= rows) {
-    mancheTerminee = true;
-
-
     const now = new Date();
     mancheEndTime = formatHeure(now);
+    mancheEndDate = now.toISOString();
 
     if (mancheStartTime) {
     dureeManche = calculerDureeEntre(mancheStartTime, now);
     } else {
     dureeManche = null;
     }
+    // ⏱ Durée en minutes (pour la DB)
+    let dureeMinutes = 0;
+    if (mancheStartDate) {
+    const start = new Date(mancheStartDate);
+    const diffMs = now.getTime() - start.getTime();
+    if (diffMs > 0) {
+    dureeMinutes = Math.floor(diffMs / 60000);
+    }
+    }
+    // Envoi en DB (WhistTableConfig)
+    saveMancheTimingToServer(dureeMinutes);
 
+    mancheTerminee = true;
 
     // Initialiser les validations à false pour chaque joueur
     const v: Record<string, boolean>
@@ -2461,14 +2532,17 @@ function closeFeuillePoints() {
           <div class="emballage">
             <label>
               Avec qui ?
-              <select bind:value={emballes[p]}>
-                <option value="">-- Choisir joueur --</option>
-                {#each players
-                .filter(
-                x => x !== p && !inactivePlayersCurrentDonne.includes(x)
-                ) as other}
-                <option value={other}>{other}</option>
-                {/each}
+             <select
+               bind:value={emballes[p]}
+                on:change={() => handleEmballageChange(p)}
+             >
+             <option value="">-- Choisir joueur --</option>
+             {#each players
+              .filter(
+                 x => x !== p && !inactivePlayersCurrentDonne.includes(x)
+              ) as other}
+             <option value={other}>{other}</option>
+              {/each}
               </select>
             </label>
           </div>
@@ -2599,7 +2673,7 @@ function closeFeuillePoints() {
 
 
   {#if players.length}
-  <div class="preview-scores">
+   <div class="preview-scores" bind:this={previewSectionEl}>
         <h3>Prévisualisation des scores</h3>
         <table>
             <thead>
@@ -3307,29 +3381,28 @@ function closeFeuillePoints() {
   /* RESPONSIVE */
   /* RESPONSIVE MOBILE */
   @media (max-width: 768px) {
-  /* Police générale moins énorme sur téléphone */
-  :global(body) {
-  font-size: 16px;
-  }
-
-  /* Header + logos en colonne */
+  /* On garde les logos à gauche et à droite, même sur téléphone */
   .page-header-wrapper {
-  flex-direction: column;
+  flex-direction: row;               /* 🔥 reste en ligne */
   align-items: center;
-  gap: 0.6rem;
-  margin: 0.4rem auto 0.8rem;
+  justify-content: space-between;
+  gap: 0.4rem;
+  margin: 0.4rem auto 0.6rem;
+  padding: 0 0.4rem;
   max-width: 100%;
   }
 
-  /* Logos du haut plus petits */
+  /* Logos du haut plus petits mais toujours à gauche/droite */
   .corner-logo {
-  height: 90px;
+  height: 80px;
+  width: auto;
+  flex: 0 0 auto;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
   }
 
   .header {
-  flex: 1;
-  width: calc(100% - 1rem);
+  flex: 1 1 auto;
+  width: auto;
   margin: 0;
   border-radius: 16px;
   padding: 0.7rem 0.9rem 1rem;
@@ -3338,6 +3411,9 @@ function closeFeuillePoints() {
   .header-top {
   justify-content: center;
   }
+  .corner-logo-left  { order: 1; }
+  .header            { order: 2; }
+  .corner-logo-right { order: 3; }
 
   .header h2 {
   font-size: 1.05rem;
