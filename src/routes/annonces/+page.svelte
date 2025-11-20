@@ -3381,28 +3381,24 @@ function closeFeuillePoints() {
   /* RESPONSIVE */
   /* RESPONSIVE MOBILE */
   @media (max-width: 768px) {
-  /* On garde les logos à gauche et à droite, même sur téléphone */
+  /* Header + logos en colonne */
   .page-header-wrapper {
-  flex-direction: row;               /* 🔥 reste en ligne */
+  flex-direction: column;
   align-items: center;
-  justify-content: space-between;
-  gap: 0.4rem;
-  margin: 0.4rem auto 0.6rem;
-  padding: 0 0.4rem;
+  gap: 0.6rem;
+  margin: 0.4rem auto 0.8rem;
   max-width: 100%;
   }
 
-  /* Logos du haut plus petits mais toujours à gauche/droite */
+  /* Logos du haut plus petits */
   .corner-logo {
-  height: 80px;
-  width: auto;
-  flex: 0 0 auto;
+  height: 90px;
   filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
   }
 
   .header {
-  flex: 1 1 auto;
-  width: auto;
+  flex: 1;
+  width: calc(100% - 1rem);
   margin: 0;
   border-radius: 16px;
   padding: 0.7rem 0.9rem 1rem;
@@ -3411,9 +3407,7 @@ function closeFeuillePoints() {
   .header-top {
   justify-content: center;
   }
-  .corner-logo-left  { order: 1; }
-  .header            { order: 2; }
-  .corner-logo-right { order: 3; }
+ 
 
   .header h2 {
   font-size: 1.05rem;
