@@ -4072,5 +4072,19 @@ function closeFeuillePoints() {
   color: #fbbf24; /* doré */
   }
 
+
+  /* 🔥 Cacher uniquement le logo IWB sur mobile */
+  @media (max-width: 768px) {
+  img[src*="logo_iwb"],
+  .right-logo,
+  .corner-logo.right {
+  display: none !important;
+  }
+  }
+
+
+
+
+
 </style>
 
