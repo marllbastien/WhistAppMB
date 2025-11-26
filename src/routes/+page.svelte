@@ -4,7 +4,7 @@
   let code = '';
   let error = '';
 
-  const CORRECT_CODE = 'WhistMarl'; // TODO: appel API pour le code du jour
+  const CORRECT_CODE = 'Whistiti'; // TODO: appel API pour le code du jour
 
   function submit() {
   if (code.trim() === CORRECT_CODE) {
@@ -15,42 +15,56 @@
   error = 'Code incorrect. Veuillez réessayer.';
   }
   }
+
+  let showPassword = false;
+  
+  
 </script>
 
 <style>
+  /* Body neutre, pour toute l’app */
   :global(body) {
   margin: 0;
-  font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
-  background: radial-gradient(circle at top, #125c2a 0%, #04140a 40%, #020506 100%);
+  font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont,
+  'Segoe UI', sans-serif;
+  background: #020506; /* fond très foncé par défaut */
   color: #ffffff;
   }
 
-  main.page {
+  /* 👉 fond spécifique de la page LOGIN */
+  main.login-page {
   min-height: 100vh;
   display: flex;
   align-items: center;
   justify-content: center;
   padding: 2rem;
-  position: relative;
+  position: relative; /* important pour le logo centre */
+  background: radial-gradient(
+  circle at top,
+  #125c2a 0%,
+  #04140a 40%,
+  #020506 100%
+  );
   }
 
   /* Logos de page */
   .page-logo {
   position: fixed;
   top: 1.5rem;
-  width: 300px;
-  height: 300px;
+  width: 280px;
+  height: 280px;
   object-fit: contain;
   filter: drop-shadow(0 0 8px rgba(0, 0, 0, 0.6));
   }
 
   .page-logo.left {
-  left: 1.5rem;
+  left: 2rem;
   }
 
   .page-logo.right {
-  right: 1.5rem;
+  right: 2rem;
   }
+
 
   /* Carte centrale */
   .card {
@@ -143,71 +157,211 @@
   font-size: 0.9rem;
   }
 
+  /* Animation d'apparition douce */
+  @keyframes wbIntro {
+  0% {
+  opacity: 0;
+  transform: translateY(-6px) scale(0.92);
+  }
+  100% {
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  }
+  }
+
+  /* Logo dans la carte aligné au bord supérieur */
+  .card-logo {
+  display: block;
+  margin: 0 auto -6.5rem;  /* ⭐ enlève encore plus d'espace */
+  width: 260px;
+  height: auto;
+  /* border-radius: 50%;  <-- à supprimer */
+    /* box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);<-- à supprimer */
+
+  position: relative;
+  top: -125px;    /* ⭐ remonte légèrement pour compenser la réduction du margin */
+
+  opacity: 0;
+  animation: wbIntro 0.9s ease-out forwards;
+  }
+
+
+
+
   @media (max-width: 600px) {
   .card {
   padding: 2rem 1.6rem;
   }
+
   h1 {
   font-size: 2rem;
   }
+
   .page-logo {
   width: 64px;
   height: 64px;
   }
-  }
 
   .page-logo-center {
-  position: absolute;
-  top: 26%;                    /* 👉 Légèrement plus haut pour ne pas toucher le titre */
-  left: 50%;
-  transform: translateX(-50%);
-  width: 230px;
-  height: 230px;
-  object-fit: contain;
-  filter: drop-shadow(0 0 12px rgba(0, 0, 0, 0.7));
-  z-index: 30;                 /* ⭐ FORCÉ DEVANT TOUT LE RESTE */
-  pointer-events: none;        /* (optionnel) pour que ça ne gêne aucun clic */
+  width: 150px;
+  height: 150px;
+  top: 17%;
+  }
   }
 
   .login-form {
   display: flex;
-  flex-direction: column;   /* 👉 vertical */
-  align-items: center;       /* 👉 centré */
-  gap: 1rem;                 /* 👉 espace entre input et bouton */
+  flex-direction: column;
+  align-items: center;
+  gap: 1rem;
+  }
+
+  /* === Champ mot de passe avec icône œil === */
+
+  .password-wrapper {
+  position: relative;
+  width: 260px;
+  margin: 0 auto;
+  }
+
+  .password-wrapper input {
+  width: 100%;
+  padding: 0.8rem 1rem;
+  padding-right: 2.8rem;   /* espace réservé pour l’œil */
+  border-radius: 999px;
+  font-size: 1rem;
+  box-sizing: border-box;
+  }
+
+  /* Bouton œil : on écrase le style du bouton rouge global */
+  .toggle-password {
+  position: absolute;
+  right: 14px;
+  top: 50%;
+  transform: translateY(-50%);
+
+  margin: 0;
+  padding: 0;
+  width: 26px;
+  height: 26px;
+
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  border-radius: 0;
+
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  }
+
+  /* 👉 On neutralise aussi les états hover / focus / active du bouton global */
+  .toggle-password:hover,
+  .toggle-password:focus,
+  .toggle-password:active {
+  background: transparent;
+  border: none;
+  box-shadow: none;
+  }
+
+  /* Icône normale */
+  .eye-icon {
+  width: 20px;
+  height: 20px;
+  fill: #b9a36b;      /* doré doux */
+  opacity: 0.95;
+  transition: opacity 0.2s ease, transform 0.2s ease, fill 0.2s ease;
+  }
+
+  /* Icône au survol (juste un petit effet, PAS de rouge) */
+  .toggle-password:hover .eye-icon {
+  fill: #d4c38b;     /* doré un peu plus clair */
+  opacity: 1;
+  transform: scale(1.05);
+  }
+
+
+  .login-button {
+  margin-top: 1.8rem;
+  padding: 0.85rem 2rem;
+  font-size: 1.05rem;
+  border: none;
+  border-radius: 999px;
+
+  background-color: #b32d2d; /* Rouge profond premium */
+  color: #ffffff;
+  cursor: pointer;
+
+  text-transform: uppercase;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+
+  transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.15s ease;
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+  }
+
+  .login-button:hover {
+  background-color: #cc3a3a;
+  transform: translateY(-2px);
+  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.55);
+  }
+
+  .login-button:active {
+  transform: translateY(1px);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
   }
 
 
 
 </style>
 
-<main class="page">
-  <!-- Attention : place les fichiers dans le dossier static de SvelteKit.
-	     Si possible, renomme "Logo tee-shirt.png" en "logo-tee-shirt.png" pour éviter les espaces -->
+<main class="login-page">
   <img src="/Logo-tee-shirt.png" alt="Logo club" class="page-logo left" />
   <img src="/logo_iwb.png" alt="Logo IWB" class="page-logo right" />
 
 
-  <!-- <img src="/Logo_App_Rond.png" alt="Logo App" class="page-logo-center" /> -->
-
 
   <section class="card">
+    <!-- ⭐ Logo WB dans la carte -->
+    <img src="/Logo_App_Rond.png" alt="Logo WB Scoring" class="card-logo" />
+
     <h1>Whist Bridgé Scoring</h1>
     <p class="subtitle">Encodage des jeux</p>
 
-    <div class="input-wrapper">
-      <form on:submit|preventDefault={submit} class="login-form">
-        <input
-          bind:value={code}
-          type="password"
-          placeholder="Renseignez le code ici"
-    />
+    <div class="password-wrapper">
+      <input
+        bind:value={code}
+        type={showPassword ? 'text' :'password'}
+        placeholder="Renseignez le code ici"
+  />
 
-        <button type="submit">Continuer</button>
-      </form>
+      <button
+        type="button"
+        class="toggle-password"
+        on:click={() =>
+        (showPassword = !showPassword)}
+        >
+        {#if showPassword}
+        <svg viewBox="0 0 24 24" class="eye-icon">
+          <path d="M12 5C7 5 2.73 8.11 1 12c1.73 3.89 6 7 11 7s9.27-3.11 11-7c-1.73-3.89-6-7-11-7zm0 12a5 5 0 110-10 5 5 0 010 10zm0-8a3 3 0 100 6 3 3 0 000-6z"/>
+        </svg>
+        {:else}
+        <svg viewBox="0 0 24 24" class="eye-icon">
+          <path d="M2.81 2.81L1.39 4.22l3.17 3.17C3.1 8.88 1.92 10.35 1 12c1.73 3.89 6 7 11 7 1.92 0 3.73-.44 5.34-1.23l3.45 3.45 1.41-1.41L2.81 2.81zM12 17c-2.76 0-5-2.24-5-5 0-.67.13-1.31.36-1.89l6.53 6.53A4.94 4.94 0 0112 17z"/>
+        </svg>
+        {/if}
+      </button>
+     
     </div>
+
+    <button class="login-button" on:click={submit}>
+      Continuer
+    </button>
 
     {#if error}
     <p class="error">{error}</p>
     {/if}
   </section>
+
 </main>

@@ -10,8 +10,8 @@
   // --- Gestion des brouillons ("draft") ---
   const DRAFT_STORAGE_PREFIX = 'whist-draft';
 
-  import { goto } from '$app/navigation';  // ⬅️ à ajouter si pas déjà présent
-
+  import { goto, beforeNavigate } from '$app/navigation';
+  import { browser } from '$app/environment';
 
   let draftSaveTimer: number | null = null;
   let isHydratingFromDraft = false; // pour ne pas re-sauvegarder pendant un load
@@ -37,6 +37,38 @@
   let showArbitreModal = false;
   let arbitreMessage = "";
   let mancheTerminee = false;
+
+  // 🔐 Manche en cours : protège la navigation (flèche arrière, changement de page)
+  let hasUnsavedManche = false;
+
+  function markMancheDirty() {
+  if (!mancheTerminee) {
+  hasUnsavedManche = true;
+  }
+  }
+
+  function markMancheClean() {
+  hasUnsavedManche = false;
+  }
+  // 🔁 Interception de la navigation (flèche arrière, liens, goto, etc.)
+  if (browser) {
+    beforeNavigate((nav) => {
+      console.log('beforeNavigate', nav); // pour vérifier dans la console
+
+      if (!hasUnsavedManche) return;
+
+      const ok = confirm(
+        "Voulez-vous vraiment quitter l'encodage de la manche en cours ?\n\n"
+      );
+
+      if (!ok) {
+        nav.cancel();
+      }
+    });
+  }
+
+
+
   let showEndOfMancheModal = false;
   let resultatSectionEl: HTMLDivElement | null = null;
   let mancheStartTime: string | null = null;
@@ -608,7 +640,6 @@ function getDisplayName(p: string): string {
 
     ];
 
-
     onMount(() => {
     if (typeof window === 'undefined') return;
 
@@ -706,6 +737,10 @@ function getDisplayName(p: string): string {
     if (payload.dames) dames = payload.dames;
 
     if (payload.history) history = payload.history;
+    const hasAnyAnnonce = Object.values(annonceByPlayer || {}).some((v) => !!v);
+    if (hasAnyAnnonce || (history && history.length > 0)) {
+    hasUnsavedManche = true;
+    }
 
     } finally {
     isHydratingFromDraft = false;
@@ -1003,7 +1038,7 @@ function clearPlayerData(player: string) {
 
 
       function handleAnnonceChange(player: string, code: string) {
-
+      markMancheDirty();
       // Si l'utilisateur efface l'annonce
       if (!code) {
       clearPlayerData(player);
@@ -1124,6 +1159,7 @@ function clearPlayerData(player: string) {
 }
 
 function handleEmballageChange(player: string) {
+ markMancheDirty();
   // si un partenaire est choisi
   if (emballes[player]) {
     saveDraftLocallyAndRemotely();
@@ -1676,7 +1712,7 @@ function handleInput(player: string, value: string | number) {
     dames[player] = +value;
     dames = { ...dames };
   }
-
+markMancheDirty(); 
   saveDraftLocallyAndRemotely();
    scrollToPreviewScores();
 }
@@ -1832,6 +1868,7 @@ function selectDames(player: string, value: number) {
   if (totalAutres + value <= MAX_DAMES) {
     dames[player] = value;
     dames = { ...dames };
+    markMancheDirty();
     saveDraftLocallyAndRemotely();
     }
     }
@@ -1930,7 +1967,7 @@ function selectDames(player: string, value: number) {
     return;
     }
 
-    alert("Donne enregistrée ✅");
+    //  alert("Donne enregistrée ✅");
 
     // 🔹 Calcul des scores de la donne courante (en tenant compte des joueurs inactifs)
     const inactive = getInactivePlayersForDonne(donneNumber, players);
@@ -2026,6 +2063,7 @@ function selectDames(player: string, value: number) {
 
     mancheTerminee = true;
 
+    markMancheClean();
     // Initialiser les validations à false pour chaque joueur
     const v: Record<string, boolean>
     = {};
@@ -2064,6 +2102,7 @@ function selectDames(player: string, value: number) {
 
 
     async function goToNextManche() {
+    markMancheClean(); 
     if (typeof window !== 'undefined') {
     try {
     // Préfixe de toutes les clés localStorage pour cette manche
@@ -2102,6 +2141,7 @@ function selectDames(player: string, value: number) {
 }
 
 async function goBackHome() {
+markMancheClean();
   // Nettoyage drafts locaux
   try {
     const prefix = `${DRAFT_STORAGE_PREFIX}-${tableName}-m${mancheNumber}`;

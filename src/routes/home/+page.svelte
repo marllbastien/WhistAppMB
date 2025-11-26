@@ -10,6 +10,8 @@
   alias: string;
   };
 
+  let ready = false;
+
   let tableName = '';
   let mancheNumber: number | '' = '';
   let playerCount: string | null = null;
@@ -24,11 +26,20 @@
   let canContinue = false;
   let perSlotOptions: ApiPlayer[][] = [];
 
-  // 🔹 SessionId pour la config
+  // SessionId pour la config
   let sessionId = '';
 
+  // ✅ Guard + chargement des données dans UN SEUL onMount
   onMount(async () => {
-  // -- SessionId : généré une fois et gardé en localStorage
+  const authorized = localStorage.getItem('authorized') === 'true';
+  if (!authorized) {
+  goto('/');
+  return;
+  }
+
+  ready = true;
+
+  // ---- ton ancien onMount commence ici ----
   let stored = localStorage.getItem('whistSessionId');
   if (!stored) {
   stored =
@@ -38,7 +49,6 @@
   }
   sessionId = stored;
 
-  // -- Chargement des joueurs
   try {
   const res = await fetch(`${API_BASE_URL}/api/joueurs`);
   if (!res.ok) {
@@ -89,22 +99,18 @@
   }
 
   function updatePlayer(index: number, value: string) {
-  // 1) On pose la valeur pour ce slot
   players[index] = value;
 
-  // 2) On enlève ce joueur des autres slots
   for (let i = 0; i < players.length; i++) {
-    if (i !== index && players[i] === value) {
+      if (i !== index && players[i] === value) {
   players[i] = '';
   playerIds[i] = null;
   }
   }
 
-  // 3) On met à jour le PK du joueur pour ce slot
   const found = availablePlayers.find((p) => p.alias === value);
   playerIds[index] = found ? found.id : null;
 
-  // 4) On force la réactivité
   players = [...players];
   playerIds = [...playerIds];
 
@@ -114,34 +120,16 @@
   });
   }
 
-
-
-
-// 🔁 Options filtrées par slot (pour ne pas voir les joueurs déjà choisis ailleurs)
-$: perSlotOptions = players.map((_, index) => {
+  // 🔁 Options filtrées par slot
+  $: perSlotOptions = players.map((_, index) => {
   const used = new Set(
-    players
-      .map((alias, i) => (i === index ? null : alias)) // on ignore le slot courant
-      .filter((p): p is string => !!p && p.trim() !== '')
+  players
+  .map((alias, i) => (i === index ? null : alias))
+  .filter((p): p is string => !!p && p.trim() !== '')
   );
 
-  const list = availablePlayers.filter(p => !used.has(p.alias));
-
-  // Debug (enlève si tu veux)
-  console.log(
-    'Slot', index,
-    'used =', [...used],
-    'list =', list.map(x => x.alias)
-  );
-
-  return list;
-});
-
-
-
-
-
-
+  return availablePlayers.filter((p) => !used.has(p.alias));
+  });
 
   // 🔹 Enregistrer la config + aller sur /annonces
   async function continueToNext() {
@@ -177,7 +165,6 @@ $: perSlotOptions = players.map((_, index) => {
   SessionId: sessionId,
   CreatedByUserAgent:
   typeof navigator !== 'undefined' ? navigator.userAgent : null
-  // DateSaisie, CreatedByIp : à calculer côté C# (GETDATE(), RemoteIpAddress)
   };
 
   try {
@@ -189,23 +176,21 @@ $: perSlotOptions = players.map((_, index) => {
 
   if (!res.ok) {
   console.error('Erreur API /api/table-config', await res.text());
-  // tu peux éventuellement faire: return; si tu veux bloquer la navigation
   }
   } catch (err) {
   console.error('Erreur réseau table-config', err);
-  // idem : à toi de voir si tu fais return; ou pas
   }
 
-  console.log(
-  'Navigation vers /annonces avec params :',
-  Object.fromEntries(params)
-  );
   goto(`/annonces?${params.toString()}`);
   }
 </script>
 
-
+{#if ready}
 <main class="page">
+<div class="top-logo">
+  <img src="/Logo_App_Rond.png" alt="WB Scoring" />
+</div>
+
   <section class="card">
     <h2>Configuration de la table</h2>
 
@@ -282,15 +267,23 @@ $: perSlotOptions = players.map((_, index) => {
     </div>
   </section>
 </main>
+{/if}
+
 
 <style>
   .page {
   min-height: 100vh;
   display: flex;
-  justify-content: center;
-  align-items: flex-start;
-  padding: 3rem 1.5rem 4rem;
-  background: radial-gradient(circle at top, #125c2a 0%, #04140a 40%, #020506 100%);
+  flex-direction: column;        /* important */
+  align-items: center;
+  justify-content: flex-start;
+  padding: 2.5rem 1.5rem 4rem;
+  background: radial-gradient(
+  circle at 50% 0%,
+  #0b3a18 0%,   /* vert foncé en haut */
+  #04140a 45%,
+  #020506 100%
+  );
   }
 
   .card {
@@ -304,7 +297,12 @@ $: perSlotOptions = players.map((_, index) => {
   color: #f7f7f7;
   font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont,
   'Segoe UI', sans-serif;
+
+  margin-top: 6px; /* ⭐ ajouter cette ligne */
+  padding-top: 6rem; /* 🟢 Ajoute un gros espace noir au-dessus du titre */
   }
+
+
 
   h2 {
   margin-top: 0;
@@ -349,10 +347,11 @@ $: perSlotOptions = players.map((_, index) => {
 
   input[type='number']:focus,
   select:focus {
-  border-color: #c62828;
-  box-shadow: 0 0 0 3px rgba(198, 40, 40, 0.25);
-  background-color: #061108;
+  border-color: #f5b942; /* 🟡 Jaune = accent positif */
+  box-shadow: 0 0 0 3px rgba(245, 185, 66, 0.35); /* halo jaune doux */
+  background-color: #061108; /* même fond qu'avant */
   }
+
 
   .radio-group {
   display: flex;
@@ -403,8 +402,8 @@ $: perSlotOptions = players.map((_, index) => {
 
   button {
   padding: 0.85rem 2.4rem;
-  background-color: #c62828;
-  color: #ffffff;
+  background-color: #f5b942; /* 🟡 JAUNE comme le titre */
+  color: #0c0c0c;
   font-size: 0.95rem;
   border: none;
   border-radius: 999px;
@@ -419,17 +418,21 @@ $: perSlotOptions = players.map((_, index) => {
   box-shadow 0.12s ease;
   }
 
+  /* 🟡 Hover jaune un peu plus clair */
   button:hover:enabled {
-  background-color: #e53935;
+  background-color: #ffcf4e;
   transform: translateY(-1px);
   box-shadow: 0 14px 32px rgba(0, 0, 0, 0.7);
   }
 
+  /* 🟡 Pressé : plus foncé */
   button:active:enabled {
+  background-color: #e9aa1d;
   transform: translateY(1px);
   box-shadow: 0 6px 16px rgba(0, 0, 0, 0.7);
   }
 
+  /* Désactivé : gris comme avant */
   button:disabled {
   background-color: #5f5f5f;
   box-shadow: none;
@@ -446,4 +449,31 @@ $: perSlotOptions = players.map((_, index) => {
   font-size: 1.4rem;
   }
   }
+
+
+
+
+  .top-logo {
+  width: 160px;
+  height: 160px;
+  margin: 0 auto;
+  margin-bottom: -80px;         /* chevauche la carte */
+  z-index: 10;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  }
+
+  .top-logo img {
+  width: 100%;
+  height: 100%;
+  object-fit: contain;
+
+  }
+
+
+
 </style>
+
+
+  
