@@ -3,11 +3,28 @@
 <head>
 	<meta charset="utf-8" />
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
-	<link rel="icon" href="/favicon.ico" />
+
+	<!-- Favicons -->
+	<link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
+	<link rel="shortcut icon" href="/favicon.ico" />
+
+	<!-- Apple / iOS -->
+	<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+
+	<!-- Manifest (PWA) -->
+	<link rel="manifest" href="/site.webmanifest" />
+
+	<!-- ⭐ Important pour Android (barre de statut) -->
+	<meta name="theme-color" content="#04140a" />
+
+	<!-- (Optionnel) Couleur de fond par défaut -->
+	<meta name="background-color" content="#020506" />
 
 	%sveltekit.head%
 </head>
-	<body data-sveltekit-preload-data="hover">
-		<div style="display: contents">%sveltekit.body%</div>
-	</body>
+
+<body data-sveltekit-preload-data="hover">
+	<div style="display: contents">%sveltekit.body%</div>
+</body>
 </html>
