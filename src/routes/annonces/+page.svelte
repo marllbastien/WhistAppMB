@@ -25,6 +25,16 @@
   let playerIds: (number | null)[] = [];
 
   let SessionId = '';
+  function scrollToEmballage(player: string) {
+  if (!browser) return;
+
+  const el = document.getElementById(`emballage-${player}`) as HTMLSelectElement | null;
+  if (el) {
+  el.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  el.focus();
+  }
+  }
+
 
 
   let soloPlayer: string | null = null;
@@ -52,19 +62,19 @@
   }
   // 🔁 Interception de la navigation (flèche arrière, liens, goto, etc.)
   if (browser) {
-    beforeNavigate((nav) => {
-      console.log('beforeNavigate', nav); // pour vérifier dans la console
+  beforeNavigate((nav) => {
+  console.log('beforeNavigate', nav); // pour vérifier dans la console
 
-      if (!hasUnsavedManche) return;
+  if (!hasUnsavedManche) return;
 
-      const ok = confirm(
-        "Voulez-vous vraiment quitter l'encodage de la manche en cours ?\n\n"
-      );
+  const ok = confirm(
+  "Voulez-vous vraiment quitter l'encodage de la manche en cours ?\n\n"
+  );
 
-      if (!ok) {
-        nav.cancel();
-      }
-    });
+  if (!ok) {
+  nav.cancel();
+  }
+  });
   }
 
 
@@ -1091,13 +1101,18 @@ function clearPlayerData(player: string) {
       checkArbitreRequirement(code, player);
 
       saveDraftLocallyAndRemotely();
-      // ❗ Ici : SI c’est un emballage (template 2) ou TR,
-      // on NE scroll PAS (on attend le choix "Avec qui ?")
-      if (template !== 2 && code !== "TR") {
-      scrollToResultSection();
-      }
-      return;
-      }
+
+  if (template !== 2 && code !== "TR") {
+    // jeux solo / autres → on va directement à l’encodage
+    scrollToResultSection();
+  } else {
+    // emballage ou trou → on va d’abord sur "Avec qui ?"
+    setTimeout(() => scrollToEmballage(player), 0);
+  }
+
+  return;
+}
+
 
       // 🔥 RÈGLE 2 : Templates 4 (jeux à 2 joueurs)
       if (template === 4) {
@@ -2549,14 +2564,16 @@ function closeFeuillePoints() {
 
           <!-- Sélection de l’annonce -->
 <select
-    value={annonceByPlayer[p] || ''}
-    on:change={(e) => handleAnnonceChange(p, (e.target as HTMLSelectElement).value)}
-    disabled={inactivePlayersCurrentDonne.includes(p)}
+  bind:value={annonceByPlayer[p]}
+  on:change={(e) =>
+    handleAnnonceChange(p, (e.target as HTMLSelectElement).value)
+  }
+  disabled={inactivePlayersCurrentDonne.includes(p)}
 >
-    <option value="">-- Choisir annonce --</option>
-   {#each (annoncesParJoueur[p] ?? annonces) as a}
+  <option value="">-- Choisir annonce --</option>
+  {#each (annoncesParJoueur[p] ?? annonces) as a}
     <option value={a.code}>{a.label}</option>
-{/each}
+  {/each}
 </select>
 
 
@@ -2564,29 +2581,31 @@ function closeFeuillePoints() {
 
 
 
+
 		<!-- Emballage OU Trou : on choisit un partenaire -->
-          {#if annonceByPlayer[p] && (
-          getTemplateForAnnonce(annonceByPlayer[p]) === 2
-          || annonceByPlayer[p] === 'TR'
-          )}
-          <div class="emballage">
-            <label>
-              Avec qui ?
-             <select
-               bind:value={emballes[p]}
-                on:change={() => handleEmballageChange(p)}
-             >
-             <option value="">-- Choisir joueur --</option>
-             {#each players
-              .filter(
-                 x => x !== p && !inactivePlayersCurrentDonne.includes(x)
-              ) as other}
-             <option value={other}>{other}</option>
-              {/each}
-              </select>
-            </label>
-          </div>
-          {/if}
+ {#if annonceByPlayer[p] && (
+  getTemplateForAnnonce(annonceByPlayer[p]) === 2
+  || annonceByPlayer[p] === 'TR'
+)}
+  <div class="emballage">
+    <label>
+      <span class="emballage-label-text">Avec qui ?</span>
+      <select
+        id={"emballage-" + p}
+        bind:value={emballes[p]}
+        on:change={() => handleEmballageChange(p)}
+      >
+        <option value="">-- Choisir joueur --</option>
+        {#each players
+          .filter(x => x !== p && !inactivePlayersCurrentDonne.includes(x)) as other}
+          <option value={other}>{other}</option>
+        {/each}
+      </select>
+    </label>
+  </div>
+{/if}
+
+
 
 
         </div>
@@ -2762,7 +2781,9 @@ function closeFeuillePoints() {
 
 
 </div>
-
+<footer class="copyright">
+  © 2025 WB-Scoring — Tous droits réservés
+</footer>
 
 <style>
   :root {
@@ -4123,6 +4144,74 @@ function closeFeuillePoints() {
   }
 
 
+  .copyright {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.8rem;
+  color: #d9d9d9;
+  opacity: 0.7;
+  font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont,
+  'Segoe UI', sans-serif;
+  z-index: 40;
+  pointer-events: none; /* pour ne pas gêner les clics */
+  }
+
+  /* Étiquette "Avec qui ?" – style élégant */
+  .emballage-label-text {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+
+  margin: 0.35rem 0 0.2rem;
+
+  font-weight: 600;
+  font-size: 0.78rem;
+  text-transform: uppercase;
+  letter-spacing: 0.18em;
+
+  color: #d8a25a !important;
+  opacity: 0.95;
+
+  position: relative;
+  }
+
+  /* Fines lignes dorées de chaque côté du texte */
+  .emballage-label-text::before,
+  .emballage-label-text::after {
+  content: "";
+  flex: 1;
+  height: 1px;
+  border-radius: 999px;
+  background: linear-gradient(
+  to right,
+  transparent,
+  rgba(245, 185, 66, 0.7)
+  );
+  opacity: 0.8;
+  }
+
+  .emballage-label-text::before {
+  background: linear-gradient(
+  to left,
+  transparent,
+  rgba(245, 185, 66, 0.7)
+  );
+  }
+
+  /* Légère mise en valeur du select associé */
+  .emballage select {
+  width: 100%;
+  margin-top: 0.15rem;
+  border-color: rgba(245, 185, 66, 0.45);
+  }
+
+  .emballage select:focus {
+  border-color: var(--accent);
+  box-shadow: 0 0 0 2px rgba(245, 185, 66, 0.35);
+  }
 
 
 

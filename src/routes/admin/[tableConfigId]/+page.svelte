@@ -2,44 +2,44 @@
   import { onMount } from 'svelte';
   import { page } from '$app/stores';
   import jsPDF from 'jspdf';
-import autoTable from 'jspdf-autotable';
+  import autoTable from 'jspdf-autotable';
 
 
   const API_BASE_URL =
-    import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
 
-interface AdminPlayerDto {
+  interface AdminPlayerDto {
   playerId: number | null;
   alias: string;
-}
+  }
 
-interface AdminFinalScoreDto {
+  interface AdminFinalScoreDto {
   playerId: number | null;
   alias: string;
   score: number;
-}
+  }
 
-interface AdminDonneScoreDto {
+  interface AdminDonneScoreDto {
   playerId: number | null;
   alias: string;
   annonce: string | null;
-  partenairePk: string | null;   
+  partenairePk: string | null;
   plis: number | null;
   resultat: string | null;
   dames: number | null;
   arbitre: boolean | null;
   score: number;
   cumul: number;
-}
+  }
 
-interface AdminDonneSummaryDto {
+  interface AdminDonneSummaryDto {
   donneNumber: number;
   annoncePrincipale: string | null;
   hasArbitre: boolean;
   scores: AdminDonneScoreDto[];
-}
+  }
 
-interface AdminMancheDetailDto {
+  interface AdminMancheDetailDto {
   tableConfigId: number;
   tableName: string;
   mancheNumber: number;
@@ -49,49 +49,54 @@ interface AdminMancheDetailDto {
   players: AdminPlayerDto[];
   finalScores: AdminFinalScoreDto[];
   donnes: AdminDonneSummaryDto[];
-}
+  }
 
 
 
-interface ScorePreviewLine {
+  interface ScorePreviewLine {
   playerId: number | null;
   alias: string;
   scoreDonne: number; // score de la donne APRÈS
   cumul: number;      // cumul APRÈS
-}
+  }
 
-let previewInitial: ScorePreviewLine[] = [];      // scores/cumuls AVANT modif
-let previewResult: ScorePreviewLine[] | null = null; // scores/cumuls APRÈS recalcul
-let previewLoading = false;
-let previewError = '';
+  let previewInitial: ScorePreviewLine[] = [];      // scores/cumuls AVANT modif
+  let previewResult: ScorePreviewLine[] | null = null; // scores/cumuls APRÈS recalcul
+  let previewLoading = false;
+  let previewError = '';
 
-interface AnnonceConfigDto {
+  interface AnnonceConfigDto {
   code: string;
   label: string | null;
   templateResult: number;
   requirePartner: boolean;
   requirePlis: boolean;
   requireArbitre: boolean;
-}
+  }
 
-interface GrilleConfigDto {
+  interface GrilleConfigDto {
   code: string;
   kind: string; // 'plis' ou 'etat'
   nbJoueursDedans: number;
   plisFaits: number | null;
   etat: string | null;
-}
+  }
 
-let annoncesConfig: AnnonceConfigDto[] = [];
-let grilleConfig: GrilleConfigDto[] = [];
-let configError = '';
+  let annoncesConfig: AnnonceConfigDto[] = [];
+  let grilleConfig: GrilleConfigDto[] = [];
+  let configError = '';
 
-let showFeuillePoints = false;
-let feuilleLoading = false;
-let feuilleError = '';
+  let showFeuillePoints = false;
+  let feuilleLoading = false;
+  let feuilleError = '';
 
-let feuillePlayers: string[] = [];
-let feuillePoints: {
+
+  const currentYear = new Date().getFullYear();
+  
+  
+  
+  let feuillePlayers: string[] = [];
+  let feuillePoints: {
   donneNumber: number;
   annonce: string;
   scores: Record<string, { score: number; cumul: number }>;
@@ -991,8 +996,13 @@ function getChangeClass(after: number, before: number) {
 {/if}   <!-- fin du bloc {#if isLoading / {:else if ...} / {:else} -->
 </div>  <!-- fin .admin-page -->
 
+<footer class="copyright">
+  © {currentYear} WB-Scoring — Tous droits réservés
+</footer>
 
-  
+
+
+
 
 
 <style>
@@ -1351,8 +1361,8 @@ function getChangeClass(after: number, before: number) {
 .edit-donne-table .col-arbitre   { width: 7%; text-align: center; }
 
 /* Inputs & selects dans la table */
-.edit-donne-table input,
-.edit-donne-table select {
+  .edit-donne-table input,
+  .edit-donne-table select {
   width: 100%;
   font-size: 0.85rem;
   padding: 0.22rem 0.4rem;
@@ -1360,100 +1370,100 @@ function getChangeClass(after: number, before: number) {
   border: 1px solid rgba(30, 64, 175, 0.5);
   background-color: #020617;
   color: #e5e7eb;
-}
+  }
 
-/* Score / Cumul : plus lisibles */
-.score-cell .score-input,
-.cumul-cell .cumul-input {
+  /* Score / Cumul : plus lisibles */
+  .score-cell .score-input,
+  .cumul-cell .cumul-input {
   background: #020617;
   color: #facc15;      /* jaune vif */
   font-weight: 600;
   text-align: center;
-}
+  }
 
-.edit-donne-table .col-score,
-.edit-donne-table .col-cumul {
+  .edit-donne-table .col-score,
+  .edit-donne-table .col-cumul {
   width: 70px;
-}
+  }
 
-/* Case arbitre */
-.col-arbitre-checkbox {
+  /* Case arbitre */
+  .col-arbitre-checkbox {
   text-align: center;
-}
+  }
 
-.col-arbitre-checkbox input[type='checkbox'] {
+  .col-arbitre-checkbox input[type='checkbox'] {
   transform: scale(1.1);
-}
+  }
 
-/* Ligne des boutons */
-.edit-donne-actions {
+  /* Ligne des boutons */
+  .edit-donne-actions {
   margin-top: 0.9rem;
   display: flex;
   flex-wrap: wrap;
   gap: 0.75rem;
   justify-content: flex-start;
-}
+  }
 
-.edit-donne-actions button {
+  .edit-donne-actions button {
   min-width: 11rem;
-}
+  }
 
 
-.feuille-points-modal {
+  .feuille-points-modal {
   max-width: 900px;
   width: 95%;
-}
+  }
 
-.feuille-table {
+  .feuille-table {
   width: 100%;
   border-collapse: collapse;
   font-size: 0.85rem;
   margin-top: 0.5rem;
   background: #020b06;
-}
+  }
 
-.feuille-table th,
-.feuille-table td {
+  .feuille-table th,
+  .feuille-table td {
   border: 1px solid rgba(55, 65, 81, 0.9);
   padding: 0.3rem 0.45rem;
   text-align: center;
-}
+  }
 
-.feuille-table th {
+  .feuille-table th {
   background: #0b2814;
   color: var(--text-main);
-}
+  }
 
-/* Lignes verticales dorées entre les joueurs (après chaque Cumul) */
-.feuille-table th.col-cumul,
-.feuille-table td.cell-cumul {
+  /* Lignes verticales dorées entre les joueurs (après chaque Cumul) */
+  .feuille-table th.col-cumul,
+  .feuille-table td.cell-cumul {
   border-right: 3px solid rgba(245, 185, 66, 0.35);
-}
+  }
 
-/* Mais pour le tout dernier joueur, on remet une bordure "normale" */
-.feuille-table th.col-cumul:last-child,
-.feuille-table td.cell-cumul:last-child {
+  /* Mais pour le tout dernier joueur, on remet une bordure "normale" */
+  .feuille-table th.col-cumul:last-child,
+  .feuille-table td.cell-cumul:last-child {
   border-right: 1px solid rgba(55, 65, 81, 0.9);
-}
+  }
 
-/* Ligne bleue verticale entre Annonce et les joueurs */
-.feuille-table th.col-annonce,
-.feuille-table td.cell-annonce {
+  /* Ligne bleue verticale entre Annonce et les joueurs */
+  .feuille-table th.col-annonce,
+  .feuille-table td.cell-annonce {
   border-right: 3px solid rgba(55, 65, 81, 0.9) !important;
-}
+  }
 
-/* Lignes verticales dorées entre les joueurs */
-.feuille-table td.cumul-col,
-.feuille-table th.cumul-col {
+  /* Lignes verticales dorées entre les joueurs */
+  .feuille-table td.cumul-col,
+  .feuille-table th.cumul-col {
   border-right: 3px solid rgba(245, 185, 66, 0.35);
-}
+  }
 
-.feuille-table tbody tr:nth-child(even) {
+  .feuille-table tbody tr:nth-child(even) {
   background: #04140b;
-}
+  }
 
-/* Noms des joueurs : plus visibles */
-.feuille-table th.col-player {
+  /* Noms des joueurs : plus visibles */
+  .feuille-table th.col-player {
   background: linear-gradient(to bottom, #14532d, #052e16);
   color: #fef9c3;
   font-size: 0.95rem;
@@ -1462,59 +1472,59 @@ function getChangeClass(after: number, before: number) {
   letter-spacing: 0.06em;
   text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
   border-bottom: 2px solid #facc15;
-}
+  }
 
-/* Ligne "Score / Cumul" un peu plus discrète pour faire ressortir les noms */
-.feuille-table thead tr:nth-child(2) th {
+  /* Ligne "Score / Cumul" un peu plus discrète pour faire ressortir les noms */
+  .feuille-table thead tr:nth-child(2) th {
   background: #04130b;
   font-size: 0.75rem;
   color: #9ca3af;
   font-weight: 500;
-}
+  }
 
-/* Séparateur vertical entre les joueurs */
-.feuille-table th.col-player,
-.feuille-table td:nth-child(4),
-.feuille-table td:nth-child(6),
-.feuille-table td:nth-child(8),
-.feuille-table td:nth-child(10) {
+  /* Séparateur vertical entre les joueurs */
+  .feuille-table th.col-player,
+  .feuille-table td:nth-child(4),
+  .feuille-table td:nth-child(6),
+  .feuille-table td:nth-child(8),
+  .feuille-table td:nth-child(10) {
   border-left: 1.3px solid rgba(250, 204, 21, 0.35) !important;
-}
+  }
 
-/* Renforce un peu la séparation mais très discret */
-.feuille-table th.col-player {
+  /* Renforce un peu la séparation mais très discret */
+  .feuille-table th.col-player {
   border-right: 2px solid rgba(250, 204, 21, 0.25) !important;
-}
+  }
 
-/* Dernière ligne de la feuille de points (totaux) */
+  /* Dernière ligne de la feuille de points (totaux) */
 
 
-/* Cellules "cumul" de la dernière ligne : encore plus lisibles */
-.feuille-table tr.total-row td.cell-cumul-final {
+  /* Cellules "cumul" de la dernière ligne : encore plus lisibles */
+  .feuille-table tr.total-row td.cell-cumul-final {
   background: radial-gradient(
-      circle at top,
-      #fff7cf 0%,
-      #ffd46a 45%,
-      #f59e0b 100%
-    ) !important;
+  circle at top,
+  #fff7cf 0%,
+  #ffd46a 45%,
+  #f59e0b 100%
+  ) !important;
   color: #111 !important;
   font-weight: 900;
   font-size: 0.98rem;
   border: 2px solid #fbbf24;
   box-shadow:
-    0 0 0 1px #78350f inset,
-    0 0 10px rgba(250, 204, 21, 0.55);
-}
+  0 0 0 1px #78350f inset,
+  0 0 10px rgba(250, 204, 21, 0.55);
+  }
 
-/* Tous les textes de la dernière ligne : bien foncés */
-.feuille-table tr.total-row td,
-.feuille-table tr.total-row th {
+  /* Tous les textes de la dernière ligne : bien foncés */
+  .feuille-table tr.total-row td,
+  .feuille-table tr.total-row th {
   color: #000 !important;
-}
+  }
 
 
-/* Si pas déjà défini ailleurs */
-.modal-backdrop {
+  /* Si pas déjà défini ailleurs */
+  .modal-backdrop {
   position: fixed;
   inset: 0;
   background: rgba(0, 0, 0, 0.6);
@@ -1522,39 +1532,54 @@ function getChangeClass(after: number, before: number) {
   align-items: center;
   justify-content: center;
   z-index: 50;
-}
+  }
 
-.modal {
+  .modal {
   background: #020617;
   border-radius: 1rem;
   padding: 1rem 1.25rem;
   box-shadow: 0 20px 60px rgba(0, 0, 0, 0.75);
-}
+  }
 
-/* Dernière ligne : fond or très lumineux + texte noir */
-.feuille-table tr.total-row {
+  /* Dernière ligne : fond or très lumineux + texte noir */
+  .feuille-table tr.total-row {
   background: linear-gradient(
-      to bottom,
-      #ffe28a 0%,
-      #facc15 40%,
-      #eab308 100%
+  to bottom,
+  #ffe28a 0%,
+  #facc15 40%,
+  #eab308 100%
   ) !important;
   color: #000 !important;
   font-weight: 800;
   border-top: 2px solid #fbbf24;
   border-bottom: 2px solid #fbbf24;
-}
+  }
 
-/* Cellules "Cumul" de la dernière ligne */
-.feuille-table tr.total-row td.cell-cumul-final {
+  /* Cellules "Cumul" de la dernière ligne */
+  .feuille-table tr.total-row td.cell-cumul-final {
   background: radial-gradient(circle at top, #fffbe6 0%, #ffd75a 45%, #f59e0b 100%) !important;
   color: #000 !important;
   font-weight: 900;
   font-size: 0.95rem;
   border: 2px solid #fbbf24 !important;
   box-shadow:
-    0 0 0 1px #78350f inset,
-    0 0 10px rgba(250, 204, 21, 0.55);
-}
+  0 0 0 1px #78350f inset,
+  0 0 10px rgba(250, 204, 21, 0.55);
+  }
+
+  .copyright {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.8rem;
+  color: #d9d9d9;
+  opacity: 0.7;
+  font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont,
+  'Segoe UI', sans-serif;
+  z-index: 40;
+  pointer-events: none; /* pour ne pas gêner les clics */
+  }
+
 
 </style>

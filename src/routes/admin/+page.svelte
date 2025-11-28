@@ -10,7 +10,7 @@
   let isAdmin = false;
   let pinInput = '';
   let authError = '';
-
+const currentYear = new Date().getFullYear();
  interface AdminPlayerDto {
   playerId: number | null;
   alias: string;
@@ -173,117 +173,137 @@ interface AdminMancheDetailDto {
   {/if}
 </div>
 
+<footer class="copyright">
+  © {currentYear} WB-Scoring — Tous droits réservés
+</footer>
+
+
 <style>
-:global(html, body) {
+  :global(html, body) {
   margin: 0;
   padding: 0;
   height: 100%;
-}
+  }
 
-:global(body) {
+  :global(body) {
   font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
   background:
-    radial-gradient(circle at top, #125c2a 0%, #04140a 40%, #020506 100%);
+  radial-gradient(circle at top, #125c2a 0%, #04140a 40%, #020506 100%);
   background-attachment: fixed;   /* le gradient reste sur tout l'écran */
   background-repeat: no-repeat;   /* aucune répétition */
   background-color: #020506;      /* même couleur que la fin du gradient */
   color: #ffffff;
-}
+  }
 
 
   .admin-page {
-    max-width: 1100px;
-    margin: 2rem auto;
-    padding: 1rem;
-    color: #f9fafb;
+  max-width: 1100px;
+  margin: 2rem auto;
+  padding: 1rem;
+  color: #f9fafb;
   }
 
   h1 {
-    font-size: 1.8rem;
-    margin-bottom: 1rem;
+  font-size: 1.8rem;
+  margin-bottom: 1rem;
   }
 
   .admin-card {
-    background: #020617;
-    border-radius: 16px;
-    padding: 1.5rem;
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+  background: #020617;
+  border-radius: 16px;
+  padding: 1.5rem;
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
   }
 
   .pin-row {
-    display: flex;
-    gap: 0.75rem;
-    margin-top: 0.75rem;
+  display: flex;
+  gap: 0.75rem;
+  margin-top: 0.75rem;
   }
 
   input {
-    padding: 0.5rem 0.75rem;
-    border-radius: 999px;
-    border: 1px solid rgba(148, 163, 184, 0.6);
-    background: #020617;
-    color: #f9fafb;
-    flex: 1;
+  padding: 0.5rem 0.75rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.6);
+  background: #020617;
+  color: #f9fafb;
+  flex: 1;
   }
 
   button {
-    padding: 0.5rem 1rem;
-    border-radius: 999px;
-    border: none;
-    background: #22c55e;
-    color: #020617;
-    font-weight: 600;
-    cursor: pointer;
+  padding: 0.5rem 1rem;
+  border-radius: 999px;
+  border: none;
+  background: #22c55e;
+  color: #020617;
+  font-weight: 600;
+  cursor: pointer;
   }
 
   button:hover {
-    filter: brightness(1.05);
+  filter: brightness(1.05);
   }
 
   .error {
-    color: #f97373;
-    margin-top: 0.75rem;
+  color: #f97373;
+  margin-top: 0.75rem;
   }
 
   .admin-table {
-    width: 100%;
-    border-collapse: collapse;
-    margin-top: 1rem;
-    font-size: 0.9rem;
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  font-size: 0.9rem;
   }
 
   .admin-table th,
   .admin-table td {
-    border: 1px solid rgba(51, 65, 85, 0.9);
-    padding: 0.35rem 0.6rem;
-    text-align: center;
+  border: 1px solid rgba(51, 65, 85, 0.9);
+  padding: 0.35rem 0.6rem;
+  text-align: center;
   }
 
   .admin-table th {
-    background: linear-gradient(to bottom, #14532d, #052e16);
-    text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-size: 0.78rem;
+  background: linear-gradient(to bottom, #14532d, #052e16);
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.78rem;
   }
 
   .admin-table tbody tr:nth-child(even) {
-    background: #020b06;
+  background: #020b06;
   }
 
   .admin-table tbody tr:nth-child(odd) {
-    background: #020617;
+  background: #020617;
   }
 
   .clickable {
-    cursor: pointer;
+  cursor: pointer;
   }
 
   .clickable:hover {
-    background: #064e3b;
+  background: #064e3b;
   }
 
   .sep {
   opacity: 0.9;
   margin: 0 0.4rem;
-}
+  }
+
+  .copyright {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.8rem;
+  color: #d9d9d9;
+  opacity: 0.7;
+  font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont,
+  'Segoe UI', sans-serif;
+  z-index: 40;
+  pointer-events: none; /* pour ne pas gêner les clics */
+  }
+
 </style>

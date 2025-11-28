@@ -178,143 +178,155 @@
   /* border-radius: 50%;  <-- à supprimer */
     /* box-shadow: 0 8px 18px rgba(0, 0, 0, 0.35);<-- à supprimer */
 
-  position: relative;
-  top: -125px;    /* ⭐ remonte légèrement pour compenser la réduction du margin */
+      position: relative;
+      top: -125px;    /* ⭐ remonte légèrement pour compenser la réduction du margin */
 
-  opacity: 0;
-  animation: wbIntro 0.9s ease-out forwards;
-  }
-
-
-
-
-  @media (max-width: 600px) {
-  .card {
-  padding: 2rem 1.6rem;
-  }
-
-  h1 {
-  font-size: 2rem;
-  }
-
-  .page-logo {
-  width: 64px;
-  height: 64px;
-  }
-
-  .page-logo-center {
-  width: 150px;
-  height: 150px;
-  top: 17%;
-  }
-  }
-
-  .login-form {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 1rem;
-  }
-
-  /* === Champ mot de passe avec icône œil === */
-
-  .password-wrapper {
-  position: relative;
-  width: 260px;
-  margin: 0 auto;
-  }
-
-  .password-wrapper input {
-  width: 100%;
-  padding: 0.8rem 1rem;
-  padding-right: 2.8rem;   /* espace réservé pour l’œil */
-  border-radius: 999px;
-  font-size: 1rem;
-  box-sizing: border-box;
-  }
-
-  /* Bouton œil : on écrase le style du bouton rouge global */
-  .toggle-password {
-  position: absolute;
-  right: 14px;
-  top: 50%;
-  transform: translateY(-50%);
-
-  margin: 0;
-  padding: 0;
-  width: 26px;
-  height: 26px;
-
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  border-radius: 0;
-
-  cursor: pointer;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  }
-
-  /* 👉 On neutralise aussi les états hover / focus / active du bouton global */
-  .toggle-password:hover,
-  .toggle-password:focus,
-  .toggle-password:active {
-  background: transparent;
-  border: none;
-  box-shadow: none;
-  }
-
-  /* Icône normale */
-  .eye-icon {
-  width: 20px;
-  height: 20px;
-  fill: #b9a36b;      /* doré doux */
-  opacity: 0.95;
-  transition: opacity 0.2s ease, transform 0.2s ease, fill 0.2s ease;
-  }
-
-  /* Icône au survol (juste un petit effet, PAS de rouge) */
-  .toggle-password:hover .eye-icon {
-  fill: #d4c38b;     /* doré un peu plus clair */
-  opacity: 1;
-  transform: scale(1.05);
-  }
-
-
-  .login-button {
-  margin-top: 1.8rem;
-  padding: 0.85rem 2rem;
-  font-size: 1.05rem;
-  border: none;
-  border-radius: 999px;
-
-  background-color: #b32d2d; /* Rouge profond premium */
-  color: #ffffff;
-  cursor: pointer;
-
-  text-transform: uppercase;
-  font-weight: 600;
-  letter-spacing: 0.08em;
-
-  transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.15s ease;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
-  }
-
-  .login-button:hover {
-  background-color: #cc3a3a;
-  transform: translateY(-2px);
-  box-shadow: 0 14px 38px rgba(0, 0, 0, 0.55);
-  }
-
-  .login-button:active {
-  transform: translateY(1px);
-  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
-  }
+      opacity: 0;
+      animation: wbIntro 0.9s ease-out forwards;
+      }
 
 
 
-</style>
+
+      @media (max-width: 600px) {
+      .card {
+      padding: 2rem 1.6rem;
+      }
+
+      h1 {
+      font-size: 2rem;
+      }
+
+      .page-logo {
+      width: 64px;
+      height: 64px;
+      }
+
+      .page-logo-center {
+      width: 150px;
+      height: 150px;
+      top: 17%;
+      }
+      }
+
+      .login-form {
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      gap: 1rem;
+      }
+
+      /* === Champ mot de passe avec icône œil === */
+
+      .password-wrapper {
+      position: relative;
+      width: 260px;
+      margin: 0 auto;
+      }
+
+      .password-wrapper input {
+      width: 100%;
+      padding: 0.8rem 1rem;
+      padding-right: 2.8rem;   /* espace réservé pour l’œil */
+      border-radius: 999px;
+      font-size: 1rem;
+      box-sizing: border-box;
+      }
+
+      /* Bouton œil : on écrase le style du bouton rouge global */
+      .toggle-password {
+      position: absolute;
+      right: 14px;
+      top: 50%;
+      transform: translateY(-50%);
+
+      margin: 0;
+      padding: 0;
+      width: 26px;
+      height: 26px;
+
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      border-radius: 0;
+
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      }
+
+      /* 👉 On neutralise aussi les états hover / focus / active du bouton global */
+      .toggle-password:hover,
+      .toggle-password:focus,
+      .toggle-password:active {
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      }
+
+      /* Icône normale */
+      .eye-icon {
+      width: 20px;
+      height: 20px;
+      fill: #b9a36b;      /* doré doux */
+      opacity: 0.95;
+      transition: opacity 0.2s ease, transform 0.2s ease, fill 0.2s ease;
+      }
+
+      /* Icône au survol (juste un petit effet, PAS de rouge) */
+      .toggle-password:hover .eye-icon {
+      fill: #d4c38b;     /* doré un peu plus clair */
+      opacity: 1;
+      transform: scale(1.05);
+      }
+
+
+      .login-button {
+      margin-top: 1.8rem;
+      padding: 0.85rem 2rem;
+      font-size: 1.05rem;
+      border: none;
+      border-radius: 999px;
+
+      background-color: #b32d2d; /* Rouge profond premium */
+      color: #ffffff;
+      cursor: pointer;
+
+      text-transform: uppercase;
+      font-weight: 600;
+      letter-spacing: 0.08em;
+
+      transition: transform 0.12s ease, box-shadow 0.12s ease, background-color 0.15s ease;
+      box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+      }
+
+      .login-button:hover {
+      background-color: #cc3a3a;
+      transform: translateY(-2px);
+      box-shadow: 0 14px 38px rgba(0, 0, 0, 0.55);
+      }
+
+      .login-button:active {
+      transform: translateY(1px);
+      box-shadow: 0 6px 18px rgba(0, 0, 0, 0.55);
+      }
+
+
+      .copyright {
+      position: fixed;
+      bottom: 12px;
+      left: 50%;
+      transform: translateX(-50%);
+      font-size: 0.8rem;
+      color: #d9d9d9;
+      opacity: 0.7;
+      z-index: 20;
+      font-family: 'Poppins', sans-serif;
+      pointer-events: none; /* pour éviter de bloquer les clics */
+      }
+
+    </style>
 
 <main class="login-page">
   <img src="/Logo-tee-shirt.png" alt="Logo club" class="page-logo left" />
@@ -363,5 +375,7 @@
     <p class="error">{error}</p>
     {/if}
   </section>
-
+  <footer class="copyright">
+    © 2025 WB-Scoring — Tous droits réservés
+  </footer>
 </main>

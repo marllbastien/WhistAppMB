@@ -26,6 +26,12 @@
   let canContinue = false;
   let perSlotOptions: ApiPlayer[][] = [];
 
+
+  let playerSelectEls: (HTMLSelectElement | null)[] = [];
+  let continueBtn: HTMLButtonElement | null = null;
+
+
+
   // SessionId pour la config
   let sessionId = '';
 
@@ -98,14 +104,14 @@
   filledPlayers.length === count;
   }
 
-  function updatePlayer(index: number, value: string) {
+ function updatePlayer(index: number, value: string) {
   players[index] = value;
 
   for (let i = 0; i < players.length; i++) {
-      if (i !== index && players[i] === value) {
-  players[i] = '';
-  playerIds[i] = null;
-  }
+    if (i !== index && players[i] === value) {
+      players[i] = '';
+      playerIds[i] = null;
+    }
   }
 
   const found = availablePlayers.find((p) => p.alias === value);
@@ -115,10 +121,38 @@
   playerIds = [...playerIds];
 
   console.log('Sélection joueur index', index, {
-  alias: value,
-  id: playerIds[index]
+    alias: value,
+    id: playerIds[index]
   });
+
+  // 🔽🔽🔽 partie scroll automatique
+  if (value && value.trim() !== '') {
+    const count = Number(playerCount ?? 0);
+    let nextIndex = -1;
+
+    // chercher le prochain joueur vide
+    for (let j = index + 1; j < count; j++) {
+      if (!players[j] || players[j].trim() === '') {
+        nextIndex = j;
+        break;
+      }
+    }
+
+    setTimeout(() => {
+      if (nextIndex >= 0) {
+        const nextEl = playerSelectEls[nextIndex];
+        if (nextEl) {
+          nextEl.scrollIntoView({ behavior: 'smooth', block: 'center' });
+          nextEl.focus();
+        }
+      } else if (continueBtn) {
+        // si tous les joueurs sont remplis → bouton Continuer
+        continueBtn.scrollIntoView({ behavior: 'smooth', block: 'center' });
+      }
+    }, 50);
   }
+}
+
 
   // 🔁 Options filtrées par slot
   $: perSlotOptions = players.map((_, index) => {
@@ -195,16 +229,6 @@
     <h2>Configuration de la table</h2>
 
     <div class="field">
-      <label>Nom de la table :</label>
-      <select bind:value={tableName}>
-        <option value="">-- Choisir --</option>
-        {#each ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] as letter}
-        <option value={letter}>{letter}</option>
-        {/each}
-      </select>
-    </div>
-
-    <div class="field">
       <label>Numéro de la manche :</label>
       <input
         type="number"
@@ -212,6 +236,18 @@
         min="1"
         placeholder="Ex : 1"
       />
+    </div>
+    
+    
+    
+    <div class="field">
+      <label>Nom de la table :</label>
+      <select bind:value={tableName}>
+        <option value="">-- Choisir --</option>
+        {#each ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] as letter}
+        <option value={letter}>{letter}</option>
+        {/each}
+      </select>
     </div>
 
     <div class="radio-group">
@@ -243,17 +279,20 @@
       {#each players as player, i}
       <div class="field">
         <label>Joueur {i + 1} :</label>
-        <select
-          value={player}
-          on:change={(e) =>
-          updatePlayer(i, (e.target as HTMLSelectElement).value)
-          }
-          >
-          <option value="">-- Sélectionner un joueur --</option>
-          {#each perSlotOptions[i] ?? [] as p}
-          <option value={p.alias}>{p.alias}</option>
-          {/each}
-        </select>
+    <select
+  bind:this={playerSelectEls[i]}
+  value={player}
+  on:change={(e) =>
+    updatePlayer(i, (e.target as HTMLSelectElement).value)
+  }
+>
+  <option value="">-- Sélectionner un joueur --</option>
+  {#each perSlotOptions[i] ?? [] as p}
+    <option value={p.alias}>{p.alias}</option>
+  {/each}
+</select>
+
+
       </div>
       {/each}
     </div>
@@ -261,11 +300,18 @@
     {/if}
 
     <div class="button-container">
-      <button on:click={continueToNext} disabled={!canContinue}>
+      <button  bind:this={continueBtn}
+  on:click={continueToNext}
+  disabled={!canContinue}
+>
         Continuer
       </button>
     </div>
   </section>
+  <footer class="copyright">
+    © 2025 WB-Scoring — Tous droits réservés
+  </footer>
+
 </main>
 {/if}
 
@@ -442,7 +488,7 @@
 
   @media (max-width: 600px) {
   .card {
-  padding: 2rem 1.6rem;
+  padding: 4.5rem 1.6rem 2rem;
   }
 
   h2 {
@@ -471,6 +517,18 @@
 
   }
 
+  .copyright {
+  position: fixed;
+  bottom: 12px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 0.8rem;
+  color: #d9d9d9;
+  opacity: 0.7;
+  z-index: 20;
+  font-family: 'Poppins', sans-serif;
+  pointer-events: none; /* pour éviter de bloquer les clics */
+  }
 
 
 </style>
