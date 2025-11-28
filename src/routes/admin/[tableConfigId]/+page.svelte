@@ -93,7 +93,20 @@
 
   const currentYear = new Date().getFullYear();
   
-  
+  let finalScoresByAlias: Record<string, number> = {};
+let finalLeaderScore = 0;
+
+$: if (detail?.finalScores) {
+  finalScoresByAlias = {};
+  finalLeaderScore = 0;
+
+  for (const fs of detail.finalScores) {
+    const score = fs.score ?? 0;
+    finalScoresByAlias[fs.alias] = score;
+    if (score > finalLeaderScore) finalLeaderScore = score;
+  }
+}
+
   
   let feuillePlayers: string[] = [];
   let feuillePoints: {
@@ -227,11 +240,19 @@ function exportFeuillePointsPdf() {
 
 function openEdit(donne: AdminDonneSummaryDto) {
   // Normalisation + clonage profond des scores
-const clonedScores = donne.scores.map((s: any) => ({
+// 1) Clone normal des scores
+let clonedScores = donne.scores.map((s: any) => ({
   ...s,
-  // on normalise toutes les variantes possibles -> partenairePk
   partenairePk: s.partenairePk ?? s.PartenairePk ?? s.partenaire ?? null
 }));
+
+// 2) REORDONNER selon l’ordre officiel de detail.players
+if (detail) {
+  clonedScores = detail.players.map((p) =>
+    clonedScores.find((x) => x.playerId === p.playerId)
+  );
+}
+
   selectedDonne = {
     ...donne,
     scores: clonedScores
@@ -637,25 +658,43 @@ function getChangeClass(after: number, before: number) {
     </div>
 
     <!-- Scores finaux -->
-    <div class="card">
-      <h2>Scores finaux</h2>
-      <table class="simple-table">
-        <thead>
-          <tr>
-            <th>Joueur</th>
-            <th>Score final</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each detail.finalScores as fs}
-            <tr>
-              <td>{fs.alias}</td>
-              <td>{fs.score}</td>
-            </tr>
-          {/each}
-        </tbody>
-      </table>
-    </div>
+<div class="card">
+  <h2>Résultats finaux</h2>
+
+  <table class="players-table">
+    <thead>
+      <tr>
+        <th></th>
+        {#each detail.players as p}
+          <th
+            class:leader={
+              finalLeaderScore !== 0 &&
+              finalScoresByAlias[p.alias] === finalLeaderScore
+            }
+          >
+            {p.alias}
+          </th>
+        {/each}
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        <td class="label-cell">Résultats</td>
+        {#each detail.players as p}
+          <td
+            class:leader={
+              finalLeaderScore !== 0 &&
+              finalScoresByAlias[p.alias] === finalLeaderScore
+            }
+          >
+            {finalScoresByAlias[p.alias] ?? 0}
+          </td>
+        {/each}
+      </tr>
+    </tbody>
+  </table>
+</div>
+
 
     <!-- Liste des donnes -->
   <!-- Donnes de la manche -->
@@ -997,7 +1036,7 @@ function getChangeClass(after: number, before: number) {
 </div>  <!-- fin .admin-page -->
 
 <footer class="copyright">
-  © {currentYear} WB-Scoring — Tous droits réservés
+  © {currentYear} Wb-Scoring — Tous droits réservés
 </footer>
 
 
@@ -1572,13 +1611,77 @@ function getChangeClass(after: number, before: number) {
   bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
+
   font-size: 0.8rem;
   color: #d9d9d9;
-  opacity: 0.7;
+  opacity: 0.9;
   font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont,
   'Segoe UI', sans-serif;
-  z-index: 40;
-  pointer-events: none; /* pour ne pas gêner les clics */
+  white-space: nowrap;
+  z-index: 9999;
+
+  /* 🔥 Le fond noir semi-opaque pour éviter la superposition */
+  background: rgba(0, 0, 0, 0.8);
+  padding: 4px 10px;
+  border-radius: 10px;
+  backdrop-filter: blur(4px); /* optionnel : joli effet verre dépoli */
+  }
+
+  /* Pour éviter de cacher la dernière ligne */
+  :global(body) {
+  padding-bottom: 50px;
+  }
+
+  @media (max-width: 480px) {
+  .copyright {
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  }
+  }
+
+
+
+  /* Tableau type "annonce" pour les résultats finaux */
+  .players-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 0.75rem;
+  font-size: 0.95rem;
+  background: #020b06;
+  }
+
+  .players-table th,
+  .players-table td {
+  padding: 0.45rem 0.8rem;
+  text-align: center;
+  border: 1px solid rgba(22, 163, 74, 0.35);
+  }
+
+  /* Ligne d'en-tête (noms des joueurs) */
+  .players-table thead th {
+  background: linear-gradient(to bottom, #14532d, #052e16);
+  color: #fef9c3;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  font-size: 0.78rem;
+  }
+
+  /* Cellule "Résultats" à gauche */
+  .players-table .label-cell {
+  text-align: left;
+  font-weight: 600;
+  padding-left: 1.2rem;
+  }
+
+  /* Ligne des scores */
+  .players-table tbody td {
+  background: #020617;
+  }
+
+  /* Joueur leader (meilleur score) – discret */
+  .players-table .leader {
+  font-weight: 700;
+  color: #facc15;
   }
 
 

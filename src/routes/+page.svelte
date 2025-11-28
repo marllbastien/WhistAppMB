@@ -4,7 +4,7 @@
   let code = '';
   let error = '';
 
-  const CORRECT_CODE = 'Whistiti'; // TODO: appel API pour le code du jour
+  const CORRECT_CODE = 'Bigoudi'; // TODO: appel API pour le code du jour
 
   function submit() {
   if (code.trim() === CORRECT_CODE) {
@@ -318,13 +318,35 @@
       bottom: 12px;
       left: 50%;
       transform: translateX(-50%);
+
       font-size: 0.8rem;
       color: #d9d9d9;
-      opacity: 0.7;
-      z-index: 20;
-      font-family: 'Poppins', sans-serif;
-      pointer-events: none; /* pour éviter de bloquer les clics */
+      opacity: 0.9;
+      font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont,
+      'Segoe UI', sans-serif;
+      white-space: nowrap;
+      z-index: 9999;
+
+      /* 🔥 Le fond noir semi-opaque pour éviter la superposition */
+      background: rgba(0, 0, 0, 0.8);
+      padding: 4px 10px;
+      border-radius: 10px;
+      backdrop-filter: blur(4px); /* optionnel : joli effet verre dépoli */
       }
+
+      /* Pour éviter de cacher la dernière ligne */
+      :global(body) {
+      padding-bottom: 50px;
+      }
+
+      @media (max-width: 480px) {
+      .copyright {
+      font-size: 0.7rem;
+      padding: 3px 8px;
+      }
+      }
+
+
 
     </style>
 
@@ -376,6 +398,6 @@
     {/if}
   </section>
   <footer class="copyright">
-    © 2025 WB-Scoring — Tous droits réservés
+    © 2025 Wb-Scoring — Tous droits réservés
   </footer>
 </main>

@@ -2,7 +2,7 @@
   import { onMount } from 'svelte';
 
   const API_BASE_URL =
-    import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
+  import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
 
   // --- Sécurité "light" : petit PIN admin stocké en localStorage ---
   const ADMIN_PIN = '060784'; // TU PEUX LE CHANGER ICI
@@ -10,19 +10,19 @@
   let isAdmin = false;
   let pinInput = '';
   let authError = '';
-const currentYear = new Date().getFullYear();
- interface AdminPlayerDto {
+  const currentYear = new Date().getFullYear();
+  interface AdminPlayerDto {
   playerId: number | null;
   alias: string;
-}
+  }
 
-interface AdminFinalScoreDto {
+  interface AdminFinalScoreDto {
   playerId: number | null;
   alias: string;
   score: number;
-}
+  }
 
-interface AdminDonneScoreDto {
+  interface AdminDonneScoreDto {
   playerId: number | null;
   alias: string;
   annonce: string | null;
@@ -33,16 +33,16 @@ interface AdminDonneScoreDto {
   arbitre: boolean | null;
   score: number;
   cumul: number;
-}
+  }
 
-interface AdminDonneSummaryDto {
+  interface AdminDonneSummaryDto {
   donneNumber: number;
   annoncePrincipale: string | null;
   hasArbitre: boolean;
   scores: AdminDonneScoreDto[];
-}
+  }
 
-interface AdminMancheDetailDto {
+  interface AdminMancheDetailDto {
   tableConfigId: number;
   tableName: string;
   mancheNumber: number;
@@ -52,10 +52,184 @@ interface AdminMancheDetailDto {
   players: AdminPlayerDto[];
   finalScores: AdminFinalScoreDto[];
   donnes: AdminDonneSummaryDto[];
-}
+  }
+
+  interface AdminMancheHeaderDto {
+  tableConfigId: number;
+  tableName: string;
+  mancheNumber: number;
+  playerCount: number;
+  startTime: string | null;
+  endTime: string | null;
+  donnesCount: number;
+  isCompleted: boolean;
+  }
+
+
+
   let manches: AdminMancheHeaderDto[] = [];
   let isLoading = false;
   let loadError = '';
+
+  // Tri
+  type SortKey =
+  | 'tableConfigId'
+  | 'tableName'
+  | 'mancheNumber'
+  | 'playerCount'
+  | 'donnesCount'
+  | 'startTime'
+  | 'endTime'
+  | 'isCompleted';
+
+  let sortKey: SortKey | null = null;
+  let sortDirection: 'asc' | 'desc' = 'asc';
+
+  function toggleSort(key: SortKey) {
+  if (sortKey === key) {
+  sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+  } else {
+  sortKey = key;
+  sortDirection = 'asc';
+  }
+  }
+
+  // Filtres
+  let filters = {
+  id: '',
+  tableName: '',
+  mancheNumber: '',
+  playerCount: '',
+  donnesCount: '',
+  startTime: '',
+  endTime: '',
+  statut: ''
+  };
+
+  $: filteredSortedManches = manches
+  // 1) Filtres
+  .filter((m) => {
+  // ID
+  if (
+  filters.id &&
+  !String(m.tableConfigId).includes(filters.id.trim())
+  ) {
+  return false;
+  }
+
+  // Table
+  if (
+  filters.tableName &&
+  !m.tableName.toLowerCase().includes(filters.tableName.toLowerCase())
+  ) {
+  return false;
+  }
+
+  // Manche
+  if (
+  filters.mancheNumber &&
+  !String(m.mancheNumber).includes(filters.mancheNumber.trim())
+  ) {
+  return false;
+  }
+
+  // Joueurs
+  if (
+  filters.playerCount &&
+  !String(m.playerCount).includes(filters.playerCount.trim())
+  ) {
+  return false;
+  }
+
+  // Donnes
+  if (
+  filters.donnesCount &&
+  !String(m.donnesCount).includes(filters.donnesCount.trim())
+  ) {
+  return false;
+  }
+
+  // Début (valeur brute de l’API)
+  if (
+  filters.startTime &&
+  !(m.startTime ?? '')
+  .toLowerCase()
+  .includes(filters.startTime.toLowerCase())
+  ) {
+  return false;
+  }
+
+  // Fin
+  if (
+  filters.endTime &&
+  !(m.endTime ?? '')
+  .toLowerCase()
+  .includes(filters.endTime.toLowerCase())
+  ) {
+  return false;
+  }
+
+  // Statut
+  if (filters.statut) {
+  const statut = m.isCompleted ? 'terminée' : 'en cours';
+  if (statut !== filters.statut) return false;
+  }
+
+  return true;
+  })
+  // 2) Tri
+  .sort((a, b) => {
+  if (!sortKey) return 0;
+
+  const va = a[sortKey];
+  const vb = b[sortKey];
+
+  // cas particulier : dates
+  if (sortKey === 'startTime' || sortKey === 'endTime') {
+  const ta = va ? new Date(va as string).getTime() : 0;
+  const tb = vb ? new Date(vb as string).getTime() : 0;
+
+  if (ta < tb) return sortDirection === 'asc' ? -1 : 1;
+        if (ta > tb) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      }
+
+      // booléen (isCompleted)
+      if (sortKey === 'isCompleted') {
+        const ba = (va as boolean) ? 1 : 0;
+        const bb = (vb as boolean) ? 1 : 0;
+
+        if (ba < bb) return sortDirection === 'asc' ? -1 : 1;
+        if (ba > bb) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      }
+
+      // numériques (id, manche, joueurs, donnes)
+      if (
+        sortKey === 'tableConfigId' ||
+        sortKey === 'mancheNumber' ||
+        sortKey === 'playerCount' ||
+        sortKey === 'donnesCount'
+      ) {
+        const na = va as number;
+        const nb = vb as number;
+
+        if (na < nb) return sortDirection === 'asc' ? -1 : 1;
+        if (na > nb) return sortDirection === 'asc' ? 1 : -1;
+        return 0;
+      }
+
+      // texte (tableName)
+      const sa = String(va ?? '').toLowerCase();
+      const sb = String(vb ?? '').toLowerCase();
+
+      if (sa < sb) return sortDirection === 'asc' ? -1 : 1;
+      if (sa > sb) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    });
+
+
+
 
   onMount(() => {
     const flag = localStorage.getItem('whist_admin_ok');
@@ -102,6 +276,8 @@ interface AdminMancheDetailDto {
   function gotoManche(id: number) {
     window.location.href = `/admin/${id}`;
   }
+  
+        
 </script>
 
 <svelte:head>
@@ -140,21 +316,126 @@ interface AdminMancheDetailDto {
       {:else if manches.length === 0}
         <p>Aucune manche trouvée.</p>
       {:else}
-        <table class="admin-table">
+               <table class="admin-table">
+                 <colgroup>
+                   <col class="col-id" />
+                   <col class="col-table" />
+                   <col class="col-manche" />
+                   <col class="col-joueurs" />
+                   <col class="col-donnes" />
+                   <col class="col-debut" />
+                   <col class="col-fin" />
+                   <col class="col-statut" />
+                 </colgroup>
           <thead>
             <tr>
-              <th>ID</th>
-              <th>Table</th>
-              <th>Manche</th>
-              <th>Joueurs</th>
-              <th>Donnes</th>
-              <th>Début</th>
-              <th>Fin</th>
-              <th>Statut</th>
+              <th on:click={() => toggleSort('tableConfigId')}>
+                ID {#if sortKey === 'tableConfigId'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+              </th>
+              <th on:click={() => toggleSort('tableName')}>
+                Table {#if sortKey === 'tableName'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+              </th>
+              <th on:click={() => toggleSort('mancheNumber')}>
+                Manche {#if sortKey === 'mancheNumber'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+              </th>
+              <th on:click={() => toggleSort('playerCount')}>
+                Joueurs {#if sortKey === 'playerCount'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+              </th>
+              <th on:click={() => toggleSort('donnesCount')}>
+                Donnes {#if sortKey === 'donnesCount'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+              </th>
+              <th on:click={() => toggleSort('startTime')}>
+                Début {#if sortKey === 'startTime'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+              </th>
+              <th on:click={() => toggleSort('endTime')}>
+                Fin {#if sortKey === 'endTime'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+              </th>
+              <th on:click={() => toggleSort('isCompleted')}>
+                Statut {#if sortKey === 'isCompleted'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+              </th>
+            </tr>
+
+            <!-- Ligne de filtres -->
+            <tr class="filter-row">
+              <th>
+                <input
+                  class="filter-input"
+                  type="text"
+                  placeholder="Filtrer..."
+                  bind:value={filters.id}
+                  on:click|stopPropagation
+                />
+              </th>
+              <th>
+                <input
+                  class="filter-input"
+                  type="text"
+                  placeholder="Filtrer..."
+                  bind:value={filters.tableName}
+                  on:click|stopPropagation
+                />
+              </th>
+              <th>
+                <input
+                  class="filter-input"
+                  type="text"
+                  placeholder="Filtrer..."
+                  bind:value={filters.mancheNumber}
+                  on:click|stopPropagation
+                />
+              </th>
+              <th>
+                <input
+                  class="filter-input"
+                  type="text"
+                  placeholder="Filtrer..."
+                  bind:value={filters.playerCount}
+                  on:click|stopPropagation
+                />
+              </th>
+              <th>
+                <input
+                  class="filter-input"
+                  type="text"
+                  placeholder="Filtrer..."
+                  bind:value={filters.donnesCount}
+                  on:click|stopPropagation
+                />
+              </th>
+              <th>
+                <input
+                  class="filter-input"
+                  type="text"
+                  placeholder="Filtrer..."
+                  bind:value={filters.startTime}
+                  on:click|stopPropagation
+                />
+              </th>
+              <th>
+                <input
+                  class="filter-input"
+                  type="text"
+                  placeholder="Filtrer..."
+                  bind:value={filters.endTime}
+                  on:click|stopPropagation
+                />
+              </th>
+              <th>
+                <select
+                  class="filter-input"
+                  bind:value={filters.statut}
+                  on:click|stopPropagation
+                >
+                  <option value="">Tous</option>
+                  <option value="en cours">En cours</option>
+                  <option value="terminée">Terminée</option>
+                </select>
+              </th>
             </tr>
           </thead>
+
           <tbody>
-            {#each manches as m}
+            {#each filteredSortedManches as m}
               <tr class="clickable" on:click={() => gotoManche(m.tableConfigId)}>
                 <td>{m.tableConfigId}</td>
                 <td>{m.tableName}</td>
@@ -168,13 +449,14 @@ interface AdminMancheDetailDto {
             {/each}
           </tbody>
         </table>
+
       {/if}
     </div>
   {/if}
 </div>
 
 <footer class="copyright">
-  © {currentYear} WB-Scoring — Tous droits réservés
+  © {currentYear} Wb-Scoring — Tous droits réservés
 </footer>
 
 
@@ -297,13 +579,105 @@ interface AdminMancheDetailDto {
   bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
+
   font-size: 0.8rem;
   color: #d9d9d9;
-  opacity: 0.7;
+  opacity: 0.9;
   font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont,
   'Segoe UI', sans-serif;
-  z-index: 40;
-  pointer-events: none; /* pour ne pas gêner les clics */
+  white-space: nowrap;
+  z-index: 9999;
+
+  /* 🔥 Le fond noir semi-opaque pour éviter la superposition */
+  background: rgba(0, 0, 0, 0.8);
+  padding: 4px 10px;
+  border-radius: 10px;
+  backdrop-filter: blur(4px); /* optionnel : joli effet verre dépoli */
   }
+
+  /* Pour éviter de cacher la dernière ligne */
+  :global(body) {
+  padding-bottom: 50px;
+  }
+
+  @media (max-width: 480px) {
+  .copyright {
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  }
+  }
+
+
+
+  .filter-row th {
+  background: #020617;
+  border-bottom: 1px solid rgba(51, 65, 85, 0.9);
+  }
+
+  .filter-input {
+  width: 100%;
+  box-sizing: border-box;
+  padding: 0.2rem 0.35rem;
+  border-radius: 999px;
+  border: 1px solid rgba(75, 85, 99, 0.8);
+  background: #020617;
+  color: #e5e7eb;
+  font-size: 0.75rem;
+  }
+
+  .filter-input::placeholder {
+  color: rgba(148, 163, 184, 0.7);
+  }
+
+  .admin-table th {
+  cursor: pointer;
+  }
+
+  .admin-table th:hover {
+  background: linear-gradient(to bottom, #15803d, #052e16);
+  }
+
+
+  .admin-table {
+  width: 100%;
+  border-collapse: collapse;
+  margin-top: 1rem;
+  font-size: 0.9rem;
+  table-layout: fixed; /* important pour respecter les largeurs ci-dessous */
+  }
+
+  /* Largeurs des colonnes (approx comme ta capture 1) */
+  .col-id {
+  width: 6%;
+  }
+
+  .col-table {
+  width: 8%;
+  }
+
+  .col-manche {
+  width: 8%;
+  }
+
+  .col-joueurs {
+  width: 9%;
+  }
+
+  .col-donnes {
+  width: 9%;
+  }
+
+  .col-debut {
+  width: 20%;
+  }
+
+  .col-fin {
+  width: 20%;
+  }
+
+  .col-statut {
+  width: 20%;
+  }
+
 
 </style>

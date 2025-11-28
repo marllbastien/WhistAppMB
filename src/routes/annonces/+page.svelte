@@ -2284,14 +2284,28 @@ function closeFeuillePoints() {
 	<!-- svelte-ignore a11y_click_events_have_key_events -->
 	<!-- svelte-ignore a11y_no_static_element_interactions -->
 	<div class="modal-backdrop" on:click={() => showAnnonceOrder = false}>
-		<div class="modal" on:click|stopPropagation>
+		<div class="modal modal-annonces" on:click|stopPropagation>
 			<h3>Ordre des annonces</h3>
         <ul class="annonces-list">
-        {#each annonces as a}
-            <li class="annonce-item">
+         {#each annonces
+  .filter(a => {
+
+    // 1) Retirer tous les codes finissant par 2, sauf E12
+    if (a.code.endsWith("2") && a.code !== "E12") return false;
+
+    // 2) Retirer S8_D
+    if (a.code === "S8_D") return false;
+
+    // 3) Retirer D
+    if (a.code === "D") return false;
+
+    return true;
+  })
+  as a}
+          <li class="annonce-item">
             <span class="annonce-code">
                 {#if ['A9', 'A10', 'A11', 'PC', 'CH'].includes(a.code)}
-                <strong style="color:red;">{a.code}</strong>
+                <strong style="color:#e63946;">{a.code}</strong>
                 {:else if a.code === 'TR'}
                 <strong class="tr-circle">{a.code}</strong>
                 {:else}
@@ -2302,24 +2316,25 @@ function closeFeuillePoints() {
             </li>
         {/each}
         </ul>
-        <div class="force-couleurs">
-        <p>
-            {#each couleurs as carte, i}
-            <span style="color:{carte.couleur}; font-weight:bold; font-size:3rem;">
-                {carte.symbole}
-            </span>
-            {#if i < couleurs.length - 1}
-                <span style="color:black; font-size:2rem;"> &gt; </span>
-            {/if}
-            {/each}
-        </p>
+      <div class="ordre-couleurs-wrapper">
+        <div class="ordre-couleurs">
+          <span class="c-symbole pique">♠</span>
+          <span class="c-arrow">❯</span>
+          <span class="c-symbole trefle">♣</span>
+          <span class="c-arrow">❯</span>
+          <span class="c-symbole carreau">♦</span>
+          <span class="c-arrow">❯</span>
+          <span class="c-symbole coeur">♥</span>
         </div>
-			<button on:click={() => showAnnonceOrder = false}>Fermer</button>
-		</div>
-	</div>
-{/if}
+      </div>
 
-<!-- MODALE : Historique des donnes -->
+
+      <button on:click={() => showAnnonceOrder = false}>Fermer</button>
+    </div>
+  </div>
+  {/if}
+
+  <!-- MODALE : Historique des donnes -->
 {#if showHistorique}
     <div class="modal-backdrop" on:click={() => showHistorique = false}>
         <div class="modal history-modal" on:click|stopPropagation>
@@ -2564,7 +2579,7 @@ function closeFeuillePoints() {
 
           <!-- Sélection de l’annonce -->
 <select
-  bind:value={annonceByPlayer[p]}
+    value={annonceByPlayer[p] || ''} 
   on:change={(e) =>
     handleAnnonceChange(p, (e.target as HTMLSelectElement).value)
   }
@@ -2575,10 +2590,6 @@ function closeFeuillePoints() {
     <option value={a.code}>{a.label}</option>
   {/each}
 </select>
-
-
-
-
 
 
 
@@ -2782,7 +2793,7 @@ function closeFeuillePoints() {
 
 </div>
 <footer class="copyright">
-  © 2025 WB-Scoring — Tous droits réservés
+  © 2025 Wb-Scoring — Tous droits réservés
 </footer>
 
 <style>
@@ -2945,7 +2956,7 @@ function closeFeuillePoints() {
 
   .label-cell {
   background: #04130b;
-  font-weight: 600;
+  font-weight: 700;
   text-align: left;
   padding-left: 1rem;
   }
@@ -3007,8 +3018,12 @@ function closeFeuillePoints() {
   color: var(--text-main);
   font-size: 1rem;
   cursor: pointer;
+  -webkit-text-fill-color: #fff !important;
   }
-
+  .player-block select option {
+  color: var(--text-main);
+  background: #020b06;
+  }
   .player-block select:focus {
   outline: none;
   border-color: var(--accent);
@@ -3421,7 +3436,7 @@ function closeFeuillePoints() {
 
   .tr-circle {
   display: inline-block;
-  border: 2px solid red;
+  border: 2px solid #e63946;
   border-radius: 999px;
   padding: 0.1rem 0.45rem;
   }
@@ -4143,20 +4158,40 @@ function closeFeuillePoints() {
   }
   }
 
-
   .copyright {
   position: fixed;
   bottom: 12px;
   left: 50%;
   transform: translateX(-50%);
+
   font-size: 0.8rem;
   color: #d9d9d9;
-  opacity: 0.7;
+  opacity: 0.9;
   font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont,
   'Segoe UI', sans-serif;
-  z-index: 40;
-  pointer-events: none; /* pour ne pas gêner les clics */
+  white-space: nowrap;
+  z-index: 9999;
+
+  /* 🔥 Le fond noir semi-opaque pour éviter la superposition */
+  background: rgba(0, 0, 0, 0.8);
+  padding: 4px 10px;
+  border-radius: 10px;
+  backdrop-filter: blur(4px); /* optionnel : joli effet verre dépoli */
   }
+
+  /* Pour éviter de cacher la dernière ligne */
+  :global(body) {
+  padding-bottom: 50px;
+  }
+
+  @media (max-width: 480px) {
+  .copyright {
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  }
+  }
+
+
 
   /* Étiquette "Avec qui ?" – style élégant */
   .emballage-label-text {
@@ -4212,6 +4247,174 @@ function closeFeuillePoints() {
   border-color: var(--accent);
   box-shadow: 0 0 0 2px rgba(245, 185, 66, 0.35);
   }
+
+
+  /* Taille des scores dans la ligne "Résultats" */
+  .players-table tbody tr td:not(.label-cell) {
+  font-size: 1.2rem !important;
+  font-weight: 700;
+  color: #e7e7e7;
+  }
+
+
+  .modal {
+  max-height: 88vh !important;  /* utilise plus d’écran */
+  min-height: 60vh;             /* évite une petite modale */
+  overflow: auto;               /* scroll interne si besoin */
+  }
+
+
+  .casino-arrow {
+  color: #fbbf24;
+  font-size: 2.2rem;
+  opacity: 0.9;
+  }
+
+
+  .ordre-couleurs {
+  margin: 1.3rem auto 0.8rem;
+  padding: 0.6rem 1.2rem;
+  border: 1px solid rgba(245, 185, 66, 0.25);
+  border-radius: 14px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.9rem;
+  background: rgba(0, 0, 0, 0.25);
+  box-shadow: inset 0 0 12px rgba(0, 0, 0, 0.35);
+  }
+
+  .c-symbole {
+  font-size: 2.6rem;
+  font-weight: bold;
+  text-shadow: 0 0 6px rgba(0,0,0,0.7);
+  }
+
+  .c-symbole.pique,
+  .c-symbole.trefle {
+  color: #e6e6e6;
+  }
+
+  .c-symbole.carreau {
+  color: #ff4747;
+  }
+
+  .c-symbole.coeur {
+  color: #ff3333;
+  }
+
+  .c-arrow {
+  font-size: 2rem;
+  color: #f5b942;
+  opacity: 0.88;
+  text-shadow:
+  0 0 5px rgba(245,185,66,0.55),
+  0 0 10px rgba(245,185,66,0.35);
+  }
+
+  .c-symbole {
+  font-size: 2.6rem;
+  text-shadow:
+  0 0 3px #00ff9c,
+  0 0 6px #00ff9c,
+  0 0 12px rgba(0,255,160,0.5),
+  0 0 18px rgba(0,255,160,0.35);
+  }
+
+  .c-symbole.pique,
+  .c-symbole.trefle {
+  color: #000;
+  }
+
+  .c-symbole.carreau,
+  .c-symbole.coeur {
+  color: #e63946; /* rouge vif */
+  }
+
+  /* Modale "Ordre des annonces" un peu plus haute */
+  .modal-annonces {
+  max-height: 86vh;              /* laisse une petite marge en haut/bas */
+  }
+
+  /* Liste qui prend plus de place dans la modale */
+  .modal-annonces .annonces-list {
+  max-height: 560px;             /* augmente pour remplir l’espace */
+  margin-bottom: 0.6rem;         /* rapproche du bloc des couleurs */
+  }
+  /* Wrapper centré */
+  .ordre-couleurs-wrapper {
+  display: flex;
+  justify-content: center;
+  margin-top: 1rem;
+  }
+
+  /* Cadre or – légèrement plus petit, mais pas minuscule */
+  .ordre-couleurs {
+  display: flex;
+  align-items: center;
+  gap: 1rem;
+
+  padding: 0.6rem 1.4rem;         /* 🔥 moins haut, mais cadre visible */
+  border-radius: 18px;
+
+  border: 1px solid rgba(245, 185, 66, 0.65);
+  background: rgba(0, 0, 0, 0.18);
+
+  box-shadow:
+  0 0 14px rgba(245, 185, 66, 0.32),
+  0 0 4px rgba(245, 185, 66, 0.55) inset;
+  }
+
+  /* Symboles bien alignés */
+  .c-symbole {
+  font-size: 2.4rem;              /* 🔥 taille uniforme */
+  line-height: 1;                 /* 🔥 évite qu’ils montent ou descendent */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  text-shadow:
+  0 0 6px rgba(0,255,160,0.7),
+  0 0 12px rgba(0,255,160,0.45),
+  0 0 18px rgba(0,255,160,0.25);
+  }
+
+  /* ♠ & ♣ noirs */
+  .c-symbole.pique,
+  .c-symbole.trefle {
+  color: #000;
+  filter: brightness(1.3); /* noir un peu relevé pour la lisibilité */
+  }
+
+  /* ♦ & ♥ rouge + glow vert */
+  .c-symbole.carreau,
+  .c-symbole.coeur {
+  color: #ff4444;
+  text-shadow:
+  0 0 6px rgba(0,255,160,0.7),
+  0 0 12px rgba(0,255,160,0.45),
+  0 0 18px rgba(0,255,160,0.25);
+  }
+
+  /* Flèches centrées verticalement */
+  .c-arrow {
+  font-size: 1.8rem;
+  line-height: 1;
+  display: flex;
+  align-items: center;
+
+  color: #facc15;
+  text-shadow:
+  0 0 5px rgba(250,204,21,0.6),
+  0 0 14px rgba(250,204,21,0.35);
+  }
+
+  .modal-annonces button {
+  display: block;
+  margin: 1.2rem auto 0 auto;   /* 🔥 centré horizontalement */
+  }
+
+
 
 
 
