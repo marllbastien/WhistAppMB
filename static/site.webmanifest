@@ -1,7 +1,7 @@
 {
-  "name": "Whist Bridgé Scoring",
+  "name": "Whist BridgÃ© Scoring",
   "short_name": "Wb Scoring",
-  "description": "Encodage et suivi des scores de whist bridgé.",
+  "description": "Encodage et suivi des scores de whist bridgÃ©.",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

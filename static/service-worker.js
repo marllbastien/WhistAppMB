@@ -1,45 +1,83 @@
-const CACHE_NAME = 'wb-scoring-v1';
-const ASSETS = [
-    '/',
-    '/favicon.ico',
-    '/Logo_App_Rond.png'
-];
+﻿const CACHE_VERSION = 'wb-scoring-v3';   // ⬅ tu incrémenteras ici
+const CACHE_NAME = CACHE_VERSION;
 
-// Install : on met quelques fichiers de base en cache
+const ASSETS = ['/', '/favicon.ico', '/Logo_App_Rond.png'];
+
 self.addEventListener('install', (event) => {
     event.waitUntil(
         caches.open(CACHE_NAME).then((cache) => cache.addAll(ASSETS))
     );
+    self.skipWaiting();
 });
 
-// Activate : on nettoie les anciens caches
 self.addEventListener('activate', (event) => {
     event.waitUntil(
-        caches.keys().then((keys) =>
-            Promise.all(
+        (async () => {
+            // 1) Nettoyage des anciens caches
+            const keys = await caches.keys();
+            await Promise.all(
                 keys
                     .filter((key) => key !== CACHE_NAME)
                     .map((key) => caches.delete(key))
-            )
-        )
+            );
+
+            // 2) Prise de contrôle immédiate
+            await self.clients.claim();
+
+            // 3) Prévenir toutes les fenêtres qu'une nouvelle version est active
+            const clientsList = await self.clients.matchAll({
+                type: 'window',
+                includeUncontrolled: true
+            });
+
+            for (const client of clientsList) {
+                client.postMessage({ type: 'NEW_VERSION' });
+            }
+        })()
     );
 });
 
-// Fetch : on sert le cache d'abord, puis le r�seau
 self.addEventListener('fetch', (event) => {
-    if (event.request.method !== 'GET') return; // laisse les POST/PUT tranquilles
+    const req = event.request;
+    if (req.method !== 'GET') return;
 
-    event.respondWith(
-        caches.match(event.request).then((cached) => {
-            if (cached) return cached;
+    const acceptHeader = req.headers.get('accept') || '';
+    const url = new URL(req.url);
 
-            return fetch(event.request).then((response) => {
-                const clone = response.clone();
-                caches.open(CACHE_NAME).then((cache) => {
-                    cache.put(event.request, clone);
+    // HTML / navigation → network-first
+    if (req.mode === 'navigate' || acceptHeader.includes('text/html')) {
+        event.respondWith(
+            fetch(req)
+                .then((response) => {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+                    return response;
+                })
+                .catch(() => caches.match(req))
+        );
+        return;
+    }
+
+    // API → jamais mis en cache
+    if (url.pathname.startsWith('/api/')) {
+        return;
+    }
+
+    // Assets connus → cache-first
+    if (ASSETS.includes(url.pathname)) {
+        event.respondWith(
+            caches.match(req).then((cached) => {
+                if (cached) return cached;
+
+                return fetch(req).then((response) => {
+                    const clone = response.clone();
+                    caches.open(CACHE_NAME).then((cache) => cache.put(req, clone));
+                    return response;
                 });
-                return response;
-            });
-        })
-    );
+            })
+        );
+        return;
+    }
+
+    // Le reste → réseau direct
 });

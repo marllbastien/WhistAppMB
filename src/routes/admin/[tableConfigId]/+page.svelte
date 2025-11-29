@@ -1,8 +1,11 @@
 ﻿<script lang="ts">
-  import { onMount } from 'svelte';
+  import { onMount, tick } from 'svelte';
   import { page } from '$app/stores';
   import jsPDF from 'jspdf';
   import autoTable from 'jspdf-autotable';
+
+
+  let editDonneSection: HTMLDivElement | null = null;
 
 
   const API_BASE_URL =
@@ -92,7 +95,7 @@
 
 
   const currentYear = new Date().getFullYear();
-  
+
   let finalScoresByAlias: Record<string, number> = {};
 let finalLeaderScore = 0;
 
@@ -238,20 +241,44 @@ function exportFeuillePointsPdf() {
 }
 
 
-function openEdit(donne: AdminDonneSummaryDto) {
-  // Normalisation + clonage profond des scores
-// 1) Clone normal des scores
-let clonedScores = donne.scores.map((s: any) => ({
-  ...s,
-  partenairePk: s.partenairePk ?? s.PartenairePk ?? s.partenaire ?? null
-}));
+async function openEdit(donne: AdminDonneSummaryDto) {
+  if (!donne || !donne.scores) return;
 
-// 2) REORDONNER selon l’ordre officiel de detail.players
-if (detail) {
-  clonedScores = detail.players.map((p) =>
-    clonedScores.find((x) => x.playerId === p.playerId)
-  );
-}
+  // 1) Clone + normalisation
+  let clonedScores = donne.scores.map((s: any) => ({
+    playerId: s.playerId ?? null,
+    alias: s.alias ?? '',
+    annonce: s.annonce ?? '',
+    partenairePk: s.partenairePk ?? s.PartenairePk ?? s.partenaire ?? null,
+    plis: s.plis ?? null,
+    resultat: s.resultat ?? '',
+    dames: s.dames ?? null,
+    arbitre: s.arbitre ?? false,
+    score: s.score ?? 0,
+    cumul: s.cumul ?? 0
+  }));
+
+  // 2) Réordonner selon l'ordre de detail.players
+  if (detail && detail.players?.length) {
+    clonedScores = detail.players.map((p) => {
+      const found = clonedScores.find((x) => x.playerId === p.playerId);
+
+      return (
+        found ?? {
+          playerId: p.playerId,
+          alias: p.alias,
+          annonce: '',
+          partenairePk: null,
+          plis: null,
+          resultat: '',
+          dames: null,
+          arbitre: false,
+          score: 0,
+          cumul: 0
+        }
+      );
+    });
+  }
 
   selectedDonne = {
     ...donne,
@@ -261,8 +288,6 @@ if (detail) {
   editAnnonce = selectedDonne.annoncePrincipale ?? '';
   editHasArbitre = selectedDonne.hasArbitre;
 
-
-  // état initial AVANT modif (pour affichage "AVANT")
   previewInitial = clonedScores.map((s) => ({
     playerId: s.playerId,
     alias: s.alias,
@@ -270,11 +295,18 @@ if (detail) {
     cumul: s.cumul
   }));
 
-  // reset preview + messages
   previewResult = null;
   previewError = '';
   saveMessage = '';
+
+  // 🔽 attendre que le DOM se mette à jour, puis scroller
+  await tick();
+  if (editDonneSection) {
+    editDonneSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+  }
 }
+
+
 
 async function openFeuillePoints() {
   if (!detail) return;
@@ -341,7 +373,61 @@ async function loadConfig() {
 }
 
 
+function closeEdit() {
+  selectedDonne = null;
+  previewInitial = [];
+  previewResult = null;
+  previewError = '';
+  saveMessage = '';
+}
 
+async function deleteDonne() {
+  if (!detail || !selectedDonne) return;
+
+  if (!confirm(`Supprimer la donne n° ${selectedDonne.donneNumber} ?`)) {
+    return;
+  }
+
+  try {
+    // 1) Suppression en DB
+    let res = await fetch(`${API_BASE_URL}/api/admin/donne/delete`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tableConfigId: detail.tableConfigId,
+        mancheNumber: detail.mancheNumber,
+        donneNumber: selectedDonne.donneNumber
+      })
+    });
+
+    if (!res.ok) {
+      throw new Error(`Delete donne HTTP ${res.status}`);
+    }
+
+    // 2) Recalcule les cumuls de la manche
+    res = await fetch(`${API_BASE_URL}/api/admin/donne/recalc`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tableConfigId: detail.tableConfigId,
+        mancheNumber: detail.mancheNumber,
+        donneNumber: selectedDonne.donneNumber
+      })
+    });
+
+    if (!res.ok) {
+      throw new Error(`Recalc donne HTTP ${res.status}`);
+    }
+
+    // 3) Recharge l’écran + ferme le panneau d’édition
+    await loadDetail();
+    closeEdit();
+    saveMessage = 'Donne supprimée et scores recalculés ✅';
+  } catch (err) {
+    console.error(err);
+    alert("Erreur lors de la suppression de la donne.");
+  }
+}
 
 function requiresPartner(code: string | null): boolean {
   if (!code) return false;
@@ -349,10 +435,14 @@ function requiresPartner(code: string | null): boolean {
   return !!a?.requirePartner;
 }
 
-function getAnnonceRow(donne) {
-  // la ligne du joueur qui a une annonce
-  return donne.scores.find((s) => s.annonce && s.annonce !== '');
+function getAnnonceRow(donne: AdminDonneSummaryDto | null) {
+  if (!donne || !donne.scores) return null;
+
+  return donne.scores.find(
+    (s) => s && s.annonce && s.annonce !== ''
+  ) ?? null;
 }
+
 
 function getPartnerAliasForRow(row) {
   if (!row || !row.partenairePk) return '';
@@ -762,7 +852,7 @@ function getChangeClass(after: number, before: number) {
   
 <!-- Édition d’une donne -->
 {#if selectedDonne}
-  <div class="card edit-donne-card">
+  <div class="card edit-donne-card" bind:this={editDonneSection}>
     <div class="edit-donne-header">
       <div>
         <h2>Éditer donne n° {selectedDonne.donneNumber}</h2>
