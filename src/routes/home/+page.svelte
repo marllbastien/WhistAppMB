@@ -38,7 +38,7 @@
   let continueBtn: HTMLButtonElement | null = null;
   // pour le scroll automatique des champs
   let competitionTypeEl: HTMLSelectElement | null = null;
-  let competitionNumberEl: HTMLInputElement | null = null;
+  let competitionNumberEl: HTMLSelectElement | null = null;
   let mancheEl: HTMLInputElement | null = null;
   let tableEl: HTMLSelectElement | null = null;
 
@@ -54,88 +54,115 @@
   scoringGridCode: string | null;
   usesArbitre: boolean;
   isActive: boolean;
+  todayMancheNumbers?: number[] | null;
   }
 
-// 🔥 définitions de compétition pour le type sélectionné (1,2,3,4)
-let competitionDefinitions: CompetitionDefinition[] = [];
-let definitionsTypeLoaded: CompetitionTypeCode | '' = '';
+  // 🔥 définitions de compétition pour le type sélectionné (1,2,3,4)
+  let competitionDefinitions: CompetitionDefinition[] = [];
+  let definitionsTypeLoaded: CompetitionTypeCode | '' = '';
 
-let libreVariantNumber: string = ''; // toujours utilisé pour le select des libres
+  let libreVariantNumber: string = ''; // toujours utilisé pour le select des libres
 
 
-// 🔥 joueurs autorisés d'après AllowedPlayers
-let allowedPlayersParsed: number[] = [4, 5, 6];   // valeur par défaut
+  // 🔥 joueurs autorisés d'après AllowedPlayers
+  let allowedPlayersParsed: number[] = [4, 5, 6];   // valeur par défaut
 
-    // SessionId pour la config
-    let sessionId = '';
+  // SessionId pour la config
+  let sessionId = '';
 
-    // ✅ Guard + chargement des données dans UN SEUL onMount
-    onMount(async () => {
-    const authorized = localStorage.getItem('authorized') === 'true';
-    if (!authorized) {
-    goto('/');
-    return;
-    }
+  // ✅ Guard + chargement des données dans UN SEUL onMount
+  onMount(async () => {
+  const authorized = localStorage.getItem('authorized') === 'true';
+  if (!authorized) {
+  goto('/');
+  return;
+  }
 
-    ready = true;
+  ready = true;
 
-    // ---- ton ancien onMount commence ici ----
-    let stored = localStorage.getItem('whistSessionId');
-    if (!stored) {
-    stored =
-    (crypto as any).randomUUID?.() ??
-    `${Date.now()}-${Math.random().toString(16).slice(2)}`;
-    localStorage.setItem('whistSessionId', stored);
-    }
-    sessionId = stored;
+  // ---- ton ancien onMount commence ici ----
+  let stored = localStorage.getItem('whistSessionId');
+  if (!stored) {
+  stored =
+  (crypto as any).randomUUID?.() ??
+  `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+  localStorage.setItem('whistSessionId', stored);
+  }
+  sessionId = stored;
 
-    try {
-    const res = await fetch(`${API_BASE_URL}/api/joueurs`);
-    if (!res.ok) {
-    throw new Error('HTTP ' + res.status);
-    }
-    const data = (await res.json()) as ApiPlayer[];
-    availablePlayers = data;
-    } catch (err) {
-    console.error('Erreur chargement joueurs :', err);
-    playersLoadError = 'Impossible de charger la liste des joueurs.';
-    } finally {
-    isLoadingPlayers = false;
-    }
-    });
+  try {
+  const res = await fetch(`${API_BASE_URL}/api/joueurs`);
+  if (!res.ok) {
+  throw new Error('HTTP ' + res.status);
+  }
+  const data = (await res.json()) as ApiPlayer[];
+  availablePlayers = data;
+  } catch (err) {
+  console.error('Erreur chargement joueurs :', err);
+  playersLoadError = 'Impossible de charger la liste des joueurs.';
+  } finally {
+  isLoadingPlayers = false;
+  }
 
-    // 🔁 adapter players / playerIds quand playerCount change
-    $: {
-    const count = Number(playerCount ?? 0);
+  // ---- après le chargement des joueurs ----
 
-    if (count > 0) {
-    players = Array(count)
-    .fill('')
-    .map((_, i) => players[i] ?? '');
+  // Manche libre (3) est toujours disponible
+  availableCompetitionTypes = ['3'];
 
-    playerIds = Array(count)
-    .fill(null)
-    .map((_, i) => playerIds[i] ?? null);
-    } else {
-    players = [];
-    playerIds = [];
-    }
-    }
+  const typesToCheck: CompetitionTypeCode[] = ['1', '2', '4'];
 
-    // 🔁 canContinue (ajout de la logique compétition)
-    $: {
-    const count = Number(playerCount ?? 0);
-    const manche = mancheNumber === '' ? 0 : Number(mancheNumber);
+  for (const t of typesToCheck) {
+  const ok = await hasCompetitionsToday(t);
+  if (ok) {
+  // on recrée un nouveau tableau pour déclencher la réactivité Svelte
+  availableCompetitionTypes = [...availableCompetitionTypes, t];
+  }
+  }
 
-    const filledPlayers = players
-    .slice(0, count)
-    .filter((p) => typeof p === 'string' && p.trim() !== '');
+  console.log('Types de compétition disponibles aujourd’hui :', availableCompetitionTypes);
+  if (!competitionType && availableCompetitionTypes.length === 1) {
+  competitionType = availableCompetitionTypes[0];
+}
+
+
+  });
+
+  // 🔁 adapter players / playerIds quand playerCount change
+  $: {
+  const count = Number(playerCount ?? 0);
+
+  if (count > 0) {
+  players = Array(count)
+  .fill('')
+  .map((_, i) => players[i] ?? '');
+
+  playerIds = Array(count)
+  .fill(null)
+  .map((_, i) => playerIds[i] ?? null);
+  } else {
+  players = [];
+  playerIds = [];
+  }
+  }
+
+  // 🔁 canContinue (ajout de la logique compétition)
+  $: {
+  const count = Number(playerCount ?? 0);
+  const manche = mancheNumber === '' ? 0 : Number(mancheNumber);
+
+  const filledPlayers = players
+  .slice(0, count)
+  .filter((p) => typeof p === 'string' && p.trim() !== '');
 
     // On a besoin d’un type de compétition
     const hasType = competitionType !== '';
 
     // Championnat (1) ou Interclub (2) → numéro obligatoire
-    const needNumber = competitionType === '1' || competitionType === '2';
+    const needNumber =
+  competitionType === '1' ||
+  competitionType === '2' ||
+  competitionType === '4';
+
     const numberOk = !needNumber
       ? true
       : competitionNumber !== '' && Number(competitionNumber) > 0;
@@ -292,14 +319,48 @@ params.set('competitionNumber', compNumberInt != null ? String(compNumberInt) : 
         }, 50);
         }
 
+function getTodayIsoDate(): string {
+  const d = new Date();
+  const yyyy = d.getFullYear();
+  const mm = String(d.getMonth() + 1).padStart(2, '0');
+  const dd = String(d.getDate()).padStart(2, '0');
+  return `${yyyy}-${mm}-${dd}`;
+}
 
-async function loadDefinitionsForType(type: CompetitionTypeCode) {
-  if (!type) return;
-  if (definitionsTypeLoaded === type) return; // déjà chargé pour ce type
+// Vérifie s'il existe au moins une compétition de ce type pour aujourd'hui
+async function hasCompetitionsToday(type: CompetitionTypeCode): Promise<boolean> {
+  if (!type) return false;
+
+  const today = getTodayIsoDate();
 
   try {
     const res = await fetch(
-      `${API_BASE_URL}/api/config/competitions?competitionType=${type}`
+      `${API_BASE_URL}/api/config/competitions?competitionType=${type}&eventDate=${today}`
+    );
+    if (!res.ok) {
+      console.error('Erreur HTTP hasCompetitionsToday', type, res.status);
+      return false;
+    }
+
+    const data = (await res.json()) as any[];
+    return Array.isArray(data) && data.length > 0;
+  } catch (err) {
+    console.error('Erreur réseau hasCompetitionsToday', type, err);
+    return false;
+  }
+}
+
+
+
+async function loadDefinitionsForType(type: CompetitionTypeCode) {
+  if (!type) return;
+  if (definitionsTypeLoaded === type) return; // tu peux garder ou enlever ce cache si tu veux
+
+  try {
+    const today = getTodayIsoDate();
+
+    const res = await fetch(
+      `${API_BASE_URL}/api/config/competitions?competitionType=${type}&eventDate=${today}`
     );
     if (!res.ok) {
       throw new Error('HTTP ' + res.status);
@@ -307,33 +368,141 @@ async function loadDefinitionsForType(type: CompetitionTypeCode) {
 
     const raw = (await res.json()) as any[];
 
-    // 🔥 Normalisation PascalCase -> camelCase
-    competitionDefinitions = raw.map((d) => ({
-      id: d.id ?? d.Id,
-      competitionType: d.competitionType ?? d.CompetitionType,
-      competitionNumber:
-        d.competitionNumber ?? d.CompetitionNumber ?? null,
-      name: d.name ?? d.Name ?? '',
-      allowedPlayers: d.allowedPlayers ?? d.AllowedPlayers ?? null,
-      manchesCount: d.manchesCount ?? d.ManchesCount ?? null,
-      nbreToursPerManche:
-        d.nbreToursPerManche ?? d.NbreToursPerManche ?? null,
-      scoringGridCode: d.scoringGridCode ?? d.ScoringGridCode ?? null,
-      usesArbitre: d.usesArbitre ?? d.UsesArbitre ?? false,
-      isActive: d.isActive ?? d.IsActive ?? true
-    }));
+    competitionDefinitions = raw.map((d) => {
+      const rawToday = d.todayMancheNumbers ?? d.TodayMancheNumbers ?? null;
+
+      let todayMancheNumbers: number[] | null = null;
+      if (rawToday && typeof rawToday === 'string') {
+        todayMancheNumbers = rawToday
+          .split(';')
+          .map((p: string) => parseInt(p.trim(), 10))
+          .filter((n) => !Number.isNaN(n));
+      }
+
+      return {
+        id: d.id ?? d.Id,
+        competitionType: d.competitionType ?? d.CompetitionType,
+        competitionNumber: d.competitionNumber ?? d.CompetitionNumber ?? null,
+        name: d.name ?? d.Name ?? '',
+        allowedPlayers: d.allowedPlayers ?? d.AllowedPlayers ?? null,
+        manchesCount: d.manchesCount ?? d.ManchesCount ?? null,
+        nbreToursPerManche:
+          d.nbreToursPerManche ?? d.NbreToursPerManche ?? null,
+        scoringGridCode: d.scoringGridCode ?? d.ScoringGridCode ?? null,
+        usesArbitre: d.usesArbitre ?? d.UsesArbitre ?? false,
+        isActive: d.isActive ?? d.IsActive ?? true,
+        todayMancheNumbers
+      } as CompetitionDefinition;
+    });
 
     definitionsTypeLoaded = type;
 
-    console.log('Defs normalisées pour type', type, competitionDefinitions);
+    console.log('Defs du jour pour type', type, competitionDefinitions);
+
+    // 🔥 Auto-sélection ici : une seule compétition pour ce type aujourd’hui
+    const isNumberType =
+      type === '1' || type === '2' || type === '4';
+
+    if (
+      isNumberType &&
+      competitionType === type &&              // on est toujours sur ce type
+      competitionNumber === '' &&             // pas encore choisi
+      competitionDefinitions.length === 1
+    ) {
+      const only = competitionDefinitions[0];
+
+      if (only.competitionNumber != null) {
+        competitionNumber = only.competitionNumber;
+
+        setTimeout(() => {
+          scrollToEl(mancheEl);
+        }, 50);
+      }
+    }
+
   } catch (err) {
     console.error('Erreur chargement competitions :', err);
   }
 }
 
 
+let availableMancheNumbers: number[] = [];
+let mancheNumberStr = ''; // pour le <select>
+
+
+// 🔥 Calcul des manches disponibles pour le type sélectionné
+$: {
+  // reset par défaut
+  availableMancheNumbers = [];
+
+  // On ne gère les listes que pour Championnat / Interclub
+  if ((competitionType === '1' || competitionType === '2') &&
+      competitionNumber !== '' &&
+      competitionNumber !== null) {
+
+    const num = Number(competitionNumber);
+    const def = competitionDefinitions.find(
+      (d) => d.competitionNumber === num
+    );
+
+    if (def) {
+      if (competitionType === '1') {
+        // Championnat : on préfère les manches du jour
+        if (def.todayMancheNumbers && def.todayMancheNumbers.length > 0) {
+          availableMancheNumbers = def.todayMancheNumbers;
+        } else if (def.manchesCount && def.manchesCount > 0) {
+          // fallback : 1..ManchesCount
+          availableMancheNumbers = Array.from(
+            { length: def.manchesCount },
+            (_, i) => i + 1
+          );
+        }
+      } else if (competitionType === '2') {
+        // Interclub : s'il y a ManchesCount, on l'utilise, sinon 1 seule manche
+        if (def.manchesCount && def.manchesCount > 0) {
+          availableMancheNumbers = Array.from(
+            { length: def.manchesCount },
+            (_, i) => i + 1
+          );
+        } else {
+          availableMancheNumbers = [1];
+        }
+      }
+    }
+  }
+
+  // si la manche actuellement sélectionnée n'est plus valide → on la vide
+  if (
+    mancheNumber !== '' &&
+    !availableMancheNumbers.includes(Number(mancheNumber))
+  ) {
+    mancheNumber = '';
+  }
+
+  // petit log pour vérifier
+  console.log('Manches dispo pour', {
+    competitionType,
+    competitionNumber,
+    availableMancheNumbers
+  });
+}
+
+
+
 // 🔁 dès qu’on choisit un type, on charge les définitions correspondantes
 $: if (competitionType !== '') {
+
+  competitionNumber = '';
+  libreVariantNumber = '';
+  allowedPlayersParsed = [4, 5, 6]; // valeur par défaut
+  playerCount = null;
+
+  // on efface aussi les joueurs déjà sélectionnés
+  players = [];
+  playerIds = [];
+   competitionDefinitions = [];
+  availableMancheNumbers = [];
+  mancheNumber = '';
   void loadDefinitionsForType(competitionType);
 }
 
@@ -389,17 +558,22 @@ $: {
 }
 
 
+// synchro entre modèle number ('mancheNumber') et valeur string du <select>
+$: if (competitionType === '1' || competitionType === '2') {
+  mancheNumberStr = mancheNumber === '' ? '' : String(mancheNumber);
+}
+
+
+
 // petit helper pour le template (à garder)
 const isPlayerCountAllowed = (n: number) =>
   allowedPlayersParsed.includes(n);
 
 
+// 🔥 Types de compétition disponibles aujourd'hui
+let availableCompetitionTypes: CompetitionTypeCode[] = [];
 
-$: console.log(
-  'TYPE=', competitionType,
-  'NUM=', competitionNumber,
-  'allowedPlayersParsed =', allowedPlayersParsed
-);
+let libreVariantEl: HTMLSelectElement | null = null;
 
 
       </script>
@@ -416,32 +590,50 @@ $: console.log(
     <!-- 🔥 Type de compétition -->
     <div class="field">
       <label>Type de compétition :</label>
-      <select bind:this={competitionTypeEl} bind:value={competitionType}
+<select
+  bind:this={competitionTypeEl}
+  bind:value={competitionType}
   on:change={() => {
-    // s’il faut un numéro → scroll vers ce champ
-    if (competitionType === '1' || competitionType === '2') {
+    if (competitionType === '3') {
+      // Manche libre → 2e box = mode de manche libre
+      scrollToEl(libreVariantEl);
+    } else if (competitionType !== '') {
+      // Championnat / Interclub / Concours → 2e box = (Compétition/Concours du jour)
       scrollToEl(competitionNumberEl);
-    } else {
-      scrollToEl(mancheEl);
     }
-  }}>
+  }}
+>
 
-        <option value="">-- Choisir --</option>
-        <option value="1">Championnat</option>
-        <option value="2">Interclub</option>
-        <option value="3">Manche libre</option>
-        <option value="4">Concours</option>
-      </select>
+  <option value="">-- Choisir --</option>
+
+  {#if availableCompetitionTypes.includes('1')}
+    <option value="1">Championnat</option>
+  {/if}
+
+  {#if availableCompetitionTypes.includes('2')}
+    <option value="2">Interclub</option>
+  {/if}
+
+  {#if availableCompetitionTypes.includes('3')}
+    <option value="3">Manche libre</option>
+  {/if}
+
+  {#if availableCompetitionTypes.includes('4')}
+    <option value="4">Concours</option>
+  {/if}
+</select>
+
     </div>
     
     
-    {#if competitionType === '3'}
+{#if competitionType === '3'}
   <div class="field">
     <label>Mode de manche libre :</label>
     <select
+      bind:this={libreVariantEl}
       bind:value={libreVariantNumber}
       on:change={() => {
-        // on peut éventuellement scroller vers le numéro de manche
+        // après avoir choisi le mode → on passe au numéro de manche
         scrollToEl(mancheEl);
       }}
     >
@@ -455,53 +647,107 @@ $: console.log(
   </div>
 {/if}
 
+
     
     
     
     
 
     <!-- 🔥 Numéro de la compétition (obligatoire pour Championnat/Interclub, optionnel pour Concours) -->
-    {#if competitionType === '1' || competitionType === '2'}
-      <div class="field">
-        <label>Numéro de la compétition :</label>
-       <input
-  bind:this={competitionNumberEl}
-  type="number"
-  min="1"
-  bind:value={competitionNumber}
-  placeholder="Ex : 28"
-  on:blur={() => {
-    if (competitionNumber !== '') scrollToEl(mancheEl);
-  }}
-/>
-
-      </div>
-    {:else if competitionType === '4'}
-      <div class="field">
-        <label>Numéro / édition du concours (optionnel) :</label>
-        <input
-          type="number"
-          min="1"
-          bind:value={competitionNumber}
-          placeholder="Ex : 1"
-        />
-      </div>
+  {#if competitionType === '1' || competitionType === '2'}
+  <div class="field">
+    <label>Compétition du jour :</label>
+    <select
+      bind:this={competitionNumberEl}
+      bind:value={competitionNumber}
+      on:change={() => {
+        if (competitionNumber !== '') scrollToEl(mancheEl);
+      }}
+    >
+      <option value="">-- Choisir une compétition --</option>
+      {#each competitionDefinitions as def}
+        <option value={def.competitionNumber ?? ''}>
+          {#if def.competitionNumber}
+            N° {def.competitionNumber} – {def.name}
+          {:else}
+            {def.name}
+          {/if}
+        </option>
+      {/each}
+    </select>
+    {#if competitionDefinitions.length === 0}
+      <p class="info">
+        Aucune compétition de ce type n'est planifiée pour aujourd'hui.
+      </p>
     {/if}
+  </div>
+{:else if competitionType === '4'}
+  <div class="field">
+    <label>Concours du jour :</label>
+    <select
+         bind:this={competitionNumberEl}
+         bind:value={competitionNumber}
+      on:change={() => {
+        if (competitionNumber !== '') scrollToEl(mancheEl);
+      }}
+    >
+      <option value="">-- Choisir un concours --</option>
+      {#each competitionDefinitions as def}
+        <option value={def.competitionNumber ?? ''}>
+          {#if def.competitionNumber}
+            N° {def.competitionNumber} – {def.name}
+          {:else}
+            {def.name}
+          {/if}
+        </option>
+      {/each}
+    </select>
+    {#if competitionDefinitions.length === 0}
+      <p class="info">
+        Aucun concours n'est planifié pour aujourd'hui.
+      </p>
+    {/if}
+  </div>
+{/if}
 
-    <div class="field">
-      <label>Numéro de la manche :</label>
-     <input
-  bind:this={mancheEl}
-  type="number"
-  bind:value={mancheNumber}
-  min="1"
-  placeholder="Ex : 1"
-  on:blur={() => {
-    if (mancheNumber !== '') scrollToEl(tableEl);
-  }}
-/>
 
-    </div>
+  {#if competitionType === '1' || competitionType === '2'}
+  <!-- 🔥 Championnat / Interclub : menu déroulant -->
+  <div class="field">
+    <label>Numéro de la manche :</label>
+    <select
+      bind:this={mancheEl}
+      bind:value={mancheNumberStr}
+      on:change={() => {
+        // on met à jour le modèle num
+        mancheNumber =
+          mancheNumberStr === '' ? '' : Number(mancheNumberStr);
+        scrollToEl(tableEl);
+      }}
+    >
+      <option value="">-- Choisir --</option>
+      {#each availableMancheNumbers as n}
+        <option value={String(n)}>Manche {n}</option>
+      {/each}
+    </select>
+  </div>
+{:else}
+  <!-- Manche libre / Concours : encodage manuel -->
+  <div class="field">
+    <label>Numéro de la manche :</label>
+    <input
+      bind:this={mancheEl}
+      type="number"
+      bind:value={mancheNumber}
+      min="1"
+      placeholder="Ex : 1"
+      on:blur={() => {
+        if (mancheNumber !== '') scrollToEl(tableEl);
+      }}
+    />
+  </div>
+{/if}
+
 
     <div class="field">
       <label>Nom de la table :</label>
