@@ -435,11 +435,14 @@ $: {
   // reset par défaut
   availableMancheNumbers = [];
 
-  // On ne gère les listes que pour Championnat / Interclub
-  if ((competitionType === '1' || competitionType === '2') &&
-      competitionNumber !== '' &&
-      competitionNumber !== null) {
+  const isListType = competitionType === '1' || competitionType === '2';
 
+  // On ne gère les listes que pour Championnat / Interclub
+  if (
+    isListType &&
+    competitionNumber !== '' &&
+    competitionNumber !== null
+  ) {
     const num = Number(competitionNumber);
     const def = competitionDefinitions.find(
       (d) => d.competitionNumber === num
@@ -451,14 +454,13 @@ $: {
         if (def.todayMancheNumbers && def.todayMancheNumbers.length > 0) {
           availableMancheNumbers = def.todayMancheNumbers;
         } else if (def.manchesCount && def.manchesCount > 0) {
-          // fallback : 1..ManchesCount
           availableMancheNumbers = Array.from(
             { length: def.manchesCount },
             (_, i) => i + 1
           );
         }
       } else if (competitionType === '2') {
-        // Interclub : s'il y a ManchesCount, on l'utilise, sinon 1 seule manche
+        // Interclub
         if (def.manchesCount && def.manchesCount > 0) {
           availableMancheNumbers = Array.from(
             { length: def.manchesCount },
@@ -471,21 +473,22 @@ $: {
     }
   }
 
-  // si la manche actuellement sélectionnée n'est plus valide → on la vide
+  // 🔒 On NE reset la manche que pour les types à liste (1/2)
   if (
+    isListType &&
     mancheNumber !== '' &&
     !availableMancheNumbers.includes(Number(mancheNumber))
   ) {
     mancheNumber = '';
   }
 
-  // petit log pour vérifier
   console.log('Manches dispo pour', {
     competitionType,
     competitionNumber,
     availableMancheNumbers
   });
 }
+
 
 
 

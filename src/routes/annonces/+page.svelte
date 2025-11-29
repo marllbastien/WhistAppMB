@@ -2244,10 +2244,88 @@ function closeFeuillePoints() {
   }
 }
 
+interface PayoutRow {
+  rank: number;
+  amount: number;
+}
+
+// Manche libre + jetons
+let jetonsParJoueur: number | null = null;
+let isLibreWithJetons = false;
+
+// Répartition des gains
+let payouts: PayoutRow[] = [];
+let isLoadingPayouts = false;
+let payoutError = '';
+
+$: {
+  const isLibre = competitionType === 3; // 3 = Manche Libre
+
+  if (isLibre) {
+    // 3 = 4 jetons, 2 = 5 jetons
+    if (competitionNumber === 3) {
+      jetonsParJoueur = 4;
+    } else if (competitionNumber === 2) {
+      jetonsParJoueur = 5;
+    } else {
+      jetonsParJoueur = null;
+    }
+  } else {
+    jetonsParJoueur = null;
+  }
+
+  isLibreWithJetons =
+    isLibre &&
+    jetonsParJoueur !== null &&
+    playerCount != null &&
+    playerCount > 0;
+}
+
+async function loadPayoutsIfNeeded() {
+  if (!isLibreWithJetons || !showEndOfMancheModal || !playerCount) return;
+
+  // si déjà chargée pour cette manche, on ne recharge pas
+  if (payouts.length > 0) return;
+
+  isLoadingPayouts = true;
+  payoutError = '';
+
+  try {
+    const url =
+      `${API_BASE_URL}/api/payout/manche-libre` +
+      `?competitionType=${competitionType}` +
+      `&competitionNumber=${competitionNumber}` +
+      `&playerCount=${playerCount}`;
+
+    const res = await fetch(url);
+
+    if (!res.ok) {
+      throw new Error('HTTP ' + res.status);
+    }
+
+    payouts = await res.json();
+  } catch (e) {
+    console.error(e);
+    payoutError = "Impossible de charger la répartition des gains.";
+    payouts = [];
+  } finally {
+    isLoadingPayouts = false;
+  }
+}
+
+$: if (showEndOfMancheModal && isLibreWithJetons) {
+  loadPayoutsIfNeeded();
+}
 
 
+// Afficher la colonne "Gain" seulement si on a vraiment les données
+$: showGainsInTable =
+  isLibreWithJetons &&
+  !isLoadingPayouts &&
+  !payoutError &&
+  payouts.length > 0;
 
-        </script>
+    </script>
 <!-- Bandeau supérieur + logos extérieurs -->
 <div class="page-header-wrapper">
   <!-- Logo gauche (extérieur) -->
@@ -2518,8 +2596,7 @@ function closeFeuillePoints() {
 
 
 {#if showEndOfMancheModal}
-<div class="modal-backdrop" on:click={() =>
-  showEndOfMancheModal = false}>
+<div class="modal-backdrop" on:click={() => (showEndOfMancheModal = false)}>
   <div class="modal end-manche-modal" on:click|stopPropagation>
     <h3>Manche terminée 🎉</h3>
 
@@ -2527,6 +2604,7 @@ function closeFeuillePoints() {
       La manche est terminée après {rows} donnes.<br />
       Voici le classement final :
     </p>
+
     <div class="manche-infos">
       <span>
         Début : <strong>{mancheStartTime ?? '-'}</strong>
@@ -2535,39 +2613,58 @@ function closeFeuillePoints() {
         Fin : <strong>{mancheEndTime ?? '-'}</strong>
       </span>
       {#if dureeManche}
-      <span>
-        Durée : <strong>{dureeManche}</strong>
-      </span>
+        <span>
+          Durée : <strong>{dureeManche}</strong>
+        </span>
       {/if}
     </div>
+
     <table class="end-manche-table">
       <thead>
         <tr>
           <th>#</th>
           <th>Joueur</th>
           <th>Score</th>
-          <th>Validation</th>
+
+          {#if showGainsInTable}
+            <!-- Manche libre avec jetons + payout dispo -->
+            <th>Gain</th>
+          {:else if !isLibreWithJetons}
+            <!-- Autres types de manches → validation -->
+            <th>Validation</th>
+          {/if}
         </tr>
       </thead>
+
       <tbody>
         {#each classementFinal as j, i}
-        <tr class:winner-row={j.score === leaderScore}>
-          <td>{i + 1}</td>
-          <td>{j.nom}</td>
-          <td>{j.score}</td>
-          <td>
-            <label class="validation-check">
-              <input
-                type="checkbox"
-                bind:checked={validations[j.nom]}
-              />
-              ✔️
-            </label>
-          </td>
-        </tr>
+          <tr class:winner-row={j.score === leaderScore}>
+            <td>{i + 1}</td>
+            <td>{j.nom}</td>
+            <td>{j.score}</td>
+
+            {#if showGainsInTable}
+              <!-- rang = i+1, on prend le gain correspondant -->
+              <td>{payouts[i]?.amount ?? 0}</td>
+            {:else if !isLibreWithJetons}
+              <td>
+                <label class="validation-check">
+                  <input
+                    type="checkbox"
+                    bind:checked={validations[j.nom]}
+                  />
+                  ✔️
+                </label>
+              </td>
+            {/if}
+          </tr>
         {/each}
       </tbody>
     </table>
+
+
+
+
 
     {#if winnerNames}
     <p class="end-manche-congrats">
@@ -2591,7 +2688,7 @@ function closeFeuillePoints() {
       <button
         class="btn-next-manche"
         on:click={goToNextManche}
-        disabled={!allPlayersValidated}
+          disabled={!isLibreWithJetons && !allPlayersValidated}
       >
         Manche suivante
       </button>
@@ -3278,7 +3375,12 @@ function closeFeuillePoints() {
   width: 92%;
   box-shadow: var(--shadow-soft);
   font-size: 0.95rem;
+
+  /* AJOUT 🔥 : empêche les modales normales d'être trop hautes */
+  max-height: 85vh;      /* limite à 85% de la hauteur de l'écran */
+  overflow-y: auto;      /* permet le scroll si contenu trop long */
   }
+
 
   .modal h3 {
   margin-top: 0;
@@ -4296,7 +4398,7 @@ function closeFeuillePoints() {
 
 
   .modal {
-  max-height: 88vh !important;  /* utilise plus d’écran */
+  max-height: 88vh  /* utilise plus d’écran */
   min-height: 60vh;             /* évite une petite modale */
   overflow: auto;               /* scroll interne si besoin */
   }
