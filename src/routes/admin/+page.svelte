@@ -61,9 +61,13 @@
   playerCount: number;
   startTime: string | null;
   endTime: string | null;
+  competitionType: number | null;
+  competitionNumber: number | null;
+  competitionName: string | null;
   donnesCount: number;
   isCompleted: boolean;
   }
+
 
 
 
@@ -74,6 +78,8 @@
   // Tri
   type SortKey =
   | 'tableConfigId'
+  | 'competitionType'
+  | 'competitionNumber'
   | 'tableName'
   | 'mancheNumber'
   | 'playerCount'
@@ -97,6 +103,8 @@
   // Filtres
   let filters = {
   id: '',
+  competitionType: '',
+  competitionNumber: '',
   tableName: '',
   mancheNumber: '',
   playerCount: '',
@@ -112,121 +120,141 @@
   // ID
   if (
   filters.id &&
-  !String(m.tableConfigId).includes(filters.id.trim())
-  ) {
-  return false;
-  }
+      !String(m.tableConfigId).includes(filters.id.trim())
+    ) {
+      return false;
+    }
 
-  // Table
-  if (
-  filters.tableName &&
-  !m.tableName.toLowerCase().includes(filters.tableName.toLowerCase())
-  ) {
-  return false;
-  }
+    // Type de compétition
+    if (filters.competitionType) {
+      // filters.competitionType = "1" | "2" | ...
+      // m.competitionType = number | null
+      if (String(m.competitionType ?? '') !== filters.competitionType) {
+        return false;
+      }
+    }
 
-  // Manche
-  if (
-  filters.mancheNumber &&
-  !String(m.mancheNumber).includes(filters.mancheNumber.trim())
-  ) {
-  return false;
-  }
+    // Numéro de compétition
+    if (
+      filters.competitionNumber &&
+      !String(m.competitionNumber ?? '')
+        .includes(filters.competitionNumber.trim())
+    ) {
+      return false;
+    }
 
-  // Joueurs
-  if (
-  filters.playerCount &&
-  !String(m.playerCount).includes(filters.playerCount.trim())
-  ) {
-  return false;
-  }
+    // Table
+    if (
+      filters.tableName &&
+      !m.tableName.toLowerCase().includes(filters.tableName.toLowerCase())
+    ) {
+      return false;
+    }
 
-  // Donnes
-  if (
-  filters.donnesCount &&
-  !String(m.donnesCount).includes(filters.donnesCount.trim())
-  ) {
-  return false;
-  }
+    // Manche
+    if (
+      filters.mancheNumber &&
+      !String(m.mancheNumber).includes(filters.mancheNumber.trim())
+    ) {
+      return false;
+    }
 
-  // Début (valeur brute de l’API)
-  if (
-  filters.startTime &&
-  !(m.startTime ?? '')
-  .toLowerCase()
-  .includes(filters.startTime.toLowerCase())
-  ) {
-  return false;
-  }
+    // Joueurs
+    if (
+      filters.playerCount &&
+      !String(m.playerCount).includes(filters.playerCount.trim())
+    ) {
+      return false;
+    }
 
-  // Fin
-  if (
-  filters.endTime &&
-  !(m.endTime ?? '')
-  .toLowerCase()
-  .includes(filters.endTime.toLowerCase())
-  ) {
-  return false;
-  }
+    // Donnes
+    if (
+      filters.donnesCount &&
+      !String(m.donnesCount).includes(filters.donnesCount.trim())
+    ) {
+      return false;
+    }
 
-  // Statut
-  if (filters.statut) {
-  const statut = m.isCompleted ? 'terminée' : 'en cours';
-  if (statut !== filters.statut) return false;
-  }
+    // Début (valeur brute de l’API)
+    if (
+      filters.startTime &&
+      !(m.startTime ?? '')
+        .toLowerCase()
+        .includes(filters.startTime.toLowerCase())
+    ) {
+      return false;
+    }
 
-  return true;
+    // Fin
+    if (
+      filters.endTime &&
+      !(m.endTime ?? '')
+        .toLowerCase()
+        .includes(filters.endTime.toLowerCase())
+    ) {
+      return false;
+    }
+
+    // Statut
+    if (filters.statut) {
+      const statut = m.isCompleted ? 'terminée' : 'en cours';
+      if (statut !== filters.statut) return false;
+    }
+
+    return true;
   })
   // 2) Tri
   .sort((a, b) => {
-  if (!sortKey) return 0;
+    if (!sortKey) return 0;
 
-  const va = a[sortKey];
-  const vb = b[sortKey];
+    const va = a[sortKey];
+    const vb = b[sortKey];
 
-  // cas particulier : dates
-  if (sortKey === 'startTime' || sortKey === 'endTime') {
-  const ta = va ? new Date(va as string).getTime() : 0;
-  const tb = vb ? new Date(vb as string).getTime() : 0;
+    // cas particulier : dates
+    if (sortKey === 'startTime' || sortKey === 'endTime') {
+      const ta = va ? new Date(va as string).getTime() : 0;
+      const tb = vb ? new Date(vb as string).getTime() : 0;
 
-  if (ta < tb) return sortDirection === 'asc' ? -1 : 1;
-        if (ta > tb) return sortDirection === 'asc' ? 1 : -1;
-        return 0;
-      }
-
-      // booléen (isCompleted)
-      if (sortKey === 'isCompleted') {
-        const ba = (va as boolean) ? 1 : 0;
-        const bb = (vb as boolean) ? 1 : 0;
-
-        if (ba < bb) return sortDirection === 'asc' ? -1 : 1;
-        if (ba > bb) return sortDirection === 'asc' ? 1 : -1;
-        return 0;
-      }
-
-      // numériques (id, manche, joueurs, donnes)
-      if (
-        sortKey === 'tableConfigId' ||
-        sortKey === 'mancheNumber' ||
-        sortKey === 'playerCount' ||
-        sortKey === 'donnesCount'
-      ) {
-        const na = va as number;
-        const nb = vb as number;
-
-        if (na < nb) return sortDirection === 'asc' ? -1 : 1;
-        if (na > nb) return sortDirection === 'asc' ? 1 : -1;
-        return 0;
-      }
-
-      // texte (tableName)
-      const sa = String(va ?? '').toLowerCase();
-      const sb = String(vb ?? '').toLowerCase();
-
-      if (sa < sb) return sortDirection === 'asc' ? -1 : 1;
-      if (sa > sb) return sortDirection === 'asc' ? 1 : -1;
+      if (ta < tb) return sortDirection === 'asc' ? -1 : 1;
+      if (ta > tb) return sortDirection === 'asc' ? 1 : -1;
       return 0;
-    });
+    }
+
+    // booléen (isCompleted)
+    if (sortKey === 'isCompleted') {
+      const ba = (va as boolean) ? 1 : 0;
+      const bb = (vb as boolean) ? 1 : 0;
+
+      if (ba < bb) return sortDirection === 'asc' ? -1 : 1;
+      if (ba > bb) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    }
+
+    // numériques (id, manche, joueurs, donnes, n° compète)
+    if (
+      sortKey === 'tableConfigId' ||
+  sortKey === 'mancheNumber' ||
+  sortKey === 'playerCount' ||
+  sortKey === 'donnesCount' ||
+  sortKey === 'competitionNumber' ||
+  sortKey === 'competitionType'
+    ) {
+      const na = (va ?? 0) as number;
+      const nb = (vb ?? 0) as number;
+
+      if (na < nb) return sortDirection === 'asc' ? -1 : 1;
+      if (na > nb) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
+    }
+
+    // texte (tableName, competitionName)
+    const sa = String(va ?? '').toLowerCase();
+    const sb = String(vb ?? '').toLowerCase();
+
+    if (sa < sb) return sortDirection === 'asc' ? -1 : 1;
+    if (sa > sb) return sortDirection === 'asc' ? 1 : -1;
+    return 0;
+  });
 
 
 
@@ -278,6 +306,57 @@
   }
   
         
+        const COMP_TYPE_LABEL: Record<number, string> = {
+  1: 'Championnat',
+  2: 'Interclub',
+  3: 'Manche libre',
+  4: 'Concours'
+};
+
+const COMP_TYPE_LABEL_SHORT: Record<number, string> = {
+  1: 'Ch',  // Championnat
+  2: 'IC',  // Interclub
+  3: 'ML',  // Manche libre
+  4: 'CC'   // Concours
+};
+
+function formatCompetitionType(m: AdminMancheHeaderDto): string {
+  if (m.competitionType == null) return '-';
+  return COMP_TYPE_LABEL_SHORT[m.competitionType] ?? `T${m.competitionType}`;
+}
+
+
+function formatCompetitionName(m) {
+  const t = m.competitionType;
+  const num = m.competitionNumber;
+  const name = m.competitionName;
+
+  if (!t) return "-";
+
+  switch (t) {
+    case 1:
+      // Championnat
+      return num ? `Championnat ${num}` : "Championnat";
+
+    case 2:
+      // Interclub
+      return num ? `Interclub ${num}` : "Interclub";
+
+    case 3:
+      // Manche libre → on affiche directement le nom
+      return name ?? "Manche libre";
+
+    case 4:
+      // Concours
+      return num ? `Concours ${num}` : "Concours";
+
+    default:
+      return "-";
+  }
+}
+
+
+        
 </script>
 
 <svelte:head>
@@ -316,139 +395,191 @@
       {:else if manches.length === 0}
         <p>Aucune manche trouvée.</p>
       {:else}
-               <table class="admin-table">
-                 <colgroup>
-                   <col class="col-id" />
-                   <col class="col-table" />
-                   <col class="col-manche" />
-                   <col class="col-joueurs" />
-                   <col class="col-donnes" />
-                   <col class="col-debut" />
-                   <col class="col-fin" />
-                   <col class="col-statut" />
-                 </colgroup>
-          <thead>
-            <tr>
-              <th on:click={() => toggleSort('tableConfigId')}>
-                ID {#if sortKey === 'tableConfigId'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
-              </th>
-              <th on:click={() => toggleSort('tableName')}>
-                Table {#if sortKey === 'tableName'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
-              </th>
-              <th on:click={() => toggleSort('mancheNumber')}>
-                Manche {#if sortKey === 'mancheNumber'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
-              </th>
-              <th on:click={() => toggleSort('playerCount')}>
-                Joueurs {#if sortKey === 'playerCount'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
-              </th>
-              <th on:click={() => toggleSort('donnesCount')}>
-                Donnes {#if sortKey === 'donnesCount'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
-              </th>
-              <th on:click={() => toggleSort('startTime')}>
-                Début {#if sortKey === 'startTime'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
-              </th>
-              <th on:click={() => toggleSort('endTime')}>
-                Fin {#if sortKey === 'endTime'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
-              </th>
-              <th on:click={() => toggleSort('isCompleted')}>
-                Statut {#if sortKey === 'isCompleted'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
-              </th>
-            </tr>
+             <table class="admin-table">
+  <colgroup>
+    <col class="col-id" />
+    <col class="col-type" />
+    <col class="col-compnum" />
 
-            <!-- Ligne de filtres -->
-            <tr class="filter-row">
-              <th>
-                <input
-                  class="filter-input"
-                  type="text"
-                  placeholder="Filtrer..."
-                  bind:value={filters.id}
-                  on:click|stopPropagation
-                />
-              </th>
-              <th>
-                <input
-                  class="filter-input"
-                  type="text"
-                  placeholder="Filtrer..."
-                  bind:value={filters.tableName}
-                  on:click|stopPropagation
-                />
-              </th>
-              <th>
-                <input
-                  class="filter-input"
-                  type="text"
-                  placeholder="Filtrer..."
-                  bind:value={filters.mancheNumber}
-                  on:click|stopPropagation
-                />
-              </th>
-              <th>
-                <input
-                  class="filter-input"
-                  type="text"
-                  placeholder="Filtrer..."
-                  bind:value={filters.playerCount}
-                  on:click|stopPropagation
-                />
-              </th>
-              <th>
-                <input
-                  class="filter-input"
-                  type="text"
-                  placeholder="Filtrer..."
-                  bind:value={filters.donnesCount}
-                  on:click|stopPropagation
-                />
-              </th>
-              <th>
-                <input
-                  class="filter-input"
-                  type="text"
-                  placeholder="Filtrer..."
-                  bind:value={filters.startTime}
-                  on:click|stopPropagation
-                />
-              </th>
-              <th>
-                <input
-                  class="filter-input"
-                  type="text"
-                  placeholder="Filtrer..."
-                  bind:value={filters.endTime}
-                  on:click|stopPropagation
-                />
-              </th>
-              <th>
-                <select
-                  class="filter-input"
-                  bind:value={filters.statut}
-                  on:click|stopPropagation
-                >
-                  <option value="">Tous</option>
-                  <option value="en cours">En cours</option>
-                  <option value="terminée">Terminée</option>
-                </select>
-              </th>
-            </tr>
-          </thead>
+    <col class="col-table" />
+    <col class="col-manche" />
+    <col class="col-joueurs" />
+    <col class="col-donnes" />
+    <col class="col-debut" />
+    <col class="col-fin" />
+    <col class="col-statut" />
+  </colgroup>
 
-          <tbody>
-            {#each filteredSortedManches as m}
-              <tr class="clickable" on:click={() => gotoManche(m.tableConfigId)}>
-                <td>{m.tableConfigId}</td>
-                <td>{m.tableName}</td>
-                <td>{m.mancheNumber}</td>
-                <td>{m.playerCount}</td>
-                <td>{m.donnesCount}</td>
-                <td>{formatDate(m.startTime)}</td>
-                <td>{formatDate(m.endTime)}</td>
-                <td>{m.isCompleted ? 'Terminée' : 'En cours'}</td>
-              </tr>
-            {/each}
-          </tbody>
-        </table>
+               <thead>
+                 <!-- Ligne 1 : en-têtes "généraux" -->
+                 <tr>
+                   <th on:click={() =>
+                     toggleSort('tableConfigId')}>
+                     ID {#if sortKey === 'tableConfigId'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+                   </th>
+
+                   <th  on:click={() =>
+                     toggleSort('competitionType')}>
+                     Type {#if sortKey === 'competitionType'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+                   </th>
+                   <th  on:click={() =>
+                     toggleSort('competitionNumber')}>
+                     N° comp. {#if sortKey === 'competitionNumber'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+                   </th>
+
+                   <th  on:click={() =>
+                     toggleSort('tableName')}>
+                     Table {#if sortKey === 'tableName'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+                   </th>
+                   <th  on:click={() =>
+                     toggleSort('mancheNumber')}>
+                     Manche {#if sortKey === 'mancheNumber'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+                   </th>
+                   <th  on:click={() =>
+                     toggleSort('playerCount')}>
+                     Joueurs {#if sortKey === 'playerCount'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+                   </th>
+                   <th  on:click={() =>
+                     toggleSort('donnesCount')}>
+                     Donnes {#if sortKey === 'donnesCount'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+                   </th>
+                   <th  on:click={() =>
+                     toggleSort('startTime')}>
+                     Début {#if sortKey === 'startTime'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+                   </th>
+                   <th  on:click={() =>
+                     toggleSort('endTime')}>
+                     Fin {#if sortKey === 'endTime'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+                   </th>
+                   <th  on:click={() =>
+                     toggleSort('isCompleted')}>
+                     Statut {#if sortKey === 'isCompleted'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+                   </th>
+                 </tr>
+
+                 <!-- Ligne 3 : filtres -->
+                 <tr class="filter-row">
+                   <th>
+                     <input
+                       class="filter-input"
+                       type="text"
+                       placeholder="Filtrer..."
+                       bind:value={filters.id}
+                       on:click|stopPropagation
+      />
+                   </th>
+                   <th>
+                     <select
+                       class="filter-input"
+                       bind:value={filters.competitionType}
+                       on:click|stopPropagation
+      >
+                       <option value="">Tous</option>
+                       <option value="1">Championnat</option>
+                       <option value="2">Interclub</option>
+                       <option value="3">Manche libre</option>
+                       <option value="4">Concours</option>
+                     </select>
+                   </th>
+                   <th>
+                     <input
+                       class="filter-input"
+                       type="text"
+                       placeholder="N°..."
+                       bind:value={filters.competitionNumber}
+                       on:click|stopPropagation
+      />
+                   </th>
+          
+                   <th>
+                     <input
+                       class="filter-input"
+                       type="text"
+                       placeholder="Filtrer..."
+                       bind:value={filters.tableName}
+                       on:click|stopPropagation
+      />
+                   </th>
+                   <th>
+                     <input
+                       class="filter-input"
+                       type="text"
+                       placeholder="Filtrer..."
+                       bind:value={filters.mancheNumber}
+                       on:click|stopPropagation
+      />
+                   </th>
+                   <th>
+                     <input
+                       class="filter-input"
+                       type="text"
+                       placeholder="Filtrer..."
+                       bind:value={filters.playerCount}
+                       on:click|stopPropagation
+      />
+                   </th>
+                   <th>
+                     <input
+                       class="filter-input"
+                       type="text"
+                       placeholder="Filtrer..."
+                       bind:value={filters.donnesCount}
+                       on:click|stopPropagation
+      />
+                   </th>
+                   <th>
+                     <input
+                       class="filter-input"
+                       type="text"
+                       placeholder="Filtrer..."
+                       bind:value={filters.startTime}
+                       on:click|stopPropagation
+      />
+                   </th>
+                   <th>
+                     <input
+                       class="filter-input"
+                       type="text"
+                       placeholder="Filtrer..."
+                       bind:value={filters.endTime}
+                       on:click|stopPropagation
+      />
+                   </th>
+                   <th>
+                     <select
+                       class="filter-input"
+                       bind:value={filters.statut}
+                       on:click|stopPropagation
+      >
+                       <option value="">Tous</option>
+                       <option value="en cours">En cours</option>
+                       <option value="terminée">Terminée</option>
+                     </select>
+                   </th>
+                 </tr>
+               </thead>
+
+
+
+
+               <tbody>
+    {#each filteredSortedManches as m}
+      <tr class="clickable" on:click={() => gotoManche(m.tableConfigId)}>
+        <td>{m.tableConfigId}</td>
+        <td>{formatCompetitionType(m)}</td>
+        <td>{m.competitionNumber ?? '-'}</td>
+   
+        <td>{m.tableName}</td>
+        <td>{m.mancheNumber}</td>
+        <td>{m.playerCount}</td>
+        <td>{m.donnesCount}</td>
+        <td>{formatDate(m.startTime)}</td>
+        <td>{formatDate(m.endTime)}</td>
+        <td>{m.isCompleted ? 'Terminée' : 'En cours'}</td>
+      </tr>
+    {/each}
+  </tbody>
+</table>
 
       {/if}
     </div>
@@ -537,13 +668,58 @@
   border-collapse: collapse;
   margin-top: 1rem;
   font-size: 0.9rem;
+  table-layout: fixed; /* on garde, c'est bien */
   }
 
-  .admin-table th,
-  .admin-table td {
-  border: 1px solid rgba(51, 65, 85, 0.9);
-  padding: 0.35rem 0.6rem;
+  /* Largeurs des colonnes – total ≈ 100% */
+
+  .col-id {
+  width: 5%;
+  }
+
+  .col-type {
+  width: 8%;
+  }
+
+  .col-compnum {
+  width: 6%;
+  }
+
+  .col-compname {
+  width: 11%;
+  }
+
+  .col-table {
+  width: 7%;
+  }
+
+  .col-manche {
+  width: 7%;
+  }
+
+  .col-joueurs {
+  width: 8%;
+  }
+
+  .col-donnes {
+  width: 8%;
+  }
+
+  .col-debut {
+  width: 15%;
+  }
+
+  .col-fin {
+  width: 15%;
+  }
+
+  .col-statut {
+  width: 10%;
+  }
+
+  .th-group {
   text-align: center;
+  font-weight: 600;
   }
 
   .admin-table th {
@@ -646,13 +822,18 @@
   table-layout: fixed; /* important pour respecter les largeurs ci-dessous */
   }
 
-  /* Largeurs des colonnes (approx comme ta capture 1) */
-  .col-id {
+  .col-type {
   width: 6%;
   }
 
+  .col-compnum {
+  width: 6%;
+  }
+
+  /* on saute col-compname, supprimée */
+
   .col-table {
-  width: 8%;
+  width: 9%;
   }
 
   .col-manche {
@@ -668,16 +849,35 @@
   }
 
   .col-debut {
-  width: 20%;
+  width: 18%;
   }
 
   .col-fin {
-  width: 20%;
+  width: 18%;
   }
 
   .col-statut {
-  width: 20%;
+  width: 12%;
   }
+
+
+
+  /* Centrer tout le contenu des colonnes */
+  .admin-table th,
+  .admin-table td {
+  text-align: center;
+  }
+
+  /* Centrer le texte dans les inputs */
+  .filter-input {
+  text-align: center;
+  }
+
+  /* Centrer le contenu des selects aussi */
+  .filter-input option {
+  text-align: center;
+  }
+
 
 
 </style>

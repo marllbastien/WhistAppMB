@@ -23,6 +23,9 @@
   let rows = 0;
   let donneNumber = 1; // numéro de la donne actuelle
   let playerIds: (number | null)[] = [];
+  
+let competitionType: number | null = null;
+let competitionNumber: number | null = null;
 
   let SessionId = '';
   function scrollToEmballage(player: string) {
@@ -661,6 +664,15 @@ function getDisplayName(p: string): string {
     playerCount = Number(url.searchParams.get('playerCount') ?? '4');
     donneNumber = Number(url.searchParams.get('donneNumber') ?? '1');
 
+
+    // 👉 récupérer le type et le numéro de compétition
+    const compTypeParam = url.searchParams.get('competitionType');
+    competitionType = compTypeParam ? Number(compTypeParam) : null;
+
+    const compNumParam = url.searchParams.get('competitionNumber');
+    competitionNumber = compNumParam ? Number(compNumParam) : null;
+
+
     // --- joueurs (alias) ---
     const playersParam = url.searchParams.get('players');
     players = playersParam
@@ -692,9 +704,12 @@ function getDisplayName(p: string): string {
 
 
     function getDraftStorageKey() {
-    // 🔹 Un brouillon par table + manche (le dernier état connu)
-    return `${DRAFT_STORAGE_PREFIX}-${tableName}-m${mancheNumber}`;
+    const typePart = competitionType ?? 'none';
+    const numPart = competitionNumber ?? 'none';
+
+    return `${DRAFT_STORAGE_PREFIX}-${tableName}-t${typePart}-n${numPart}-m${mancheNumber}`;
     }
+
 
 
     // Ce qu'on stocke comme "état de la donne"
@@ -712,9 +727,12 @@ function getDisplayName(p: string): string {
     resultats,
     dames,
     history,
-    mancheStartTime
+    mancheStartTime,
+    competitionType,
+    competitionNumber
     };
     }
+
 
     // Appliquer un brouillon sur l'écran
     function applyDraft(payload: any) {
@@ -726,6 +744,12 @@ function getDisplayName(p: string): string {
     if (payload.tableName !== undefined) tableName = payload.tableName;
     if (payload.mancheNumber !== undefined) mancheNumber = payload.mancheNumber as any;
     if (payload.donneNumber !== undefined) donneNumber = payload.donneNumber;
+    if (payload.competitionType !== undefined) {
+    competitionType = payload.competitionType ?? null;
+    }
+    if (payload.competitionNumber !== undefined) {
+    competitionNumber = payload.competitionNumber ?? null;
+    }
     if (payload.playerCount !== undefined) {
     playerCount = payload.playerCount;
     if (payload.mancheStartTime !== undefined) {
@@ -784,7 +808,9 @@ function getDisplayName(p: string): string {
     body: JSON.stringify({
     SessionId,
     tableName,
-    mancheNumber: Number(mancheNumber)
+    mancheNumber: Number(mancheNumber),
+    competitionType,
+    competitionNumber
     })
     });
 
@@ -830,11 +856,15 @@ function getDisplayName(p: string): string {
     SessionId,
     tableName,
     mancheNumber: Number(mancheNumber),
+    donneNumber,
     playerCount,
-    payloadJson
+    payloadJson,
+    competitionType,
+    competitionNumber
     })
     });
     }
+
 
     // 🔄 Envoi des infos de timing de la manche vers la DB (WhistTableConfig)
     async function saveMancheTimingToServer(dureeMinutes: number) {
@@ -2121,7 +2151,8 @@ function selectDames(player: string, value: number) {
     if (typeof window !== 'undefined') {
     try {
     // Préfixe de toutes les clés localStorage pour cette manche
-    const prefix = `${DRAFT_STORAGE_PREFIX}-${tableName}-m${mancheNumber}`;
+   const prefix = `${DRAFT_STORAGE_PREFIX}-${tableName}-t${competitionType ?? 'none'}-n${competitionNumber ?? 'none'}-m${mancheNumber}`;
+
 
     // On parcourt toutes les clés du localStorage
     for (let i = 0; i < localStorage.length; i++) {
@@ -2138,15 +2169,18 @@ function selectDames(player: string, value: number) {
   
   // 2️ Nettoyage serveur (WhistDonneDraft)
   try {
-    await fetch(`${API_BASE_URL}/api/draft/delete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        SessionId,
-        tableName,
-        mancheNumber: Number(mancheNumber)
-      })
-    });
+  await fetch(`${API_BASE_URL}/api/draft/delete`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    SessionId,
+    tableName,
+    mancheNumber: Number(mancheNumber),
+    competitionType,
+    competitionNumber
+  })
+});
+
   } catch (err) {
     console.error("Erreur lors du nettoyage du draft serveur :", err);
   }
@@ -2159,7 +2193,8 @@ async function goBackHome() {
 markMancheClean();
   // Nettoyage drafts locaux
   try {
-    const prefix = `${DRAFT_STORAGE_PREFIX}-${tableName}-m${mancheNumber}`;
+    const prefix = `${DRAFT_STORAGE_PREFIX}-${tableName}-t${competitionType ?? 'none'}-n${competitionNumber ?? 'none'}-m${mancheNumber}`;
+
     for (let i = 0; i < localStorage.length; i++) {
       const key = localStorage.key(i);
       if (key && key.startsWith(prefix)) {
@@ -2172,15 +2207,18 @@ markMancheClean();
 
   // Nettoyage serveur
   try {
-    await fetch(`${API_BASE_URL}/api/draft/delete`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({
-        SessionId,
-        tableName,
-        mancheNumber: Number(mancheNumber)
-      })
-    });
+   await fetch(`${API_BASE_URL}/api/draft/delete`, {
+  method: "POST",
+  headers: { "Content-Type": "application/json" },
+  body: JSON.stringify({
+    SessionId,
+    tableName,
+    mancheNumber: Number(mancheNumber),
+    competitionType,
+    competitionNumber
+  })
+});
+
   } catch (e) {
     console.error("Erreur nettoyage draft serveur :", e);
   }
