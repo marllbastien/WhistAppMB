@@ -23,9 +23,9 @@
   let rows = 0;
   let donneNumber = 1; // numéro de la donne actuelle
   let playerIds: (number | null)[] = [];
-  
-let competitionType: number | null = null;
-let competitionNumber: number | null = null;
+
+  let competitionType: number | null = null;
+  let competitionNumber: number | null = null;
 
   let SessionId = '';
   function scrollToEmballage(player: string) {
@@ -54,6 +54,13 @@ let competitionNumber: number | null = null;
   // 🔐 Manche en cours : protège la navigation (flèche arrière, changement de page)
   let hasUnsavedManche = false;
 
+  // ⚠️ Modale "quitter la manche"
+  let showLeaveModal = false;
+  let pendingNav: any = null;    // navigation en attente (back, lien, etc.)
+  let ignoreNextNav = false;     // pour ne pas rebloquer après validation
+
+
+
   function markMancheDirty() {
   if (!mancheTerminee) {
   hasUnsavedManche = true;
@@ -66,18 +73,65 @@ let competitionNumber: number | null = null;
   // 🔁 Interception de la navigation (flèche arrière, liens, goto, etc.)
   if (browser) {
   beforeNavigate((nav) => {
-  console.log('beforeNavigate', nav); // pour vérifier dans la console
+  console.log('beforeNavigate', nav);
 
+  // Rien à protéger
   if (!hasUnsavedManche) return;
 
-  const ok = confirm(
-  "Voulez-vous vraiment quitter l'encodage de la manche en cours ?\n\n"
-  );
-
-  if (!ok) {
-  nav.cancel();
+  // Navigation déclenchée par notre propre goto après confirmation
+  if (ignoreNextNav) {
+  ignoreNextNav = false;
+  return;
   }
+
+  // Cas spécial : on quitte complètement l'app (reload, fermer l'onglet, changer d'URL)
+  // → on garde le confirm natif, c'est le seul truc fiable ici
+  if (nav.type === 'leave') {
+  const ok = confirm(
+  "Voulez-vous vraiment quitter l'encodage de la manche en cours ?\n\n" +
+  "(Cette fenêtre ou cet onglet va être fermée.)"
+  );
+  if (!ok) nav.cancel();
+  return;
+  }
+
+  // Pour toutes les navigations internes (back, liens, goto...) → jolie modale
+  nav.cancel();              // on bloque
+  pendingNav = nav;          // on mémorise où on voulait aller
+  showLeaveModal = true;     // on ouvre la modale
   });
+  }
+
+
+  function cancelLeave() {
+  showLeaveModal = false;
+  pendingNav = null;
+  }
+
+  // ⚠ Quitter quand même (on laisse partir la navigation qui était prévue)
+  function confirmLeave() {
+  if (!pendingNav) {
+  showLeaveModal = false;
+  return;
+  }
+
+  const nav = pendingNav;
+  pendingNav = null;
+  showLeaveModal = false;
+
+  // On ne veut plus bloquer la navigation pour cette fois
+  hasUnsavedManche = false;
+  ignoreNextNav = true;
+
+  // Types de navigation internes : link / form / goto
+  if (nav.to?.url) {
+  const u = nav.to.url;
+  const href = `${u.pathname}${u.search}${u.hash}`;
+  goto(href, { replaceState: nav.replaceState });
+  } else if (nav.type === 'popstate') {
+  // L'utilisateur avait cliqué sur "Retour" du navigateur
+  history.back();
+  }
   }
 
 
@@ -91,7 +145,7 @@ let competitionNumber: number | null = null;
   // Dates complètes (pour la DB)
   let mancheStartDate: string | null = null; // ISO string
   let mancheEndDate: string | null = null;   // ISO string
-
+  let duree: string | null = null; // 🔥 pour l’affichage "⏱ 32 min"
 
   function scrollToResultSection() {
   if (typeof window === 'undefined') return;
@@ -728,6 +782,10 @@ function getDisplayName(p: string): string {
     dames,
     history,
     mancheStartTime,
+    mancheStartDate,
+    mancheEndTime,
+    mancheEndDate,
+    dureeManche,
     competitionType,
     competitionNumber
     };
@@ -752,13 +810,27 @@ function getDisplayName(p: string): string {
     }
     if (payload.playerCount !== undefined) {
     playerCount = payload.playerCount;
-    if (payload.mancheStartTime !== undefined) {
-    mancheStartTime = payload.mancheStartTime;
-    }
 
 
     // 👉 IMPORTANT : recalcul du nombre total de donnes
     rows = playerCount === 4 ? 16 : playerCount === 5 ? 20 : 24;
+    }
+
+    // 🔥 Restaurer le timing de la manche
+    if (payload.mancheStartTime !== undefined) {
+    mancheStartTime = payload.mancheStartTime;
+    }
+    if (payload.mancheStartDate !== undefined) {
+    mancheStartDate = payload.mancheStartDate;
+    }
+    if (payload.mancheEndTime !== undefined) {
+    mancheEndTime = payload.mancheEndTime;
+    }
+    if (payload.mancheEndDate !== undefined) {
+    mancheEndDate = payload.mancheEndDate;
+    }
+    if (payload.dureeManche !== undefined) {
+    dureeManche = payload.dureeManche;
     }
 
     if (payload.players) players = payload.players;
@@ -963,38 +1035,42 @@ function getDisplayName(p: string): string {
   const diffMs = dateFin.getTime() - debut.getTime();
   if (diffMs <= 0) return '0 min';
 
-  const totalMin = Math.round(diffMs / 60000);
-  const heures = Math.floor(totalMin / 60);
-  const minutes = totalMin % 60;
+    const totalMin = Math.round(diffMs / 60000);
+    const heures = Math.floor(totalMin / 60);
+    const minutes = totalMin % 60;
 
-  if (heures === 0) return `${totalMin} min`;
-  if (minutes === 0) return `${heures} h`;
-  return `${heures} h ${minutes} min`;
-}
-
-
+    if (heures === 0) return `${totalMin} min`;
+    if (minutes === 0) return `${heures} h`;
+    return `${heures} h ${minutes} min`;
+    }
 
 
-$: duree = calculerDuree(mancheStartTime);
 
- let interval;
+
+    $: duree = calculerDuree(mancheStartTime);
+
+     let interval: number | null = null;
 
 onMount(() => {
-    interval = setInterval(() => {
-        // force Svelte à recalculer la durée
-        duree = calculerDuree(mancheStartTime);
-    }, 60000); // toutes les 60 secondes
+  if (!browser) return;
+
+  interval = window.setInterval(() => {
+    duree = calculerDuree(mancheStartTime);
+  }, 60000);
 });
 
 onDestroy(() => {
+  if (interval !== null) {
     clearInterval(interval);
+  }
 });
-     
-      
-      
 
 
-function getSoloButtons(code: string): number[] {
+
+
+
+
+    function getSoloButtons(code: string): number[] {
     const base = getSoloBasePlis(code);
 
     // règle : on propose 3 en moins que le nombre de plis annoncés
@@ -2145,86 +2221,73 @@ function selectDames(player: string, value: number) {
     }
     }
 
+function clearLocalDrafts() {
+  if (typeof window === 'undefined') return;
 
-    async function goToNextManche() {
-    markMancheClean(); 
-    if (typeof window !== 'undefined') {
-    try {
-    // Préfixe de toutes les clés localStorage pour cette manche
-   const prefix = `${DRAFT_STORAGE_PREFIX}-${tableName}-t${competitionType ?? 'none'}-n${competitionNumber ?? 'none'}-m${mancheNumber}`;
+  const prefix = `${DRAFT_STORAGE_PREFIX}-${tableName}-t${competitionType ?? 'none'}-n${competitionNumber ?? 'none'}-m${mancheNumber}`;
 
-
-    // On parcourt toutes les clés du localStorage
-    for (let i = 0; i < localStorage.length; i++) {
-        const key = localStorage.key(i);
-        if (key && key.startsWith(prefix)) {
-          localStorage.removeItem(key);
-        }
-      }
-    } catch (e) {
-      console.error("Erreur lors du nettoyage des drafts locaux :", e);
+  const keysToDelete: string[] = [];
+  for (let i = 0; i < localStorage.length; i++) {
+    const key = localStorage.key(i);
+    if (key && key.startsWith(prefix)) {
+      keysToDelete.push(key);
     }
   }
-  
-  
-  // 2️ Nettoyage serveur (WhistDonneDraft)
-  try {
-  await fetch(`${API_BASE_URL}/api/draft/delete`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    SessionId,
-    tableName,
-    mancheNumber: Number(mancheNumber),
-    competitionType,
-    competitionNumber
-  })
-});
 
+  for (const key of keysToDelete) {
+    localStorage.removeItem(key);
+  }
+}
+
+async function goToNextManche() {
+  markMancheClean();
+
+  clearLocalDrafts(); // 🔥
+
+  try {
+    await fetch(`${API_BASE_URL}/api/draft/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        SessionId,
+        tableName,
+        mancheNumber: Number(mancheNumber),
+        competitionType,
+        competitionNumber
+      })
+    });
   } catch (err) {
     console.error("Erreur lors du nettoyage du draft serveur :", err);
   }
 
-  // Retour page d’accueil
   goto('/home');
 }
 
+
 async function goBackHome() {
-markMancheClean();
-  // Nettoyage drafts locaux
+  markMancheClean();
+
+  clearLocalDrafts(); // 🔥
+
   try {
-    const prefix = `${DRAFT_STORAGE_PREFIX}-${tableName}-t${competitionType ?? 'none'}-n${competitionNumber ?? 'none'}-m${mancheNumber}`;
-
-    for (let i = 0; i < localStorage.length; i++) {
-      const key = localStorage.key(i);
-      if (key && key.startsWith(prefix)) {
-        localStorage.removeItem(key);
-      }
-    }
-  } catch (e) {
-    console.error("Erreur nettoyage localStorage :", e);
-  }
-
-  // Nettoyage serveur
-  try {
-   await fetch(`${API_BASE_URL}/api/draft/delete`, {
-  method: "POST",
-  headers: { "Content-Type": "application/json" },
-  body: JSON.stringify({
-    SessionId,
-    tableName,
-    mancheNumber: Number(mancheNumber),
-    competitionType,
-    competitionNumber
-  })
-});
-
+    await fetch(`${API_BASE_URL}/api/draft/delete`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        SessionId,
+        tableName,
+        mancheNumber: Number(mancheNumber),
+        competitionType,
+        competitionNumber
+      })
+    });
   } catch (e) {
     console.error("Erreur nettoyage draft serveur :", e);
   }
 
   goto('/');
 }
+
 
 function openScoreSheet() {
   // On ferme le modal de fin de manche si besoin
@@ -2592,6 +2655,38 @@ $: showGainsInTable =
 </div>
 {/if}
 
+{#if showLeaveModal}
+  <div class="modal-backdrop" on:click={cancelLeave}>
+    <div class="modal leave-modal" on:click|stopPropagation>
+      <div class="warning-icon">
+  <div class="warning-triangle">
+    <span>!</span>
+  </div>
+</div>
+
+      <h3>Quitter la manche en cours ?</h3>
+
+      <p>
+        Vous avez une manche en cours d'encodage.<br />
+        Si vous quittez maintenant, vous risquez de perdre des données
+        ou de bloquer la table pour les autres joueurs.
+      </p>
+
+      <p class="leave-warning">
+        Êtes-vous sûr(e) de vouloir quitter cette manche ?
+      </p>
+
+      <div class="modal-actions">
+        <button class="danger" on:click={confirmLeave}>
+          Quitter quand même
+        </button>
+        <button class="secondary" on:click={cancelLeave}>
+          Rester sur la manche
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 
 
 
@@ -4554,6 +4649,139 @@ $: showGainsInTable =
   margin: 1.2rem auto 0 auto;   /* 🔥 centré horizontalement */
   }
 
+  /* 🔔 Modale "quitter la manche" */
+
+  .leave-modal {
+  max-width: 480px;
+  text-align: center;
+  box-shadow:
+  0 0 40px rgba(250, 204, 21, 0.23),
+  0 0 0 1px rgba(250, 204, 21, 0.08);
+  }
+
+  .leave-modal h3 {
+  margin-top: 0;
+  margin-bottom: 0.75rem;
+  font-size: 1.1rem;
+  color: #fde68a; /* jaune doux */
+  }
+
+  .leave-modal p {
+  margin: 0.25rem 0;
+  }
+
+  .leave-warning {
+  margin-top: 0.75rem;
+  font-size: 0.95rem;
+  font-weight: 600;
+  color: #f97316; /* orange avertissement */
+  }
+
+  .modal-actions {
+  margin-top: 1.4rem;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.75rem;
+  }
+
+  .modal-actions .danger {
+  background: #7f1d1d;
+  border-color: #f97316;
+  color: #fff;
+  padding-inline: 1.8rem;
+  }
+
+  .modal-actions .danger:hover {
+  background: #991b1b;
+  }
+
+  .modal-actions .secondary {
+  background: transparent;
+  border-color: #64748b;
+  color: #e5e7eb;
+  }
+
+  .modal-actions .secondary:hover {
+  background: rgba(15, 23, 42, 0.8);
+  }
+
+  /* Conteneur de l’icône */
+  .warning-icon {
+  display: flex;
+  justify-content: center;
+  margin-bottom: 0.6rem;
+  }
+
+  /* Cercle doré premium */
+  .warning-triangle {
+  width: 65px;
+  height: 65px;
+  border-radius: 50%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+
+  /* 🌟 disque doré, centre moins blanc */
+  background: radial-gradient(circle at 30% 30%,
+  #fee9a8 0%,
+  #fddf6a 35%,
+  #f4a21c 70%,
+  #b45309 100%
+  );
+
+  /* halo doré */
+  box-shadow:
+  0 0 12px rgba(250, 204, 21, 0.6),
+  0 0 30px rgba(250, 160, 30, 0.4);
+
+  /* 🔥 flash casino */
+  animation: warning-pulse 1.2s ease-in-out infinite;
+  }
+
+  /* Point d’exclamation premium */
+  .warning-triangle span {
+  position: relative;
+  z-index: 1;
+
+  font-size: 2.4rem;
+  font-weight: 900;
+
+  /* 🎯 bien contrasté, presque noir */
+  color: #111827 !important;
+
+  /* on annule toute ancienne astuce de texte transparent */
+  background: none !important;
+  -webkit-background-clip: initial;
+  -webkit-text-fill-color: initial;
+
+  /* halo doré autour pour le côté casino */
+  text-shadow:
+  0 0 3px rgba(255, 255, 255, 0.9),
+  0 0 8px rgba(250, 204, 21, 0.8);
+  }
+
+  /* Animation douce casino */
+  @keyframes warning-pulse {
+  0% {
+  transform: scale(1);
+  box-shadow:
+  0 0 10px rgba(250, 204, 21, 0.5),
+  0 0 25px rgba(250, 160, 30, 0.35);
+  }
+  40% {
+  transform: scale(1.08);
+  box-shadow:
+  0 0 18px rgba(250, 204, 21, 0.9),
+  0 0 45px rgba(250, 160, 30, 0.55);
+  }
+  100% {
+  transform: scale(1);
+  box-shadow:
+  0 0 10px rgba(250, 204, 21, 0.5),
+  0 0 25px rgba(250, 160, 30, 0.35);
+  }
+  }
 
 
 

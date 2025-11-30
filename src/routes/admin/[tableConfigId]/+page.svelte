@@ -115,55 +115,60 @@ $: if (detail?.finalScores) {
   let feuillePoints: {
   donneNumber: number;
   annonce: string;
-  scores: Record<string, { score: number; cumul: number }>;
-}[] = [];
+  scores: Record<string, { score: number; cumul: number }>
+    ;
+    }[] = [];
 
-  let detail: AdminMancheDetailDto | null = null;
-  let isLoading = false;
-  let loadError = '';
+    let detail: AdminMancheDetailDto | null = null;
+    let isLoading = false;
+    let loadError = '';
 
-  // --- Edition de donne ---
-  let selectedDonne: AdminDonneSummaryDto | null = null;
-  let editAnnonce = '';
-  let editHasArbitre = false;
-  
-  let saving = false;
-  let saveMessage = '';
+    // --- Edition de donne ---
+    let selectedDonne: AdminDonneSummaryDto | null = null;
+    let editAnnonce = '';
+    let editHasArbitre = false;
 
-  // Récupère l'id dynamique dans l'URL /admin/38, etc.
-  $: tableConfigId = Number($page.params.tableConfigId);
 
-  function formatDate(d: string | null) {
+    let isNewDonne = false;
+    
+    
+    let saving = false;
+    let saveMessage = '';
+
+    // Récupère l'id dynamique dans l'URL /admin/38, etc.
+    $: tableConfigId = Number($page.params.tableConfigId);
+
+    function formatDate(d: string | null) {
     if (!d) return '-';
     return new Date(d).toLocaleString('fr-BE');
-  }
+    }
 
-  onMount(() => {
+    onMount(() => {
     loadDetail();
-      loadConfig();
-  });
+    loadConfig();
+    });
 
-  async function loadDetail() {
+    async function loadDetail() {
     isLoading = true;
     loadError = '';
     saveMessage = '';
     selectedDonne = null;
 
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/manches/${tableConfigId}`);
-      if (!res.ok) throw new Error(`HTTP ${res.status}`);
-      detail = await res.json();
+    const res = await fetch(`${API_BASE_URL}/api/admin/manches/${tableConfigId}`);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    detail = await res.json();
     } catch (err: any) {
-      console.error(err);
-      loadError = "Impossible de charger le détail de la manche.";
+    console.error(err);
+    loadError = "Impossible de charger le détail de la manche.";
     } finally {
-      isLoading = false;
+    isLoading = false;
     }
-  }
+    }
 
-  function getEtatsForAnnonce(code: string | null): string[] {
-  if (!code) return [];
-  const set = new Set<string>();
+    function getEtatsForAnnonce(code: string | null): string[] {
+    if (!code) return [];
+    const set = new Set<string>();
   for (const g of grilleConfig) {
     if (g.code === code && g.kind === 'etat' && g.etat) {
       set.add(g.etat);
@@ -306,6 +311,66 @@ async function openEdit(donne: AdminDonneSummaryDto) {
   }
 }
 
+  function createEmptyDonne(donneNumber: number): AdminDonneSummaryDto {
+    if (!detail) {
+      throw new Error('Impossible de créer une donne sans détail de manche');
+    }
+
+    const scores = detail.players.map((p) => ({
+      playerId: p.playerId,
+      alias: p.alias,
+      annonce: '',
+      partenairePk: '',
+      plis: null,
+      resultat: '',
+      dames: null,
+      arbitre: false,
+      score: 0,
+      cumul: 0
+    }));
+
+    return {
+      donneNumber,
+      annoncePrincipale: '',
+      hasArbitre: false,
+      scores
+    };
+  }
+
+
+
+  async function startAddDonne() {
+    if (!detail) return;
+
+    // on se met en mode création
+    isNewDonne = true;
+
+    // par défaut, on propose "après la dernière"
+    const nextNumber = (detail.donnes?.length ?? 0) + 1;
+
+    selectedDonne = createEmptyDonne(nextNumber);
+
+    editAnnonce = '';
+    editHasArbitre = false;
+    saveMessage = '';
+    previewError = '';
+
+    // prévisualisation initiale = scores à 0
+    previewInitial = detail.players.map((p) => ({
+      playerId: p.playerId,
+      alias: p.alias,
+      scoreDonne: 0,
+      cumul: 0
+    }));
+    previewResult = null;
+
+    await tick();
+    if (editDonneSection) {
+      editDonneSection.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
+
+
 
 
 async function openFeuillePoints() {
@@ -375,6 +440,7 @@ async function loadConfig() {
 
 function closeEdit() {
   selectedDonne = null;
+  isNewDonne = false; 
   previewInitial = [];
   previewResult = null;
   previewError = '';
@@ -589,34 +655,57 @@ async function previewDonne() {
 
 
 
+  async function saveDonne() {
+    if (!detail || !selectedDonne) return;
 
-async function saveDonne() {
-  if (!detail || !selectedDonne) return;
+    saving = true;
+    saveMessage = '';
 
-  saving = true;
-  saveMessage = '';
-
-  const payloadUpdate = {
-    tableConfigId: detail.tableConfigId,
-    mancheNumber: detail.mancheNumber,
-    donneNumber: selectedDonne.donneNumber,
-    annoncePrincipale: editAnnonce || null,
-    hasArbitre: editHasArbitre,
-    scores: selectedDonne.scores.map((s) => {
-      // on convertit partenairePk en nombre si présent
+    // construction commune des scores
+    const scoresPayload = selectedDonne.scores.map((s) => {
       const partenairePkNum =
         s.partenairePk === '' || s.partenairePk == null
           ? null
           : Number(s.partenairePk);
 
-      // on retrouve le partenaire dans la liste des joueurs
       const partner = detail.players.find((p) => p.playerId === partenairePkNum);
 
       return {
         joueurPk: s.playerId,
-          alias: s.alias,    
+        alias: s.alias,
         annonce: s.annonce || null,
-        // on envoie la PK en string (comme dans ton preview)
+        partenairePk: partenairePkNum != null ? String(partenairePkNum) : null,
+        partenaireAlias: partner ? partner.alias : null,
+        plis: s.plis === '' || s.plis == null ? null : Number(s.plis),
+        resultat: s.resultat || null,
+        dames: s.dames === '' || s.dames == null ? null : Number(s.dames),
+        arbitre: !!s.arbitre
+      };
+    });
+
+    try {
+      let res: Response;
+
+    if (isNewDonne) {
+  const payloadInsert = {
+    tableConfigId: detail.tableConfigId,
+    TableName : detail.tableName,
+    mancheNumber: detail.mancheNumber,
+    insertionDonneNumber: selectedDonne.donneNumber,   // 🔥 numéro choisi
+    annoncePrincipale: editAnnonce || null,
+    hasArbitre: editHasArbitre,
+    scores: selectedDonne.scores.map((s) => {
+      const partenairePkNum =
+        s.partenairePk === '' || s.partenairePk == null
+          ? null
+          : Number(s.partenairePk);
+
+      const partner = detail.players.find((p) => p.playerId === partenairePkNum);
+
+      return {
+        joueurPk: s.playerId,
+        alias: s.alias,    // 🔥 utilisé pour la colonne Joueur
+        annonce: s.annonce || null,
         partenairePk: partenairePkNum != null ? String(partenairePkNum) : null,
         partenaireAlias: partner ? partner.alias : null,
         plis: s.plis === '' || s.plis == null ? null : Number(s.plis),
@@ -627,40 +716,38 @@ async function saveDonne() {
     })
   };
 
-  console.log('Update payload', payloadUpdate);
+  await fetch(`${API_BASE_URL}/api/admin/donne/insert`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify(payloadInsert)
+  });
 
-  try {
-    // 1) UPDATE des inputs de la donne
-    let res = await fetch(`${API_BASE_URL}/api/admin/donne/update`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payloadUpdate)
-    });
-    if (!res.ok) throw new Error(`Update donne HTTP ${res.status}`);
+  // puis recalc complet de la manche via ton endpoint existant
+  await fetch(`${API_BASE_URL}/api/admin/donne/recalc`, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      tableConfigId: detail.tableConfigId,
+      mancheNumber: detail.mancheNumber,
+      donneNumber: selectedDonne.donneNumber
+    })
+  });
 
-    // 2) RECALCUL des ScoreDonne + CumulApres de toute la manche
-    res = await fetch(`${API_BASE_URL}/api/admin/donne/recalc`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify({
-        tableConfigId: detail.tableConfigId,
-        mancheNumber: detail.mancheNumber,
-        donneNumber: selectedDonne.donneNumber
-      })
-    });
-    if (!res.ok) throw new Error(`Recalc donne HTTP ${res.status}`);
-
-    saveMessage = 'Donne enregistrée et scores recalculés ✅';
-
-    // 3) Rechargement du détail (scores finaux + donnes)
-    await loadDetail();
-  } catch (err) {
-    console.error(err);
-    saveMessage = "Erreur lors de l'enregistrement.";
-  } finally {
-    saving = false;
-  }
+  saveMessage = 'Nouvelle donne ajoutée et scores recalculés ✅';
 }
+
+      // 3) Rechargement du détail (scores finaux + donnes)
+      await loadDetail();
+      // on peut rester sur l’écran, mais on n’est plus en "nouvelle"
+      isNewDonne = false;
+    } catch (err) {
+      console.error(err);
+      saveMessage = "Erreur lors de l'enregistrement.";
+    } finally {
+      saving = false;
+    }
+  }
+
 
 
 
@@ -789,9 +876,17 @@ function getChangeClass(after: number, before: number) {
     <!-- Liste des donnes -->
   <!-- Donnes de la manche -->
 <div class="card">
-  <h2>Donnes de la manche</h2>
+  <div class="card-header-row">
+    <h2>Donnes de la manche</h2>
+
+    <!-- 🔥 Nouveau bouton d’ajout -->
+    <button type="button" on:click={startAddDonne}>
+      ➕ Ajouter une donne
+    </button>
+  </div>
 
   <table class="donnes-table compact-donnes-table">
+
     <thead>
       <tr>
         <th>#</th>
@@ -852,15 +947,42 @@ function getChangeClass(after: number, before: number) {
   
 <!-- Édition d’une donne -->
 {#if selectedDonne}
-  <div class="card edit-donne-card" bind:this={editDonneSection}>
+   <div class="card edit-donne-card" bind:this={editDonneSection}>
     <div class="edit-donne-header">
       <div>
-        <h2>Éditer donne n° {selectedDonne.donneNumber}</h2>
+        <h2>
+          {#if isNewDonne}
+            Nouvelle donne
+          {:else}
+            Éditer donne n° {selectedDonne.donneNumber}
+          {/if}
+        </h2>
         <div class="edit-donne-meta">
           <span>Table {detail?.tableName}</span>
           <span>Manche {detail?.mancheNumber}</span>
         </div>
+
+        {#if isNewDonne}
+          <!-- 🔥 choix du numéro de la nouvelle donne -->
+          <div class="edit-donne-insert-row">
+            <label>
+              Numéro de la nouvelle donne :
+              <input
+                type="number"
+                min="1"
+                max={(detail?.donnes?.length ?? 0) + 1}
+                bind:value={selectedDonne.donneNumber}
+              />
+            </label>
+            <p class="hint">
+              Les donnes à partir de ce numéro seront décalées vers le bas
+              et les scores cumulés de la manche seront recalculés.
+            </p>
+          </div>
+        {/if}
       </div>
+
+
 
       <!-- Donne arbitrée à droite -->
     
@@ -1773,6 +1895,32 @@ function getChangeClass(after: number, before: number) {
   font-weight: 700;
   color: #facc15;
   }
+
+  .card-header-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 0.75rem;
+  }
+
+
+  .edit-donne-insert-row {
+  margin-top: 0.6rem;
+  display: flex;
+  flex-direction: column;
+  gap: 0.25rem;
+  }
+
+  .edit-donne-insert-row input[type='number'] {
+  width: 80px;
+  margin-left: 0.5rem;
+  }
+
+  .edit-donne-insert-row .hint {
+  font-size: 0.8rem;
+  opacity: 0.7;
+  }
+
 
 
 </style>

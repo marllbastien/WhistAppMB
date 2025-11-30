@@ -13,6 +13,29 @@
   // 🔢 Type côté front = string "1" | "2" | "3" | "4" (on convertit en number pour l'API)
   type CompetitionTypeCode = '' | '1' | '2' | '3' | '4';
 
+
+  type ActiveMancheDto = {
+  id: number;
+  tableName: string;
+  mancheNumber: number;
+  playerCount: number;
+  gameStatus: number | null;
+  startTime: string | null;
+  endTime: string | null;
+  lockedBy: string | null;
+  lockedAt: string | null;
+  lastDonneNumber: number | null;
+  };
+
+  // 🔐 Reprise de manche existante
+  let existingManche: ActiveMancheDto | null = null;
+  let showResumeModal = false;
+  let isCheckingExisting = false;
+  let isCreating = false;
+  let showErrorModal = false;
+  let errorMessage = '';
+
+
   let ready = false;
 
   // 🔥 NOUVEAU : type / numéro de compétition
@@ -237,76 +260,293 @@
         return availablePlayers.filter((p) => !used.has(p.alias));
         });
 
-        // 🔹 Enregistrer la config + aller sur /annonces
-async function continueToNext() {
-  if (!canContinue) return;
-
-  const params = new URLSearchParams({
-    tableName,
-    mancheNumber: String(mancheNumber),
-    playerCount: String(playerCount),
-    players: JSON.stringify(players),
-    playerIds: JSON.stringify(playerIds)
-    // on pourra ajouter competitionType/Number dans l'URL plus tard si besoin
-  });
-
-  // 🔢 conversions propres
-  const compTypeInt =
-    competitionType === '' ? null : Number(competitionType);
-
-  const compNumberInt =
-    competitionNumber === '' || competitionNumber === null
-      ? null
-      : Number(competitionNumber);
-
-  const payload = {
-  competitionType: compTypeInt,
-  competitionNumber: compNumberInt,
-
-  tableName,
-  mancheNumber: Number(mancheNumber),
-  playerCount: Number(playerCount),
-
-  Joueur1: players[0],
-  Joueur2: players[1],
-  Joueur3: players[2],
-  Joueur4: players[3],
-  Joueur5: players[4] ?? null,
-  Joueur6: players[5] ?? null,
-
-  Joueur1Pk: playerIds[0],
-  Joueur2Pk: playerIds[1],
-  Joueur3Pk: playerIds[2],
-  Joueur4Pk: playerIds[3],
-  Joueur5Pk: playerIds[4] ?? null,
-  Joueur6Pk: playerIds[5] ?? null,
-
-  SessionId: sessionId,
-  CreatedByUserAgent:
-    typeof navigator !== 'undefined' ? navigator.userAgent : null
-};
 
 
-  try {
-    const res = await fetch(`${API_BASE_URL}/api/table-config`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
+  function buildNavigateParams(
+    compTypeInt: number | null,
+    compNumberInt: number | null
+  ): URLSearchParams {
+    const params = new URLSearchParams({
+      tableName,
+      mancheNumber: String(mancheNumber),
+      playerCount: String(playerCount),
+      players: JSON.stringify(players),
+      playerIds: JSON.stringify(playerIds)
     });
 
-    if (!res.ok) {
-      console.error('Erreur API /api/table-config', await res.text());
+    if (compTypeInt != null) {
+      params.set('competitionType', String(compTypeInt));
     }
-  } catch (err) {
-    console.error('Erreur réseau table-config', err);
+    if (compNumberInt != null) {
+      params.set('competitionNumber', String(compNumberInt));
+    }
+
+    return params;
   }
 
-// après avoir construit tableName, mancheNumber, playerCount, players, etc.
-params.set('competitionType', compTypeInt != null ? String(compTypeInt) : '');
-params.set('competitionNumber', compNumberInt != null ? String(compNumberInt) : '');
 
-  goto(`/annonces?${params.toString()}`);
-}
+  async function tryCheckExistingForCurrentKey() {
+    // 1️⃣ Vérifier qu'on a bien toutes les infos : type, numéro (si nécessaire), manche, table
+    const hasType = competitionType !== '';
+
+    const needNumber =
+      competitionType === '1' ||
+      competitionType === '2' ||
+      competitionType === '4';
+
+    const numberOk = !needNumber
+      ? true
+      : competitionNumber !== '' && competitionNumber !== null;
+
+    const mancheOk = mancheNumber !== '' && Number(mancheNumber) > 0;
+    const tableOk = tableName.trim() !== '';
+
+    if (!(hasType && numberOk && mancheOk && tableOk)) {
+      // pas encore toutes les infos → on ne fait rien
+      return;
+    }
+
+    const compTypeInt =
+      competitionType === '' ? null : Number(competitionType);
+
+    const compNumberInt =
+      competitionNumber === '' || competitionNumber === null
+        ? null
+        : Number(competitionNumber);
+
+    const query = new URLSearchParams({
+      tableName,
+      mancheNumber: String(mancheNumber)
+    });
+
+    if (compTypeInt != null) {
+      query.set('competitionType', String(compTypeInt));
+    }
+    if (compNumberInt != null) {
+      query.set('competitionNumber', String(compNumberInt));
+    }
+
+    existingManche = null;
+    showResumeModal = false;
+    isCheckingExisting = true;
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/manches/active?${query.toString()}`
+      );
+
+      if (res.ok) {
+        const data = (await res.json()) as ActiveMancheDto | null;
+        if (data && data.id) {
+          existingManche = data;
+          showResumeModal = true;
+        }
+      } else {
+        console.error('HTTP non OK /api/manches/active', res.status);
+      }
+    } catch (err) {
+      console.error('Erreur /api/manches/active', err);
+    } finally {
+      isCheckingExisting = false;
+    }
+  }
+
+
+        // 🔹 Enregistrer la config + aller sur /annonces
+  // 🔗 Bouton "Continuer" : d'abord vérifier s'il existe déjà une manche active
+  async function continueToNext() {
+    if (!canContinue) return;
+    if (!tableName || mancheNumber === '' || !playerCount) return;
+
+    const compTypeInt =
+      competitionType === '' ? null : Number(competitionType);
+
+    const compNumberInt =
+      competitionNumber === '' || competitionNumber === null
+        ? null
+        : Number(competitionNumber);
+
+    // 1️⃣ Vérifier s'il existe déjà une manche active pour cette table / manche / compé
+    const query = new URLSearchParams({
+      tableName,
+      mancheNumber: String(mancheNumber)
+    });
+
+    if (compTypeInt != null) {
+      query.set('competitionType', String(compTypeInt));
+    }
+    if (compNumberInt != null) {
+      query.set('competitionNumber', String(compNumberInt));
+    }
+
+    existingManche = null;
+    showResumeModal = false;
+    isCheckingExisting = true;
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/manches/active?${query.toString()}`
+      );
+
+      if (res.ok) {
+        const data = (await res.json()) as ActiveMancheDto | null;
+        if (data && data.id) {
+          existingManche = data;
+          showResumeModal = true;
+          return; // on attend le choix dans la modale
+        }
+      }
+    } catch (err) {
+      console.error('Erreur /api/manches/active', err);
+      // en cas d’erreur réseau → on continue comme avant (création nouvelle)
+    } finally {
+      isCheckingExisting = false;
+    }
+
+    // 2️⃣ Aucune manche active trouvée → créer une nouvelle
+    await createNewManche(compTypeInt, compNumberInt);
+  }
+
+
+
+
+
+  async function createNewManche(
+    compTypeInt: number | null,
+    compNumberInt: number | null
+  ) {
+    isCreating = true;
+
+    const payload = {
+      competitionType: compTypeInt,
+      competitionNumber: compNumberInt,
+
+      tableName,
+      mancheNumber: Number(mancheNumber),
+      playerCount: Number(playerCount),
+
+      Joueur1: players[0],
+      Joueur2: players[1],
+      Joueur3: players[2],
+      Joueur4: players[3],
+      Joueur5: players[4] ?? null,
+      Joueur6: players[5] ?? null,
+
+      Joueur1Pk: playerIds[0],
+      Joueur2Pk: playerIds[1],
+      Joueur3Pk: playerIds[2],
+      Joueur4Pk: playerIds[3],
+      Joueur5Pk: playerIds[4] ?? null,
+      Joueur6Pk: playerIds[5] ?? null,
+
+      SessionId: sessionId,
+      CreatedByUserAgent:
+        typeof navigator !== 'undefined' ? navigator.userAgent : null
+    };
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/table-config`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+
+      if (!res.ok) {
+        console.error('Erreur API /api/table-config', await res.text());
+        return;
+      }
+
+      const data = (await res.json()) as { tableConfigId: number };
+
+      // On garde l’Id en local, ça pourra servir plus tard
+      localStorage.setItem(
+        'wb_current_table_config_id',
+        String(data.tableConfigId)
+      );
+
+      const params = buildNavigateParams(compTypeInt, compNumberInt);
+      goto(`/annonces?${params.toString()}`);
+    } catch (err) {
+      console.error('Erreur réseau table-config', err);
+    } finally {
+      isCreating = false;
+    }
+  }
+
+  async function resumeExistingManche() {
+    if (!existingManche) return;
+
+    const compTypeInt =
+      competitionType === '' ? null : Number(competitionType);
+    const compNumberInt =
+      competitionNumber === '' || competitionNumber === null
+        ? null
+        : Number(competitionNumber);
+
+    try {
+      const res = await fetch(
+        `${API_BASE_URL}/api/manches/${existingManche.id}/resume`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ sessionId })
+        }
+      );
+
+      if (!res.ok) {
+        const msg = await res.text();
+
+        console.error('Erreur /api/manches/resume', msg);
+
+        // 🔥 On ferme la modale "reprendre ?" et on affiche une vraie modale d’erreur
+        showResumeModal = false;
+        existingManche = null;
+
+        errorMessage =
+          msg?.trim() ||
+          "Impossible de reprendre cette manche. Elle est peut-être déjà encodée sur un autre terminal.";
+
+        showErrorModal = true;
+        return;
+      }
+
+      // OK → on continue comme avant
+      localStorage.setItem(
+        'wb_current_table_config_id',
+        String(existingManche.id)
+      );
+
+      const params = buildNavigateParams(compTypeInt, compNumberInt);
+      goto(`/annonces?${params.toString()}`);
+    } catch (err) {
+      console.error('Erreur réseau /resume', err);
+
+      showResumeModal = false;
+      existingManche = null;
+      errorMessage =
+        "Une erreur réseau est survenue lors de la reprise de la manche. Merci de réessayer.";
+      showErrorModal = true;
+    } finally {
+      // on s’assure que la modale de reprise est fermée dans tous les cas d’erreur
+      showResumeModal = false;
+    }
+  }
+
+  async function startNewMancheFromModal() {
+    const compTypeInt =
+      competitionType === '' ? null : Number(competitionType);
+    const compNumberInt =
+      competitionNumber === '' || competitionNumber === null
+        ? null
+        : Number(competitionNumber);
+
+    showResumeModal = false;
+    existingManche = null;
+
+    await createNewManche(compTypeInt, compNumberInt);
+  }
+
+
 
 
 
@@ -754,14 +994,17 @@ let libreVariantEl: HTMLSelectElement | null = null;
 
     <div class="field">
       <label>Nom de la table :</label>
-      <select 
-  bind:this={tableEl}
-  bind:value={tableName}
-  on:change={() =>
-        {
-        // on scrollera vers le premier select joueur si présent
-        scrollToEl(playerSelectEls[0]);
+           <select 
+        bind:this={tableEl}
+        bind:value={tableName}
+        on:change={() => {
+          // dès qu'on a une table, on essaie de voir si une manche existe déjà
+          void tryCheckExistingForCurrentKey();
+
+          // on scrollera vers le premier select joueur si présent
+          scrollToEl(playerSelectEls[0]);
         }}>
+
 
         <option value="">-- Choisir --</option>
         {#each ['A', 'B', 'C', 'D', 'E', 'F', 'G', 'H'] as letter}
@@ -827,6 +1070,65 @@ let libreVariantEl: HTMLSelectElement | null = null;
       </button>
     </div>
   </section>
+  
+  
+  
+        {#if showResumeModal && existingManche}
+      <div class="modal-backdrop">
+        <div class="modal">
+          <h3>Partie déjà en cours</h3>
+          <p>
+            Une manche existe déjà pour la table
+            <strong>{existingManche.tableName}</strong>,
+            manche <strong>{existingManche.mancheNumber}</strong>.
+          </p>
+
+          <p>
+            Dernière donne encodée :
+            <strong>
+              {existingManche.lastDonneNumber ?? 'aucune (début de manche)'}
+            </strong>
+          </p>
+
+          <div class="modal-actions">
+            <button on:click={resumeExistingManche}>
+              Reprendre l'encodage
+            </button>
+            <button class="secondary" on:click={startNewMancheFromModal}>
+              Commencer une nouvelle manche
+            </button>
+            <button
+              class="ghost"
+              on:click={() => {
+                showResumeModal = false;
+                existingManche = null;
+              }}
+            >
+              Annuler
+            </button>
+          </div>
+        </div>
+      </div>
+  {/if}
+     {#if showErrorModal}
+      <div class="modal-backdrop">
+        <div class="modal">
+          <h3>Impossible de reprendre la manche</h3>
+          <p>{errorMessage}</p>
+
+          <div class="modal-actions">
+            <button
+              on:click={() => {
+                showErrorModal = false;
+              }}
+            >
+              OK
+            </button>
+          </div>
+        </div>
+      </div>
+    {/if}
+
   <footer class="copyright">
     © 2025 Wb-Scoring — Tous droits réservés
   </footer>
@@ -1052,7 +1354,94 @@ let libreVariantEl: HTMLSelectElement | null = null;
   }
   }
 
+  .modal {
+  background: rgba(2, 12, 7, 0.96);
+  color: var(--text-main);
+  padding: 1.8rem 1.8rem 1.6rem;
+  border-radius: 1.2rem;
+  max-width: 450px;
+  width: 92%;
+  text-align: center;
 
+  /* ✨ Halo doré doux, sans bordure */
+  border: none;
+  box-shadow:
+  0 0 18px rgba(245, 197, 107, 0.18),   /* halo large */
+  0 0 8px rgba(245, 197, 107, 0.25) inset; /* léger halo intérieur */
 
+  max-height: 85vh;
+  overflow-y: auto;
+  }
+
+  /* Titre simple et élégant */
+  .modal h3 {
+  margin: 0 0 1.1rem;
+  font-size: 1.15rem;
+  font-weight: 600;
+  color: #f5c56b;
+  }
+
+  /* Texte lisible, équilibré */
+  .modal p {
+  font-size: 1rem;
+  line-height: 1.4;
+  margin: 0.4rem 0 1rem;
+  }
+
+  /* Boutons centrés */
+  .modal-actions {
+  margin-top: 1.3rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0.8rem;
+  }
+
+  /* Boutons dorés plus doux */
+  .modal-actions button {
+  width: 100%;
+  max-width: 260px;
+  padding: 0.65rem 1.4rem;
+  font-size: 0.9rem;
+  font-weight: 700;
+  border-radius: 999px;
+  cursor: pointer;
+
+  background: linear-gradient(145deg, #f2c46a, #e0a948);
+  color: #04140a;
+  border: none;
+
+  box-shadow: 0 0 6px rgba(245, 197, 107, 0.35);
+
+  transition: transform 0.12s ease, box-shadow 0.12s ease;
+  }
+
+  .modal-actions button:hover {
+  transform: translateY(-1px);
+  box-shadow: 0 0 10px rgba(245, 197, 107, 0.55);
+  }
+
+  /* Bouton Annuler, style clean et léger */
+  .modal-actions .ghost {
+  background: transparent !important;
+  color: #f2c46a;
+  border: 1px solid rgba(245, 197, 107, 0.4);
+  box-shadow: none;
+  }
+
+  .modal-actions .ghost:hover {
+  background: rgba(245, 197, 107, 0.08);
+  box-shadow: 0 0 6px rgba(245, 197, 107, 0.3);
+  }
+
+  .modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(3, 7, 18, 0.65);
+  display: flex;
+  justify-content: center;
+  align-items: center;   /* 👈 centre vertical pile au milieu */
+  z-index: 1100;
+  }
 
 </style>
