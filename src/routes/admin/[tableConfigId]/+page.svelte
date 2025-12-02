@@ -653,104 +653,164 @@ async function previewDonne() {
   }
 }
 
+async function saveDonne() {
+  console.log('[saveDonne] called', { detail, selectedDonne, isNewDonne });
 
-
-  async function saveDonne() {
-    if (!detail || !selectedDonne) return;
-
-    saving = true;
-    saveMessage = '';
-
-    // construction commune des scores
-    const scoresPayload = selectedDonne.scores.map((s) => {
-      const partenairePkNum =
-        s.partenairePk === '' || s.partenairePk == null
-          ? null
-          : Number(s.partenairePk);
-
-      const partner = detail.players.find((p) => p.playerId === partenairePkNum);
-
-      return {
-        joueurPk: s.playerId,
-        alias: s.alias,
-        annonce: s.annonce || null,
-        partenairePk: partenairePkNum != null ? String(partenairePkNum) : null,
-        partenaireAlias: partner ? partner.alias : null,
-        plis: s.plis === '' || s.plis == null ? null : Number(s.plis),
-        resultat: s.resultat || null,
-        dames: s.dames === '' || s.dames == null ? null : Number(s.dames),
-        arbitre: !!s.arbitre
-      };
+  // 0) Sécurité : on ne fait rien si le contexte est incomplet
+  if (!detail || !selectedDonne) {
+    console.warn('[saveDonne] STOP: detail ou selectedDonne manquant', {
+      detail,
+      selectedDonne
     });
-
-    try {
-      let res: Response;
-
-    if (isNewDonne) {
-  const payloadInsert = {
-    tableConfigId: detail.tableConfigId,
-    TableName : detail.tableName,
-    mancheNumber: detail.mancheNumber,
-    insertionDonneNumber: selectedDonne.donneNumber,   // 🔥 numéro choisi
-    annoncePrincipale: editAnnonce || null,
-    hasArbitre: editHasArbitre,
-    scores: selectedDonne.scores.map((s) => {
-      const partenairePkNum =
-        s.partenairePk === '' || s.partenairePk == null
-          ? null
-          : Number(s.partenairePk);
-
-      const partner = detail.players.find((p) => p.playerId === partenairePkNum);
-
-      return {
-        joueurPk: s.playerId,
-        alias: s.alias,    // 🔥 utilisé pour la colonne Joueur
-        annonce: s.annonce || null,
-        partenairePk: partenairePkNum != null ? String(partenairePkNum) : null,
-        partenaireAlias: partner ? partner.alias : null,
-        plis: s.plis === '' || s.plis == null ? null : Number(s.plis),
-        resultat: s.resultat || null,
-        dames: s.dames === '' || s.dames == null ? null : Number(s.dames),
-        arbitre: !!s.arbitre
-      };
-    })
-  };
-
-  await fetch(`${API_BASE_URL}/api/admin/donne/insert`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify(payloadInsert)
-  });
-
-  // puis recalc complet de la manche via ton endpoint existant
-  await fetch(`${API_BASE_URL}/api/admin/donne/recalc`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json' },
-    body: JSON.stringify({
-      tableConfigId: detail.tableConfigId,
-      mancheNumber: detail.mancheNumber,
-      donneNumber: selectedDonne.donneNumber
-    })
-  });
-
-  saveMessage = 'Nouvelle donne ajoutée et scores recalculés ✅';
-}
-
-      // 3) Rechargement du détail (scores finaux + donnes)
-      await loadDetail();
-      // on peut rester sur l’écran, mais on n’est plus en "nouvelle"
-      isNewDonne = false;
-    } catch (err) {
-      console.error(err);
-      saveMessage = "Erreur lors de l'enregistrement.";
-    } finally {
-      saving = false;
-    }
+    saveMessage = "Impossible d'enregistrer : donne ou détail manquant.";
+    return;
   }
 
+  saving = true;
+  saveMessage = '';
 
+  // 1) Construction commune des scores (adaptée au DTO AdminDonneUpdateDto)
+  const scoresPayload = selectedDonne.scores.map((s) => {
+    const partenairePkNum =
+      s.partenairePk === '' || s.partenairePk == null
+        ? null
+        : Number(s.partenairePk);
 
+    const partner = detail.players.find((p) => p.playerId === partenairePkNum);
 
+    return {
+      // ⚠️ En JSON ça deviendra 'joueurPk' → mappé sur JoueurPk côté C#
+      joueurPk: s.playerId,
+      alias: s.alias,
+      annonce: s.annonce || null,
+      partenairePk: partenairePkNum != null ? String(partenairePkNum) : null,
+      partenaireAlias: partner ? partner.alias : null,
+      plis: s.plis === '' || s.plis == null ? null : Number(s.plis),
+      resultat: s.resultat || null,
+      dames: s.dames === '' || s.dames == null ? null : Number(s.dames),
+      arbitre: !!s.arbitre
+    };
+  });
+
+  try {
+    let res: Response;
+
+    if (isNewDonne) {
+      // ---------------------------------------------------
+      // 🆕 CAS 1 : INSERT D'UNE NOUVELLE DONNE
+      // ---------------------------------------------------
+      const payloadInsert = {
+        tableConfigId: detail.tableConfigId,
+        tableName: detail.tableName,
+        mancheNumber: detail.mancheNumber,
+        insertionDonneNumber: selectedDonne.donneNumber, // numéro de la donne choisie
+        annoncePrincipale: editAnnonce || null,
+        hasArbitre: editHasArbitre,
+        scores: scoresPayload
+      };
+
+      console.log('[saveDonne] INSERT payload', payloadInsert);
+
+      res = await fetch(`${API_BASE_URL}/api/admin/donne/insert`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadInsert)
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error('[saveDonne] Erreur INSERT', res.status, text);
+        throw new Error(`Erreur INSERT (${res.status}) : ${text}`);
+      }
+
+      // Recalc des scores
+      const recalcPayload = {
+        tableConfigId: detail.tableConfigId,
+        mancheNumber: detail.mancheNumber,
+        donneNumber: selectedDonne.donneNumber
+      };
+
+      console.log('[saveDonne] RECALC après INSERT', recalcPayload);
+
+      res = await fetch(`${API_BASE_URL}/api/admin/donne/recalc`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(recalcPayload)
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error('[saveDonne] Erreur RECALC (insert)', res.status, text);
+        throw new Error(`Erreur RECALC (insert) (${res.status}) : ${text}`);
+      }
+
+      saveMessage = 'Nouvelle donne ajoutée et scores recalculés ✅';
+    } else {
+      // ---------------------------------------------------
+      // ✏️ CAS 2 : UPDATE D'UNE DONNE EXISTANTE
+      // ---------------------------------------------------
+      const payloadUpdate = {
+        tableConfigId: detail.tableConfigId,
+        mancheNumber: detail.mancheNumber,
+        donneNumber: selectedDonne.donneNumber,
+        // Ces deux champs seront ignorés si ton AdminDonneUpdateDto
+        // ne les définit pas, donc safe
+        annoncePrincipale: editAnnonce || null,
+        hasArbitre: editHasArbitre,
+        scores: scoresPayload
+      };
+
+      console.log('[saveDonne] UPDATE payload', payloadUpdate);
+
+      res = await fetch(`${API_BASE_URL}/api/admin/donne/update`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payloadUpdate)
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error('[saveDonne] Erreur UPDATE', res.status, text);
+        throw new Error(`Erreur UPDATE (${res.status}) : ${text}`);
+      }
+
+      // Recalc des scores après update aussi
+      const recalcPayload = {
+        tableConfigId: detail.tableConfigId,
+        mancheNumber: detail.mancheNumber,
+        donneNumber: selectedDonne.donneNumber
+      };
+
+      console.log('[saveDonne] RECALC après UPDATE', recalcPayload);
+
+      res = await fetch(`${API_BASE_URL}/api/admin/donne/recalc`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(recalcPayload)
+      });
+
+      if (!res.ok) {
+        const text = await res.text();
+        console.error('[saveDonne] Erreur RECALC (update)', res.status, text);
+        throw new Error(`Erreur RECALC (update) (${res.status}) : ${text}`);
+      }
+
+      saveMessage = 'Donne mise à jour et scores recalculés ✅';
+    }
+
+    // 3) Rechargement du détail pour refléter les nouveaux scores
+    await loadDetail();
+    isNewDonne = false;
+
+    console.log('[saveDonne] Terminé OK');
+  } catch (err) {
+    console.error('[saveDonne] CATCH', err);
+    saveMessage =
+      "Erreur lors de l'enregistrement : " + (err as Error).message;
+  } finally {
+    saving = false;
+  }
+}
 
 
 

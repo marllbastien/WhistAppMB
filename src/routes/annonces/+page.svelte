@@ -2171,283 +2171,432 @@ async function exportFeuillePointsPdf(options?: { sendByEmail?: boolean }) {
   doc.setFillColor(pageBg[0], pageBg[1], pageBg[2]);
   doc.rect(0, 0, pageWidth, pageHeight, 'F');
 
-  // 🔤 info compétition (simple : on affiche les numéros si présents)
-  const competitionTypeText =
-    competitionType != null ? String(competitionType) : '';
-  const competitionSubtypeText =
-    competitionNumber != null ? String(competitionNumber) : '';
+// 🔤 info compétition (avec labels de la home)
+const competitionTypeText =
+  competitionTypeLabel?.trim() ||
+  (competitionType != null ? String(competitionType) : '');
 
-  const competitionLine = [competitionTypeText, competitionSubtypeText]
-    .filter((x) => x && x.trim() !== '')
-    .join(' – ');
+const competitionSubtypeText =
+  competitionSubtypeLabel?.trim() ||
+  (competitionNumber != null ? String(competitionNumber) : '');
+
+const competitionLine = [competitionTypeText, competitionSubtypeText]
+  .filter((x) => x && x.trim() !== '')
+  .join(' – ');
+
 
   // 🧱 2) BANDEAU HAUT + LOGO NON DÉFORMÉ
   try {
     const img = new Image();
     img.src = '/Logo_App_Rond.png';
 
-    await new Promise<void>((resolve, reject) => {
+    await new Promise<void>
+      ((resolve, reject) => {
       img.onload = () => resolve();
       img.onerror = (e) => reject(e);
-    });
+      });
 
-    // Bandeau noir par-dessus le fond vert
-    doc.setFillColor(darkBg[0], darkBg[1], darkBg[2]);
-    doc.rect(0, 0, pageWidth, 90, 'F');
+      // Bandeau noir par-dessus le fond vert
+      doc.setFillColor(darkBg[0], darkBg[1], darkBg[2]);
+      doc.rect(0, 0, pageWidth, 90, 'F');
 
-    // ✅ Respect du ratio du logo
-    const logoTargetWidth = 60;
-    const ratio = img.height / img.width;
-    const logoTargetHeight = logoTargetWidth * ratio;
+      // ✅ Respect du ratio du logo
+      const logoTargetWidth = 60;
+      const ratio = img.height / img.width;
+      const logoTargetHeight = logoTargetWidth * ratio;
 
-    doc.addImage(
+      doc.addImage(
       img,
       'PNG',
       30,
       15 + (60 - logoTargetHeight) / 2,
       logoTargetWidth,
       logoTargetHeight
-    );
-  } catch {
-    // si logo KO : on garde quand même le bandeau
-    doc.setFillColor(darkBg[0], darkBg[1], darkBg[2]);
-    doc.rect(0, 0, pageWidth, 90, 'F');
-  }
+      );
+      } catch {
+      // si logo KO : on garde quand même le bandeau
+      doc.setFillColor(darkBg[0], darkBg[1], darkBg[2]);
+      doc.rect(0, 0, pageWidth, 90, 'F');
+      }
 
-  // 🧾 TITRES
-  doc.setFont('helvetica', 'bold');
-  doc.setFontSize(22);
-  doc.setTextColor(249, 176, 0);
-  doc.text('Feuille de points', pageWidth / 2, 32, { align: 'center' });
+      // 🧾 TITRES
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(22);
+      doc.setTextColor(249, 176, 0);
+      doc.text('Feuille de points', pageWidth / 2, 32, { align: 'center' });
 
-  doc.setFont('helvetica', 'normal');
-  doc.setFontSize(11);
-  doc.setTextColor(lightText[0], lightText[1], lightText[2]);
-  doc.text(
-    `Table ${tableName} – Manche ${mancheNumber}`,
-    pageWidth / 2,
-    52,
-    { align: 'center' }
-  );
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(11);
+      doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+      doc.text(
+      `Table ${tableName} – Manche ${mancheNumber}`,
+      pageWidth / 2,
+      52,
+      { align: 'center' }
+      );
 
-  // 🌟 ligne compétition (juste sous "Table / Manche")
-  if (competitionLine) {
-    doc.setFontSize(9.5);
-    doc.setTextColor(222, 222, 222);
-    doc.text(competitionLine, pageWidth / 2, 68, { align: 'center' });
-  }
+      // 🌟 ligne compétition (juste sous "Table / Manche")
+      if (competitionLine) {
+      doc.setFontSize(9.5);
+      doc.setTextColor(222, 222, 222);
+      doc.text(competitionLine, pageWidth / 2, 68, { align: 'center' });
+      }
 
-  // Liste des joueurs
-  const joueursStr = players.join(' • ');
-  doc.setFontSize(9);
-  doc.setTextColor(lightText[0], lightText[1], lightText[2]);
-  doc.text(joueursStr, pageWidth / 2, 84, {
-    align: 'center',
-    maxWidth: pageWidth - 160
-  });
-  
-  
-  // ✨ Infos de manche (début / fin / durée) sous la ligne des joueurs
-if (mancheStartTime || mancheEndTime || dureeManche) {
-  const start = mancheStartTime ?? '-';
-  const end = mancheEndTime ?? '-';
-  const dureeTxt = dureeManche ?? '-';
-
-  doc.setFontSize(9);
-  doc.setTextColor(249, 176, 0); // un peu comme dans la modale
-
-  doc.text(
-    `Début : ${start}    Fin : ${end}    Durée : ${dureeTxt}`,
-    pageWidth / 2,
-    100,
-    { align: 'center' }
-  );
-}
+      // Liste des joueurs
+      const joueursStr = players.join(' • ');
+      doc.setFontSize(9);
+      doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+      doc.text(joueursStr, pageWidth / 2, 84, {
+      align: 'center',
+      maxWidth: pageWidth - 160
+      });
 
 
-  // 📅 Date / heure
-  const now = new Date();
-  const dateStr = now.toLocaleDateString();
-  const timeStr = now.toLocaleTimeString().slice(0, 5);
+      // ✨ Infos de manche (début / fin / durée) sous la ligne des joueurs
+      if (mancheStartTime || mancheEndTime || dureeManche) {
+      const start = mancheStartTime ?? '-';
+      const end = mancheEndTime ?? '-';
+      const dureeTxt = dureeManche ?? '-';
 
-  doc.setFontSize(8);
-  doc.setTextColor(mutedText[0], mutedText[1], mutedText[2]);
-  doc.text(`Généré le ${dateStr} à ${timeStr}`, pageWidth - 40, 25, {
-    align: 'right'
-  });
+      doc.setFontSize(9);
+      doc.setTextColor(249, 176, 0); // un peu comme dans la modale
 
-  // ─────────────  TABLEAU  ─────────────
+      doc.text(
+      `Début : ${start}    Fin : ${end}    Durée : ${dureeTxt}`,
+      pageWidth / 2,
+      100,
+      { align: 'center' }
+      );
+      }
 
-  const headRow1 = ['Donne', 'Annonce', ...players.flatMap((p) => [p.toUpperCase(), ''])];
-  const headRow2 = ['', '', ...players.flatMap(() => ['Score', 'Cumul'])];
-  const head = [headRow1, headRow2];
 
-  const body = feuillePoints.map((ligne) => {
-    const base = [ligne.donneNumber.toString(), ligne.annonce ?? ''];
+      // 📅 Date / heure
+      const now = new Date();
+      const dateStr = now.toLocaleDateString();
+      const timeStr = now.toLocaleTimeString().slice(0, 5);
 
-    const scores = players.flatMap((p) => {
-      const rawScore = ligne.scores[p]?.score ?? 0;
-      const scoreText = rawScore === 0 ? '' : rawScore.toString();
-      const cumulText = (ligne.scores[p]?.cumul ?? 0).toString();
-      return [scoreText, cumulText];
-    });
+      doc.setFontSize(8);
+      doc.setTextColor(mutedText[0], mutedText[1], mutedText[2]);
+      doc.text(`Généré le ${dateStr} à ${timeStr}`, pageWidth - 40, 25, {
+      align: 'right'
+      });
 
-    return [...base, ...scores];
-  });
+      // ─────────────  TABLEAU  ─────────────
 
-  const lastIndex = feuillePoints.length - 1;
+      const headRow1 = ['Donne', 'Annonce', ...players.flatMap((p) => [p.toUpperCase(), ''])];
+      const headRow2 = ['', '', ...players.flatMap(() => ['Score', 'Cumul'])];
+      const head = [headRow1, headRow2];
 
-  autoTable(doc, {
-    head,
-    body,
-    startY: 120,
-    styles: {
-      fontSize: 8,
-      halign: 'center',
-      valign: 'middle',
-      cellPadding: 4,
-      fillColor: tableBase,
-      textColor: lightText,
-      lineColor: borderDark,
-      lineWidth: 0.6
-    },
-    bodyStyles: {
-      fillColor: tableBase,
-      textColor: lightText
-    },
-    alternateRowStyles: {
-      fillColor: tableAlt
-    },
-    headStyles: {
-      fillColor: tableBase,
-      textColor: lightText,
-      fontStyle: 'bold'
-    },
-    margin: { top: 115, left: 30, right: 30, bottom: 55 },
-    columnStyles: {
-      0: { cellWidth: 45, halign: 'center' },
-      1: { cellWidth: 75, halign: 'left' }
-    },
+      const totalColumns = 2 + players.length * 2;
+      const body: any[] = [];
 
-    didParseCell(data) {
-      const { section, row, column, cell } = data;
+      // On reproduit la logique de la modale avec feuillePointsAvecTotal
+      feuillePointsAvecTotal.forEach((ligne, idx) => {
+      // 🌿 Cas "ligne totale" => on insère espace + CLASSEMENT
+      if (ligne.isTotal) {
+      // 1) ligne vide (spacer)
+      const spacer: any[] = new Array(totalColumns).fill('');
+      (spacer as any)._type = 'spacer';
+      body.push(spacer);
 
-      if (section === 'head') {
+      // 2) ligne CLASSEMENT
+      const classement: any[] = new Array(totalColumns).fill('');
+      classement[1] = 'CLASSEMENT'; // colonne "Annonce"
+      (classement as any)._type = 'classement';
+      (classement as any)._rankByPlayer = rankByPlayer; // { [nom]: rang }
+      body.push(classement);
+      return;
+      }
+
+      // 🌱 Lignes normales (donnes)
+      const row: any[] = [];
+
+      row[0] = (ligne.donneNumber ?? '').toString();
+      row[1] = ligne.annonce ?? '';
+
+      const inactivePlayers = getInactivePlayersForDonne(ligne.donneNumber, players);
+      const scoreValues: Record<string, number>= {};
+
+        for (const p of players) {
+        let displayScore = '';
+        let numericScore: number | null = null;
+
+        if (inactivePlayers.includes(p)) {
+        displayScore = '-';
+        } else {
+        const val = displayScoreValue(ligne, p);
+        numericScore = val;
+        displayScore = val === 0 ? '' : String(val);
+        }
+
+        const cumul = ligne.scores?.[p]?.cumul ?? 0;
+
+        row.push(displayScore);         // colonne "Score"
+        row.push(String(cumul));        // colonne "Cumul"
+
+        if (numericScore !== null) {
+        scoreValues[p] = numericScore;
+        }
+        }
+
+        (row as any)._type = 'normal';
+        (row as any)._isLastDonne = idx === lastDonneIndex; // pour surlignage cumul final
+        (row as any)._scoreValues = scoreValues;            // pour repérer les négatifs
+        body.push(row);
+        });
+
+        autoTable(doc, {
+        head,
+        body,
+        startY: 120,
+        styles: {
+        fontSize: 8,
+        halign: 'center',
+        valign: 'middle',
+        cellPadding: 4,
+        fillColor: tableBase,
+        textColor: lightText,
+        lineColor: borderDark,
+        lineWidth: 0.6
+        },
+        bodyStyles: {
+        fillColor: tableBase,
+        textColor: lightText
+        },
+        alternateRowStyles: {
+        fillColor: tableAlt
+        },
+        headStyles: {
+        fillColor: tableBase,
+        textColor: lightText,
+        fontStyle: 'bold'
+        },
+        margin: { top: 115, left: 30, right: 30, bottom: 55 },
+        columnStyles: {
+        0: { cellWidth: 45, halign: 'center' },
+        1: { cellWidth: 75, halign: 'left' }
+        },
+
+        didParseCell(data) {
+        const { section, row, column, cell } = data;
+
+        // ----- EN-TÊTES -----
+        if (section === 'head') {
         const r = row.index;
         const c = column.index;
 
-        // Ligne 1
         if (r === 0) {
-          if (c === 0 || c === 1) {
-            cell.rowSpan = 2;
-            cell.styles.fillColor = headSecond;
-            cell.styles.textColor = lightText;
-            cell.styles.fontSize = 8.5;
-            cell.styles.fontStyle = 'bold';
-          } else if (c >= 2 && c % 2 === 0) {
-            cell.colSpan = 2;
-            cell.styles.fillColor = headPlayer;
-            cell.styles.textColor = [254, 249, 195];
-            cell.styles.fontSize = 9.2;
-            cell.styles.fontStyle = 'bold';
-            cell.styles.lineWidth = 1;
-            cell.styles.lineColor = gold;
-          } else {
-            cell.text = '';
-          }
+        // Ligne 1 d'en-tête
+        if (c === 0 || c === 1) {
+        cell.rowSpan = 2;
+        cell.styles.fillColor = headSecond;
+        cell.styles.textColor = lightText;
+        cell.styles.fontSize = 8.5;
+        cell.styles.fontStyle = 'bold';
+        } else if (c >= 2 && c % 2 === 0) {
+        // Nom du joueur (colspan=2)
+        cell.colSpan = 2;
+        cell.styles.fillColor = headPlayer;
+        cell.styles.textColor = [254, 249, 195];
+        cell.styles.fontSize = 9.2;
+        cell.styles.fontStyle = 'bold';
+        cell.styles.lineWidth = 1;
+        cell.styles.lineColor = gold;
+        } else {
+        cell.text = '';
+        }
         }
 
-        // Ligne 2
         if (r === 1) {
-          cell.styles.fillColor = headSecond;
-          cell.styles.textColor = greyHeader;
-          cell.styles.fontSize = 7.5;
-          cell.styles.fontStyle = 'normal';
+        // Ligne 2 d'en-tête : "Score" / "Cumul"
+        cell.styles.fillColor = headSecond;
+        cell.styles.textColor = greyHeader;
+        cell.styles.fontSize = 7.5;
+        cell.styles.fontStyle = 'normal';
         }
 
         // Trait vertical après "Annonce"
         if (c === 1) {
-          cell.styles.lineColor = borderDark;
-          cell.styles.lineWidth = 1.2;
+        cell.styles.lineColor = borderDark;
+        cell.styles.lineWidth = 1.2;
         }
 
         // Colonnes "Cumul"
         if (c >= 2 && c % 2 === 1) {
-          cell.styles.lineColor = gold;
-          cell.styles.lineWidth = 1.3;
+        cell.styles.lineColor = borderDark;   // même contour que le reste
+        cell.styles.lineWidth = 0.6;
         }
+
         return;
-      }
+        }
 
-      if (section === 'body') {
-        const r = row.index;
+        // ----- CORPS -----
+        if (section === 'body') {
         const c = column.index;
+        const raw: any = row.raw || {};
 
+        // Séparateur après "Annonce"
         if (c === 1) {
-          cell.styles.lineColor = borderDark;
-          cell.styles.lineWidth = 1.2;
+        cell.styles.lineColor = borderDark;
+        cell.styles.lineWidth = 1.2;
         }
 
+        // Colonnes "Cumul"
         if (c >= 2 && c % 2 === 1) {
-          cell.styles.lineColor = gold;
-          cell.styles.lineWidth = 1.2;
+        cell.styles.lineColor = borderDark;
+        cell.styles.lineWidth = 0.6;
         }
 
-        // Dernière ligne = totaux
-        if (r === lastIndex) {
-          cell.styles.fillColor = softAccent;
-          cell.styles.textColor = [0, 0, 0];
-          cell.styles.fontStyle = 'bold';
 
-          const isCumulCol = c >= 2 && c % 2 === 1;
-          if (isCumulCol) {
-            cell.styles.fillColor = [255, 215, 128];
-            cell.styles.textColor = [17, 17, 17];
-            cell.styles.fontStyle = 'bold';
-            cell.styles.fontSize = 9;
-            cell.styles.lineColor = gold;
-            cell.styles.lineWidth = 1.4;
-          }
+        // 🌿 LIGNE ESPACE (SPACER)
+        if (raw._type === 'spacer') {
+        cell.styles.fillColor = pageBg;
+        cell.styles.textColor = pageBg;
+        cell.text = [''];
+        cell.styles.lineWidth = 0;
+        return;
         }
-      }
-    },
 
-    didDrawPage(data) {
-      const { pageNumber } = data;
-      const totalPages = (doc as any).internal.getNumberOfPages
+        // 🏆 LIGNE CLASSEMENT
+        if (raw._type === 'classement') {
+        // Fond légèrement différent
+        cell.styles.fillColor = [15, 23, 42];
+        cell.styles.textColor = [249, 250, 251];
+        cell.styles.fontStyle = 'bold';
+
+        // Colonne "CLASSEMENT"
+        if (c === 1) {
+        cell.styles.fillColor = [120, 53, 15];
+        cell.styles.textColor = [255, 247, 237];
+        cell.styles.fontSize = 9;
+        cell.styles.halign = 'right';
+        }
+
+        // Colonnes joueurs
+        if (c >= 2) {
+        const playerIndex = Math.floor((c - 2) / 2);
+        const isScoreCol = c % 2 === 0;
+        const playerName = players[playerIndex];
+        const rank = raw._rankByPlayer?.[playerName] ?? '-';
+
+        if (isScoreCol) {
+        // On fusionne Score + Cumul (colSpan = 2) pour écrire le rang au centre
+        cell.colSpan = 2;
+        cell.styles.fillColor = gold;
+        cell.styles.textColor = [17, 24, 39];
+        cell.styles.fontSize = 9.5;
+        cell.styles.halign = 'center';
+
+        cell.text = [String(rank)];
+        if (rank === 1) {
+        // Petit bonus possible : 👑 pour le vainqueur
+        cell.text = ['1 👑'];
+        }
+        } else {
+        // La 2e cellule (Cumul) du joueur est vidée (le colSpan la recouvre)
+        cell.text = [''];
+        }
+        }
+
+        return;
+        }
+
+// 🌱 LIGNES NORMALES
+if (raw._type === 'normal') {
+  // Score négatif en rouge (UNIQUEMENT colonne "Score")
+  if (c >= 2 && c % 2 === 0) {
+    const rawText = (cell.text?.[0] ?? '').trim(); // ex: "-24", "", "-"
+    const val = parseInt(rawText, 10);
+
+    if (!isNaN(val) && val < 0) {
+      cell.styles.textColor = [255, 120, 120]; // rouge bien visible
+      cell.styles.fontStyle = 'bold';
+    }
+  }
+
+  // Cumul final (dernière donne) surligné
+  if (raw._isLastDonne && c >= 2 && c % 2 === 1) {
+    cell.styles.fillColor = [34, 197, 94]; // vert "victoire"
+    cell.styles.textColor = [0, 0, 0];
+    cell.styles.fontStyle = 'bold';
+    cell.styles.lineColor = gold;
+    cell.styles.lineWidth = 1.4;
+  }
+}
+
+        }
+        },
+didDrawCell(data) {
+  const { cell, column } = data;
+  const c = column.index;
+
+  // Index max = dernière colonne (Cumul du dernier joueur)
+  const lastColIndex = 2 + players.length * 2 - 1;
+
+  // 👉 On veut une ligne dorée :
+  //  - après "Annonce" (c === 1)
+  //  - après chaque colonne "Cumul" des joueurs (3, 5, 7, ..., lastColIndex)
+  const isAfterAnnonce = c === 1;
+  const isAfterCumul   = c >= 3 && c % 2 === 1;
+
+  if (!isAfterAnnonce && !isAfterCumul) return;
+
+  // Coordonnées du bord droit de la cellule
+  const x = cell.x + cell.width;
+  const y1 = cell.y;
+  const y2 = cell.y + cell.height;
+
+  // Style des traits dorés
+  doc.setDrawColor(gold[0], gold[1], gold[2]);
+
+  // On peut faire un trait un peu moins épais après "Annonce"
+  if (isAfterAnnonce) {
+    doc.setLineWidth(1.2);
+  } else {
+    doc.setLineWidth(1.6); // entre les blocs de joueurs
+  }
+
+  doc.line(x, y1, x, y2);
+},
+
+
+        didDrawPage(data) {
+        const { pageNumber } = data;
+        const totalPages = (doc as any).internal.getNumberOfPages
         ? (doc as any).internal.getNumberOfPages()
         : pageNumber;
 
-      doc.setDrawColor(90, 90, 90);
-      doc.setLineWidth(0.5);
-      doc.line(30, pageHeight - 35, pageWidth - 30, pageHeight - 35);
+        doc.setDrawColor(90, 90, 90);
+        doc.setLineWidth(0.5);
+        doc.line(30, pageHeight - 35, pageWidth - 30, pageHeight - 35);
 
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
-      doc.setTextColor(mutedText[0], mutedText[1], mutedText[2]);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.setTextColor(mutedText[0], mutedText[1], mutedText[2]);
 
-      doc.text(
+        doc.text(
         'Whist Bridgé Scoring – Tous droits réservés – contact@wb-scoring.com',
         pageWidth / 2,
         pageHeight - 22,
         { align: 'center' }
-      );
+        );
 
-      doc.text(
+        doc.text(
         `Page ${pageNumber}/${totalPages}`,
         pageWidth - 40,
         pageHeight - 22,
         { align: 'right' }
-      );
-    }
-  });
-  
-    if (sendByEmail) {
-    await sendFeuillePointsByEmail(doc);
-  }
+        );
+        }
+        });
 
-  doc.save(`Feuille_points_Table_${tableName}_Manche_${mancheNumber}.pdf`);
-}
+
+        if (sendByEmail) {
+        await sendFeuillePointsByEmail(doc);
+        }
+
+        doc.save(`Feuille_points_Table_${tableName}_Manche_${mancheNumber}.pdf`);
+        }
 
 
 
