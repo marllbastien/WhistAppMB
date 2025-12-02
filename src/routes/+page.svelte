@@ -346,7 +346,14 @@
       }
       }
 
-
+      .footer-mail {
+      color: #d4af37; /* ton doré */
+      text-decoration: none;
+      margin-left: 4px;
+      }
+      .footer-mail:hover {
+      text-decoration: underline;
+      }
 
     </style>
 
@@ -398,6 +405,7 @@
     {/if}
   </section>
   <footer class="copyright">
-    © 2025 Wb-Scoring — Tous droits réservés
+    © 2025 WB-Scoring — Tous droits réservés —
+    <a href="mailto:contact@wb-scoring.com" class="footer-mail">contact@wb-scoring.com</a>
   </footer>
 </main>

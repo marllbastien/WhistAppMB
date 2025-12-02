@@ -26,6 +26,11 @@
 
   let competitionType: number | null = null;
   let competitionNumber: number | null = null;
+  // Libellés lisibles reçus depuis /home
+  let competitionTypeLabel = '';
+  let competitionSubtypeLabel = '';
+  
+  
 
   let SessionId = '';
   function scrollToEmballage(player: string) {
@@ -38,6 +43,7 @@
   }
   }
 
+  let tableConfigId: number | null = null;
 
 
   let soloPlayer: string | null = null;
@@ -108,6 +114,35 @@
   pendingNav = null;
   }
 
+
+  // 🧠 Mettre la manche en PAUSE côté serveur
+  async function pauseMancheOnServer() {
+  if (!tableConfigId || !SessionId) {
+  console.warn('Impossible de mettre en pause : tableConfigId ou SessionId manquant.');
+  return;
+  }
+
+  try {
+  await fetch(`${API_BASE_URL}/api/manches/${tableConfigId}/pause`, {
+  method: 'POST',
+  headers: { 'Content-Type': 'application/json' },
+  body: JSON.stringify({
+  sessionId: SessionId
+  })
+  });
+  } catch (e) {
+  console.error('Erreur lors de la mise en pause de la manche :', e);
+  // on ne bloque pas la navigation même si ça plante
+  }
+  }
+
+  async function handlePauseClick() {
+  await pauseMancheOnServer(); // ta fonction déjà prête
+  markMancheClean();           // tu l’as déjà aussi
+  goto('/');                   // retour accueil ou une autre page
+  }
+
+
   // ⚠ Quitter quand même (on laisse partir la navigation qui était prévue)
   function confirmLeave() {
   if (!pendingNav) {
@@ -119,8 +154,12 @@
   pendingNav = null;
   showLeaveModal = false;
 
-  // On ne veut plus bloquer la navigation pour cette fois
+
+
   hasUnsavedManche = false;
+
+  void pauseMancheOnServer();
+
   ignoreNextNav = true;
 
   // Types de navigation internes : link / form / goto
@@ -275,8 +314,8 @@ function nextDonne() {
   { code: 'E12', label: 'Emballage 12 plis', templateResult: 2 },
   { code: 'S8', label: 'Seul 8 plis', templateResult: 1 },
   { code: 'S8_D', label: 'Seul 8 plis direct', templateResult: 1 },
-  { code: 'P', label: 'Piccolo', templateResult: 3 },
-  { code: 'P2', label: 'Piccolo 2 joueurs', templateResult: 4 },
+  { code: 'P', label: 'Picolo', templateResult: 3 },
+  { code: 'P2', label: 'Picolo 2 joueurs', templateResult: 4 },
   { code: 'PME', label: 'Petite misère étalée', templateResult: 3 },
   { code: 'PME2', label: 'Petite misère étalée 2 joueurs', templateResult: 4 },
   { code: 'E13', label: 'Emballage 13 plis', templateResult: 2 },
@@ -686,7 +725,7 @@ function getDisplayName(p: string): string {
     { kind: 'etat', code: 'PM2', nbJoueursDedans: 2, etat: 'Raté',       resultatInd: -18, resultatJeu: 0 },
     { kind: 'etat', code: 'PM2', nbJoueursDedans: 2, etat: 'RéussiRaté', resultatInd: 18, resultatJeu: 24 },
 
-    // Piccolo 2 joueurs (P2)
+    // Picolo 2 joueurs (P2)
     { kind: 'etat', code: 'P2', nbJoueursDedans: 2, etat: 'Réussi',     resultatInd: 24, resultatJeu: 48 },
     { kind: 'etat', code: 'P2', nbJoueursDedans: 2, etat: 'Raté',       resultatInd: -24, resultatJeu: 0 },
     { kind: 'etat', code: 'P2', nbJoueursDedans: 2, etat: 'RéussiRaté', resultatInd: 24, resultatJeu: 32 },
@@ -725,6 +764,21 @@ function getDisplayName(p: string): string {
 
     const compNumParam = url.searchParams.get('competitionNumber');
     competitionNumber = compNumParam ? Number(compNumParam) : null;
+
+    // Libellés lisibles (envoyés par la page d'accueil)
+    const typeLabelParam = url.searchParams.get('competitionTypeLabel');
+    competitionTypeLabel = typeLabelParam ?? '';
+
+    const subtypeLabelParam = url.searchParams.get('competitionSubtypeLabel');
+    competitionSubtypeLabel = subtypeLabelParam ?? '';
+
+
+    const tcfgParam =
+    url.searchParams.get('tableConfigId') ??
+    localStorage.getItem('wb_current_table_config_id');
+
+    tableConfigId = tcfgParam ? Number(tcfgParam) : null;
+
 
 
     // --- joueurs (alias) ---
@@ -878,6 +932,7 @@ function getDisplayName(p: string): string {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+    tableConfigId,
     SessionId,
     tableName,
     mancheNumber: Number(mancheNumber),
@@ -925,6 +980,7 @@ function getDisplayName(p: string): string {
     method: 'POST',
     headers: { 'Content-Type': 'application/json' },
     body: JSON.stringify({
+    tableConfigId,
     SessionId,
     tableName,
     mancheNumber: Number(mancheNumber),
@@ -945,13 +1001,16 @@ function getDisplayName(p: string): string {
     return;
     }
 
+
     const payload = {
+    tableConfigId,
     TableName: tableName,
     MancheNumber: Number(mancheNumber),
     SessionId,                 // ton SessionId déjà géré côté front
     StartTime: mancheStartDate, // string ISO
     EndTime: mancheEndDate,     // string ISO
-    DureeMinutes: dureeMinutes
+    DureeMinutes: dureeMinutes,
+
     };
 
     console.log("Envoi timing manche à l'API :", payload);
@@ -973,6 +1032,35 @@ function getDisplayName(p: string): string {
     }
 
 
+    // 🔄 Envoi du début de manche vers la DB
+    async function saveMancheStartToServer() {
+    if (!mancheStartDate) return;
+
+    const payload = {
+    tableConfigId,
+    TableName: tableName,
+    MancheNumber: Number(mancheNumber),
+    SessionId,
+    StartTime: mancheStartDate
+    };
+
+    console.log("Envoi début manche à l'API :", payload);
+
+    try {
+    const res = await fetch(`${API_BASE_URL}/api/table-config/start`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+    const text = await res.text();
+    console.error("Erreur API début de manche :", text);
+    }
+    } catch (err) {
+    console.error("Impossible d'envoyer le début de manche à l'API 😢", err);
+    }
+    }
 
 
     function getTemplateForAnnonce(code: string): number {
@@ -1170,6 +1258,7 @@ function clearPlayerData(player: string) {
       mancheStartTime  = formatHeure(now);
       // Pour la DB
       mancheStartDate = now.toISOString();
+      void saveMancheStartToServer();
       }
 
       const template = getTemplateForAnnonce(code);
@@ -1208,7 +1297,7 @@ function clearPlayerData(player: string) {
 
       saveDraftLocallyAndRemotely();
 
-  if (template !== 2 && code !== "TR") {
+      if (template !== 2 && code !== "TR") {
     // jeux solo / autres → on va directement à l’encodage
     scrollToResultSection();
   } else {
@@ -1340,6 +1429,10 @@ function getEtatJeuPourCode(
     return null;
 }
 
+function displayScoreValue(ligne: LigneFeuillePoints, player: string): string {
+  const s = ligne.scores[player]?.score ?? 0;
+  return s === 0 ? '' : String(s);
+}
 
 function computeScoresForState(
     playersList: string[],
@@ -1820,156 +1913,375 @@ $: scoresCumulés = (() => {
 
 
 
-function handleInput(player: string, value: string | number) {
-  const template = getTemplateForAnnonce(annonceByPlayer[player]);
+      function handleInput(player: string, value: string | number) {
+      const template = getTemplateForAnnonce(annonceByPlayer[player]);
 
-  if (template === 1 || template === 2) {
-    plis[player] = +value;
-    plis = { ...plis };
-  } else if (template === 3 || template === 4 || template === 5) {
-    resultats[player] = value as string;
-    resultats = { ...resultats };
-  } else if (template === 6) {
-    dames[player] = +value;
-    dames = { ...dames };
-  }
-markMancheDirty(); 
-  saveDraftLocallyAndRemotely();
-   scrollToPreviewScores();
-}
-
-
-
-      //
-      async function exportFeuillePointsPdf() {
-      if (!feuillePoints.length) {
-      alert("Aucune donne pour la feuille de points.");
-      return;
+      if (template === 1 || template === 2) {
+      plis[player] = +value;
+      plis = { ...plis };
+      } else if (template === 3 || template === 4 || template === 5) {
+      resultats[player] = value as string;
+      resultats = { ...resultats };
+      } else if (template === 6) {
+      dames[player] = +value;
+      dames = { ...dames };
+      }
+      markMancheDirty();
+      saveDraftLocallyAndRemotely();
+      scrollToPreviewScores();
       }
 
-      const doc = new jsPDF('l', 'pt', 'a4'); // paysage
-      const pageWidth = doc.internal.pageSize.getWidth();
-      const pageHeight = doc.internal.pageSize.getHeight();
 
-      try {
-      // 🔹 Charger le logo comme image classique
-      const img = new Image();
-      img.src = "/logo_iwb.png"; // sert le fichier depuis /static
 
-      await new Promise<void>((resolve, reject) => {
-            img.onload = () => resolve();
-            img.onerror = (e) => reject(e);
-        });
+      function arrayBufferToBase64(buffer: ArrayBuffer): string {
+      let binary = '';
+      const bytes = new Uint8Array(buffer);
+      const len = bytes.byteLength;
+      for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
 
-        // 🔹 L'ajouter dans le PDF
-        doc.addImage(img, "PNG", 30, 20, 70, 70);
-    } catch (err) {
-        console.error("Erreur chargement logo pour le PDF :", err);
-        alert("Erreur lors du chargement du logo pour le PDF (voir console).");
-        // On continue quand même sans logo
+async function sendFeuillePointsByEmail(doc: jsPDF) {
+  const arrayBuffer = doc.output('arraybuffer');
+  const pdfBase64 = arrayBufferToBase64(arrayBuffer);
+
+  const payload = {
+    tableName,
+    mancheNumber: Number(mancheNumber),
+    competitionType,
+    competitionNumber,
+    pdfBase64,
+    fileName: `Feuille_points_Table_${tableName}_Manche_${mancheNumber}.pdf`,
+    recipient: 'contact@wb-scoring.com', // tu peux changer + plus tard mettre un champ
+  };
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/reports/feuille-points-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(payload)
+    });
+
+    if (!res.ok) {
+      console.error('Erreur envoi email feuille de points', await res.text());
     }
+  } catch (e) {
+    console.error('Erreur réseau envoi email feuille de points', e);
+  }
+}
 
-    // 🧾 En-tête
-    doc.setFont('helvetica', 'bold');
-    doc.setFontSize(18);
-    doc.text('Feuille de points', pageWidth / 2, 35, { align: 'center' });
+        
+        
+        
 
-    doc.setFont('helvetica', 'normal');
-    doc.setFontSize(11);
-    doc.text(
-        `Table ${tableName} – Manche ${mancheNumber}`,
-        pageWidth / 2,
-        55,
-        { align: 'center' }
-    );
+      //
+async function exportFeuillePointsPdf(options?: { sendByEmail?: boolean }) {
+  const sendByEmail = options?.sendByEmail ?? false;
+  if (!feuillePoints.length) {
+    alert('Aucune donne pour la feuille de points.');
+    return;
+  }
 
-    // Date / heure en haut à droite
-    const now = new Date();
-    const dateStr = now.toLocaleDateString();
-    const timeStr = now.toLocaleTimeString().slice(0, 5); // HH:MM
+  const doc = new jsPDF('l', 'pt', 'a4');
+  const pageWidth = doc.internal.pageSize.getWidth();
+  const pageHeight = doc.internal.pageSize.getHeight();
 
-    doc.setFontSize(8);
-    doc.setTextColor(120);
-    doc.text(
-        `Généré le ${dateStr} à ${timeStr}`,
-        pageWidth - 40,
-        25,
-        { align: 'right' }
-    );
+  // 🎨 Palette
+  const darkBg = [2, 5, 6];          // bandeau noir / très sombre
+  const pageBg = [4, 20, 11];        // fond de page vert foncé (#04140b)
+  const tableBase = [2, 11, 6];      // fond table
+  const tableAlt = [4, 20, 11];
+  const headPlayer = [20, 83, 45];
+  const headSecond = [4, 19, 11];
+  const gold = [250, 191, 36];
+  const softAccent = [254, 243, 199];
+  const lightText = [239, 239, 239];
+  const greyHeader = [156, 163, 175];
+  const borderDark = [55, 65, 81];
+  const mutedText = [140, 140, 140];
 
-    doc.setTextColor(0);
+  // 🟩 1) FOND DE PAGE COMPLET (vert foncé)
+  doc.setFillColor(pageBg[0], pageBg[1], pageBg[2]);
+  doc.rect(0, 0, pageWidth, pageHeight, 'F');
 
-    // Colonnes du tableau
-    const head = [
-        [
-            'Donne',
-            'Annonce',
-            ...players.flatMap((p) => [`${p} (score)`, `${p} (cumul)`])
-        ]
-    ];
+  // 🔤 info compétition (simple : on affiche les numéros si présents)
+  const competitionTypeText =
+    competitionType != null ? String(competitionType) : '';
+  const competitionSubtypeText =
+    competitionNumber != null ? String(competitionNumber) : '';
 
-    // Lignes
-    const body = feuillePoints.map((ligne) => {
-        const base = [
-            ligne.donneNumber.toString(),
-            ligne.annonce ?? ''
-        ];
+  const competitionLine = [competitionTypeText, competitionSubtypeText]
+    .filter((x) => x && x.trim() !== '')
+    .join(' – ');
 
-        const scores = players.flatMap((p) => [
-            (ligne.scores[p]?.score ?? 0).toString(),
-            (ligne.scores[p]?.cumul ?? 0).toString()
-        ]);
+  // 🧱 2) BANDEAU HAUT + LOGO NON DÉFORMÉ
+  try {
+    const img = new Image();
+    img.src = '/Logo_App_Rond.png';
 
-        return [...base, ...scores];
+    await new Promise<void>((resolve, reject) => {
+      img.onload = () => resolve();
+      img.onerror = (e) => reject(e);
     });
 
-    const lastIndex = feuillePoints.length - 1;
+    // Bandeau noir par-dessus le fond vert
+    doc.setFillColor(darkBg[0], darkBg[1], darkBg[2]);
+    doc.rect(0, 0, pageWidth, 90, 'F');
 
-    autoTable(doc, {
-        head,
-        body,
-        startY: 80,
-        styles: {
-            fontSize: 8,
-            halign: 'center',
-            valign: 'middle',
-            cellPadding: 3
-        },
-        headStyles: {
-            fillColor: [40, 116, 166],
-            textColor: 255,
-            fontStyle: 'bold'
-        },
-        alternateRowStyles: {
-            fillColor: [245, 245, 245]
-        },
-        columnStyles: {
-            0: { cellWidth: 40, halign: 'center' },
-            1: { cellWidth: 55, halign: 'center' }
-        },
-        margin: { top: 80, left: 30, right: 30, bottom: 40 },
+    // ✅ Respect du ratio du logo
+    const logoTargetWidth = 60;
+    const ratio = img.height / img.width;
+    const logoTargetHeight = logoTargetWidth * ratio;
 
-        didParseCell: function (data) {
-            if (data.section === 'body' && data.row.index === lastIndex) {
-                data.cell.styles.fillColor = [255, 243, 205];
-                data.cell.styles.fontStyle = 'bold';
-                data.cell.styles.textColor = [160, 82, 45];
-            }
-        },
+    doc.addImage(
+      img,
+      'PNG',
+      30,
+      15 + (60 - logoTargetHeight) / 2,
+      logoTargetWidth,
+      logoTargetHeight
+    );
+  } catch {
+    // si logo KO : on garde quand même le bandeau
+    doc.setFillColor(darkBg[0], darkBg[1], darkBg[2]);
+    doc.rect(0, 0, pageWidth, 90, 'F');
+  }
 
-        didDrawPage: function () {
-            doc.setFontSize(8);
-            doc.setTextColor(120);
-            doc.text(
-                'Les Amis Réunis – Feuille générée automatiquement',
-                pageWidth / 2,
-                pageHeight - 20,
-                { align: 'center' }
-            );
+  // 🧾 TITRES
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(22);
+  doc.setTextColor(249, 176, 0);
+  doc.text('Feuille de points', pageWidth / 2, 32, { align: 'center' });
+
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(11);
+  doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+  doc.text(
+    `Table ${tableName} – Manche ${mancheNumber}`,
+    pageWidth / 2,
+    52,
+    { align: 'center' }
+  );
+
+  // 🌟 ligne compétition (juste sous "Table / Manche")
+  if (competitionLine) {
+    doc.setFontSize(9.5);
+    doc.setTextColor(222, 222, 222);
+    doc.text(competitionLine, pageWidth / 2, 68, { align: 'center' });
+  }
+
+  // Liste des joueurs
+  const joueursStr = players.join(' • ');
+  doc.setFontSize(9);
+  doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+  doc.text(joueursStr, pageWidth / 2, 84, {
+    align: 'center',
+    maxWidth: pageWidth - 160
+  });
+  
+  
+  // ✨ Infos de manche (début / fin / durée) sous la ligne des joueurs
+if (mancheStartTime || mancheEndTime || dureeManche) {
+  const start = mancheStartTime ?? '-';
+  const end = mancheEndTime ?? '-';
+  const dureeTxt = dureeManche ?? '-';
+
+  doc.setFontSize(9);
+  doc.setTextColor(249, 176, 0); // un peu comme dans la modale
+
+  doc.text(
+    `Début : ${start}    Fin : ${end}    Durée : ${dureeTxt}`,
+    pageWidth / 2,
+    100,
+    { align: 'center' }
+  );
+}
+
+
+  // 📅 Date / heure
+  const now = new Date();
+  const dateStr = now.toLocaleDateString();
+  const timeStr = now.toLocaleTimeString().slice(0, 5);
+
+  doc.setFontSize(8);
+  doc.setTextColor(mutedText[0], mutedText[1], mutedText[2]);
+  doc.text(`Généré le ${dateStr} à ${timeStr}`, pageWidth - 40, 25, {
+    align: 'right'
+  });
+
+  // ─────────────  TABLEAU  ─────────────
+
+  const headRow1 = ['Donne', 'Annonce', ...players.flatMap((p) => [p.toUpperCase(), ''])];
+  const headRow2 = ['', '', ...players.flatMap(() => ['Score', 'Cumul'])];
+  const head = [headRow1, headRow2];
+
+  const body = feuillePoints.map((ligne) => {
+    const base = [ligne.donneNumber.toString(), ligne.annonce ?? ''];
+
+    const scores = players.flatMap((p) => {
+      const rawScore = ligne.scores[p]?.score ?? 0;
+      const scoreText = rawScore === 0 ? '' : rawScore.toString();
+      const cumulText = (ligne.scores[p]?.cumul ?? 0).toString();
+      return [scoreText, cumulText];
+    });
+
+    return [...base, ...scores];
+  });
+
+  const lastIndex = feuillePoints.length - 1;
+
+  autoTable(doc, {
+    head,
+    body,
+    startY: 120,
+    styles: {
+      fontSize: 8,
+      halign: 'center',
+      valign: 'middle',
+      cellPadding: 4,
+      fillColor: tableBase,
+      textColor: lightText,
+      lineColor: borderDark,
+      lineWidth: 0.6
+    },
+    bodyStyles: {
+      fillColor: tableBase,
+      textColor: lightText
+    },
+    alternateRowStyles: {
+      fillColor: tableAlt
+    },
+    headStyles: {
+      fillColor: tableBase,
+      textColor: lightText,
+      fontStyle: 'bold'
+    },
+    margin: { top: 115, left: 30, right: 30, bottom: 55 },
+    columnStyles: {
+      0: { cellWidth: 45, halign: 'center' },
+      1: { cellWidth: 75, halign: 'left' }
+    },
+
+    didParseCell(data) {
+      const { section, row, column, cell } = data;
+
+      if (section === 'head') {
+        const r = row.index;
+        const c = column.index;
+
+        // Ligne 1
+        if (r === 0) {
+          if (c === 0 || c === 1) {
+            cell.rowSpan = 2;
+            cell.styles.fillColor = headSecond;
+            cell.styles.textColor = lightText;
+            cell.styles.fontSize = 8.5;
+            cell.styles.fontStyle = 'bold';
+          } else if (c >= 2 && c % 2 === 0) {
+            cell.colSpan = 2;
+            cell.styles.fillColor = headPlayer;
+            cell.styles.textColor = [254, 249, 195];
+            cell.styles.fontSize = 9.2;
+            cell.styles.fontStyle = 'bold';
+            cell.styles.lineWidth = 1;
+            cell.styles.lineColor = gold;
+          } else {
+            cell.text = '';
+          }
         }
-    });
 
-    doc.save(`Feuille_points_Table_${tableName}_Manche_${mancheNumber}.pdf`);
+        // Ligne 2
+        if (r === 1) {
+          cell.styles.fillColor = headSecond;
+          cell.styles.textColor = greyHeader;
+          cell.styles.fontSize = 7.5;
+          cell.styles.fontStyle = 'normal';
+        }
+
+        // Trait vertical après "Annonce"
+        if (c === 1) {
+          cell.styles.lineColor = borderDark;
+          cell.styles.lineWidth = 1.2;
+        }
+
+        // Colonnes "Cumul"
+        if (c >= 2 && c % 2 === 1) {
+          cell.styles.lineColor = gold;
+          cell.styles.lineWidth = 1.3;
+        }
+        return;
+      }
+
+      if (section === 'body') {
+        const r = row.index;
+        const c = column.index;
+
+        if (c === 1) {
+          cell.styles.lineColor = borderDark;
+          cell.styles.lineWidth = 1.2;
+        }
+
+        if (c >= 2 && c % 2 === 1) {
+          cell.styles.lineColor = gold;
+          cell.styles.lineWidth = 1.2;
+        }
+
+        // Dernière ligne = totaux
+        if (r === lastIndex) {
+          cell.styles.fillColor = softAccent;
+          cell.styles.textColor = [0, 0, 0];
+          cell.styles.fontStyle = 'bold';
+
+          const isCumulCol = c >= 2 && c % 2 === 1;
+          if (isCumulCol) {
+            cell.styles.fillColor = [255, 215, 128];
+            cell.styles.textColor = [17, 17, 17];
+            cell.styles.fontStyle = 'bold';
+            cell.styles.fontSize = 9;
+            cell.styles.lineColor = gold;
+            cell.styles.lineWidth = 1.4;
+          }
+        }
+      }
+    },
+
+    didDrawPage(data) {
+      const { pageNumber } = data;
+      const totalPages = (doc as any).internal.getNumberOfPages
+        ? (doc as any).internal.getNumberOfPages()
+        : pageNumber;
+
+      doc.setDrawColor(90, 90, 90);
+      doc.setLineWidth(0.5);
+      doc.line(30, pageHeight - 35, pageWidth - 30, pageHeight - 35);
+
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(mutedText[0], mutedText[1], mutedText[2]);
+
+      doc.text(
+        'Whist Bridgé Scoring – Tous droits réservés – contact@wb-scoring.com',
+        pageWidth / 2,
+        pageHeight - 22,
+        { align: 'center' }
+      );
+
+      doc.text(
+        `Page ${pageNumber}/${totalPages}`,
+        pageWidth - 40,
+        pageHeight - 22,
+        { align: 'right' }
+      );
+    }
+  });
+  
+    if (sendByEmail) {
+    await sendFeuillePointsByEmail(doc);
+  }
+
+  doc.save(`Feuille_points_Table_${tableName}_Manche_${mancheNumber}.pdf`);
 }
 
 
@@ -1979,14 +2291,14 @@ markMancheDirty();
 
 
 
-    const MAX_DAMES = 4;
+        const MAX_DAMES = 4;
 
-function selectDames(player: string, value: number) {
-  const totalAutres = Object.keys(dames)
-    .filter((p) => p !== player)
-    .reduce((acc, p) => acc + (dames[p] || 0), 0);
+        function selectDames(player: string, value: number) {
+        const totalAutres = Object.keys(dames)
+        .filter((p) => p !== player)
+        .reduce((acc, p) => acc + (dames[p] || 0), 0);
 
-  if (totalAutres + value <= MAX_DAMES) {
+        if (totalAutres + value <= MAX_DAMES) {
     dames[player] = value;
     dames = { ...dames };
     markMancheDirty();
@@ -2010,6 +2322,11 @@ function selectDames(player: string, value: number) {
     }
 
     async function validate() {
+
+    if (mancheTerminee) {
+    return;
+    }
+
     // 1. Construire les infos par joueur
     const joueursPayload = players
     .map((p, index) => {
@@ -2061,12 +2378,17 @@ function selectDames(player: string, value: number) {
     alert("Aucune annonce / aucun résultat encodé pour cette donne.");
     return;
     }
-
+    const dealerIndex = donneNumber % players.length;
+    const DealerPlayerId = playerIds[dealerIndex] ?? null;
+    
+    
     const payload = {
+    tableConfigId,
     tableName,
     mancheNumber: Number(mancheNumber),
     donneNumber,
     SessionId,
+    DealerPlayerId,
     joueurs: joueursPayload
     };
 
@@ -2201,7 +2523,8 @@ function selectDames(player: string, value: number) {
     showConfetti = false;
     }, 4000); // 4 secondes de confettis
 
-
+  // 💌 Générer la feuille de points et l'envoyer par email
+  await exportFeuillePointsPdf({ sendByEmail: true });
 
     resetDonneState();      // on vide les encodages de la donne courante
     return;                 // surtout ne pas appeler nextDonne()
@@ -2249,6 +2572,7 @@ async function goToNextManche() {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
+      tableConfigId,
         SessionId,
         tableName,
         mancheNumber: Number(mancheNumber),
@@ -2404,6 +2728,13 @@ $: showGainsInTable =
       <button on:click={() => showAnnonceOrder = true}>Ordre des annonces</button>
       <button on:click={() => showHistorique = true}>Historique des donnes</button>
       <button on:click={() => showFeuillePoints = true}>Feuille de points</button>
+   <div class="pause-floating" on:click={handlePauseClick}>
+  <svg viewBox="0 0 24 24">
+    <rect x="7" y="4" width="3" height="16" rx="1.5" />
+    <rect x="14" y="4" width="3" height="16" rx="1.5" />
+  </svg>
+</div>
+
     </div>
 
 <table class="players-table">
@@ -2426,7 +2757,7 @@ $: showGainsInTable =
     <tr>
       <td class="label-cell">Résultats</td>
       {#each players as p}
-        <td
+      <td
           class:leader={leaderScore !== 0 && scoresCumulés[p] === leaderScore}
         >
           {scoresCumulés[p] ?? 0}
@@ -2599,7 +2930,7 @@ $: showGainsInTable =
                               
                                 {#each players as p}
                                     <td class="cell-score">
-                                        {ligne.scores[p]?.score ?? 0}
+                                      {displayScoreValue(ligne, p)}
                                     </td>
                                     <td
                                         class="cell-cumul"
@@ -2973,35 +3304,51 @@ $: showGainsInTable =
 
 
   {#if players.length}
-   <div class="preview-scores" bind:this={previewSectionEl}>
-        <h3>Prévisualisation des scores</h3>
-        <table>
-            <thead>
-                <tr>
-                    <th>Joueur</th>
-                    <th>Score</th>
-                </tr>
-            </thead>
-            <tbody>
-                {#each players as p}
-                    <tr>
-                        <td>{p}</td>
-                      <td
-               class:positive={previewScores[p] > 0}
-               class:negative={previewScores[p] < 0}
-            >
-              {#if inactivePlayersCurrentDonne.includes(p)}
-    -
-  {:else}
-    {previewScores[p] ?? 0}
-  {/if}
-                      </td>
+<div class="preview-scores" bind:this={previewSectionEl}>
+  <h3>Prévisualisation des scores</h3>
 
-                    </tr>
-                {/each}
-            </tbody>
-        </table>
-    </div>
+  <table class="preview-table">
+    <colgroup>
+      <col class="dealer-col" />
+      <col />
+      <col />
+    </colgroup>
+
+    <thead>
+      <tr>
+        <th></th>        <!-- col dealer -->
+        <th>Joueur</th>
+        <th>Score</th>
+      </tr>
+    </thead>
+
+    <tbody>
+      {#each players as p, i}
+        <tr class:dealer-row={i === currentDealer}>
+          <td class="dealer-cell">
+            {#if i === currentDealer}
+              <span class="dealer-icon">🖐️</span>
+            {/if}
+          </td>
+
+          <td>{p}</td>
+
+          <td
+            class:positive={previewScores[p] > 0}
+            class:negative={previewScores[p] < 0}
+          >
+            {#if inactivePlayersCurrentDonne.includes(p)}
+              -
+            {:else}
+              {previewScores[p] ?? 0}
+            {/if}
+          </td>
+        </tr>
+      {/each}
+    </tbody>
+  </table>
+</div>
+
 {/if}
 
 
@@ -3023,7 +3370,8 @@ $: showGainsInTable =
 
 </div>
 <footer class="copyright">
-  © 2025 Wb-Scoring — Tous droits réservés
+  © 2025 WB-Scoring — Tous droits réservés —
+  <a href="mailto:contact@wb-scoring.com" class="footer-mail">contact@wb-scoring.com</a>
 </footer>
 
 <style>
@@ -4784,6 +5132,79 @@ $: showGainsInTable =
   }
 
 
+  .pause-floating {
+  position: fixed;
+  top: 10px;
+  right: 10px;
+  background: #04140a; /* ton vert foncé */
+  border: 1px solid #00995a;
+  border-radius: 50%;
+  width: 44px;
+  height: 44px;
+  z-index: 50;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  box-shadow: 0 0 6px rgba(0, 179, 107, 0.40);
+  }
+
+  .pause-floating svg {
+  width: 22px;
+  height: 22px;
+  fill: #d4af37;
+  }
+
+  .footer-mail {
+  color: #d4af37; /* ton doré */
+  text-decoration: none;
+  margin-left: 4px;
+  }
+  .footer-mail:hover {
+  text-decoration: underline;
+  }
+
+  .dealer-col {
+  width: 20px;        /* assez large pour une emoji */
+  text-align: center; /* icône bien centrée */
+  padding-right: 0;
+  padding-left: 0;
+  }
+
+  .dealer-icon {
+  font-size: 1rem;
+  display: inline-block;
+  }
+
+  .preview-scores .preview-table {
+  border-collapse: collapse;
+  table-layout: fixed;
+  width: 100%;
+  }
+
+  .preview-scores .preview-table .dealer-col {
+  width: 1.8rem;   /* ajuste si tu veux plus/moins large */
+  }
+
+  .preview-scores .preview-table .dealer-cell {
+  text-align: center;
+  padding-left: 0;
+  padding-right: 0;
+  }
+
+  .preview-scores .preview-table .dealer-icon {
+  display: inline-block;
+  font-size: 1.1rem;
+  }
+  /* on neutralise les bordures existantes */
+  .preview-scores .preview-table td {
+  border-bottom: none;
+  }
+
+  /* on remet la ligne sous Joueur + Score uniquement */
+  .preview-scores .preview-table tbody tr:not(:last-child) td:nth-child(n + 2) {
+  border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  }
 
 
 </style>
