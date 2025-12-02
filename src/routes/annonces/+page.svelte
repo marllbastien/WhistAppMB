@@ -45,6 +45,137 @@
 
   let tableConfigId: number | null = null;
 
+// Empêcher les doubles clics sur "Valider la donne"
+let isSubmittingDonne = false;
+
+// File d’attente des donnes à envoyer au backend
+type PendingDonne = {
+  clientDonneId: string;
+  donneNumber: number;
+  donnePayload: any;
+  scoresPayload: any;
+};
+
+let pendingDonnes: PendingDonne[] = [];
+let isFlushingPending = false;
+
+// Génère un identifiant unique pour chaque donne côté client
+function generateClientDonneId(): string {
+  return (crypto as any).randomUUID?.()
+    ?? `${Date.now()}-${Math.random().toString(16).slice(2)}`;
+}
+
+// Clé de stockage local pour la file d’attente
+function getPendingKey() {
+  const typePart = competitionType ?? 'none';
+  const numPart = competitionNumber ?? 'none';
+  return `${DRAFT_STORAGE_PREFIX}-pending-${tableName}-t${typePart}-n${numPart}-m${mancheNumber}`;
+}
+
+function savePendingToLocalStorage() {
+  if (typeof window === 'undefined') return;
+  const key = getPendingKey();
+  localStorage.setItem(key, JSON.stringify(pendingDonnes));
+}
+
+function loadPendingFromLocalStorage() {
+  if (typeof window === 'undefined') return;
+  const key = getPendingKey();
+  const raw = localStorage.getItem(key);
+  if (!raw) {
+    pendingDonnes = [];
+    return;
+  }
+  try {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed)) {
+      pendingDonnes = parsed;
+    } else {
+      pendingDonnes = [];
+    }
+  } catch {
+    pendingDonnes = [];
+  }
+}
+
+// Essaie d'envoyer toutes les donnes en attente dans l'ordre
+async function flushPendingDonnes() {
+  if (isFlushingPending) return;
+  if (!pendingDonnes.length) return;
+
+  console.log('[PENDING] Début flush – nb donnes en attente :', pendingDonnes.length);
+  
+  
+  isFlushingPending = true;
+  try {
+    const stillPending: PendingDonne[] = [];
+
+    for (const item of pendingDonnes) {
+      try {
+        // 1) Envoi de la donne
+        const resDonne = await fetch(`${API_BASE_URL}/api/donne`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item.donnePayload)
+        });
+
+        if (!resDonne.ok) {
+          // On arrête tout, on garde cette donne et les suivantes en attente
+          stillPending.push(item);
+          break;
+        }
+
+        // 2) Envoi des scores
+        const resScores = await fetch(`${API_BASE_URL}/api/scores`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify(item.scoresPayload)
+        });
+
+        if (!resScores.ok) {
+          stillPending.push(item);
+          break;
+        }
+
+
+        // Si tout va bien → cette donne est synchronisée, on passe à la suivante
+        
+        console.log(
+  '[PENDING] Donne synchronisée avec succès',
+  { donneNumber: item.donneNumber, clientDonneId: item.clientDonneId }
+);
+        
+      } catch (e) {
+        console.error('Erreur réseau lors du flush des donnes pendantes', e);
+        stillPending.push(item);
+        break; // on n'essaie pas les suivantes, on attendra le prochain flush
+      }
+    }
+
+    // On ajoute les donnes qui n'ont pas encore été traitées
+    const indexFirstUnsynced = stillPending.length
+      ? pendingDonnes.findIndex(p => p.clientDonneId === stillPending[0].clientDonneId)
+      : -1;
+
+    if (indexFirstUnsynced >= 0) {
+      // On garde la première non synchronisée + toutes les suivantes
+      pendingDonnes = pendingDonnes.slice(indexFirstUnsynced);
+    } else if (stillPending.length === 0) {
+      // Tout a été synchronisé ✅
+      pendingDonnes = [];
+    }
+
+    savePendingToLocalStorage();
+  } finally {
+    isFlushingPending = false;
+    
+    console.log('[PENDING] Fin flush – donnes encore en attente :', pendingDonnes.length);
+
+  }
+}
+
+
+
 
   let soloPlayer: string | null = null;
 
@@ -246,6 +377,9 @@
     ];
 
 
+
+
+
     // Le joueur 2 (index 1) distribue au départ
     $: currentDealer = (donneNumber) % players.length;
 
@@ -272,6 +406,16 @@
   return [];
   }
 
+
+ function getDealerAliasForDonne(donneNumber: number, allPlayers: string[]): string {
+    const n = allPlayers.length;
+    if (!n) return '';
+
+    // même logique que currentDealer
+    const dealerIndex = donneNumber % n;
+    return allPlayers[dealerIndex] ?? '';
+    }
+
   // 🔹 Liste réactive des joueurs inactifs pour la donne courante
   $: inactivePlayersCurrentDonne = getInactivePlayersForDonne(donneNumber, players);
 
@@ -283,7 +427,9 @@ function scrollToTop() {
 }
 
 
-
+function getInactivePlayersForDonneFeuille(donneNumber: number) {
+  return getInactivePlayersForDonne(donneNumber, players);
+}
 function nextDonne() {
   // Si on est déjà à la dernière donne, on ne va pas plus loin
   if (donneNumber >= rows) {
@@ -808,6 +954,15 @@ function getDisplayName(p: string): string {
 
     // --- tenter de restaurer un brouillon pour cette donne ---
     loadDraft();
+
+    // --- restaurer les donnes en attente (file d’attente locale) ---
+    loadPendingFromLocalStorage();
+
+    // --- tenter un flush au démarrage (si la connexion est OK) ---
+    flushPendingDonnes().catch((e) =>
+    console.error('Erreur lors du flush des donnes pendantes au démarrage', e)
+    );
+
     });
 
 
@@ -1791,14 +1946,24 @@ $: scoresCumulés = (() => {
       };
 
       let classementFinal: ClassementItem[] = [];
+      let rankByPlayer: Record<string, number> = {};
+
       let winnerNames = '';
 
-      $: classementFinal = players
+      $: {classementFinal = players
       .map((p) => ({
       nom: p,
       score: scoresCumulés[p] ?? 0
       }))
       .sort((a, b) => b.score - a.score);
+      
+        rankByPlayer = {};
+  classementFinal.forEach((item, index) => {
+    rankByPlayer[item.nom] = index + 1; // 1 = premier, 2 = deuxième, ...
+  });
+}
+      
+   
 
       $: winnerNames = classementFinal.length
       ? classementFinal
@@ -2321,228 +2486,273 @@ if (mancheStartTime || mancheEndTime || dureeManche) {
     for (const p of players) validations[p] = false;
     }
 
-    async function validate() {
-
-    if (mancheTerminee) {
+async function validate() {
+  if (mancheTerminee) {
     return;
-    }
+  }
 
+  // 🔐 Empêcher double-clic / double appel
+  if (isSubmittingDonne) {
+    return;
+  }
+  isSubmittingDonne = true;
+
+  try {
     // 1. Construire les infos par joueur
     const joueursPayload = players
-    .map((p, index) => {
-    const annonce = annonceByPlayer[p] || null;
-    const infoArbitre = isArbitreRequis(annonce, p);
+      .map((p, index) => {
+        const annonce = annonceByPlayer[p] || null;
+        const infoArbitre = isArbitreRequis(annonce, p);
 
-    // 🔹 ID du joueur courant
-    const joueurPk = playerIds[index] ?? null;
+        const joueurPk = playerIds[index] ?? null;
 
-    // 🔹 Partenaire (nom + recherche de son ID)
-    const partenaireAlias = emballes[p] || null;
-    let partenairePk: number | null = null;
+        const partenaireAlias = emballes[p] || null;
+        let partenairePk: number | null = null;
 
-    if (partenaireAlias) {
-    const idxPartenaire = players.indexOf(partenaireAlias);
-    if (idxPartenaire !== -1) {
-    partenairePk = playerIds[idxPartenaire] ?? null;
-    }
-    }
+        if (partenaireAlias) {
+          const idxPartenaire = players.indexOf(partenaireAlias);
+          if (idxPartenaire !== -1) {
+            partenairePk = playerIds[idxPartenaire] ?? null;
+          }
+        }
 
-    return {
-    // anciens champs (pour compatibilité)
-    nom: p,
-    emballageAvec: partenaireAlias,
+        return {
+          nom: p,
+          emballageAvec: partenaireAlias,
+          joueurPk,
+          partenairePk,
+          annonce,
+          plis: typeof plis[p] === 'number' ? plis[p] : null,
+          resultat: resultats[p] || null,
+          dames: typeof dames[p] === 'number' ? dames[p] : null,
+          arbitre: infoArbitre.required
+        };
+      })
+      .filter(
+        (j) =>
+          j.annonce !== null ||
+          j.emballageAvec !== null ||
+          j.plis !== null ||
+          j.resultat !== null ||
+          j.dames !== null
+      );
 
-    // nouveaux champs PK
-    joueurPk,
-    partenairePk,
-
-    annonce,
-    plis: typeof plis[p] === 'number' ? plis[p] : null,
-    resultat: resultats[p] || null,
-    dames: typeof dames[p] === 'number' ? dames[p] : null,
-    arbitre: infoArbitre.required
-    };
-    })
-    .filter(
-    (j) =>
-    j.annonce !== null ||
-    j.emballageAvec !== null ||
-    j.plis !== null ||
-    j.resultat !== null ||
-    j.dames !== null
-    );
-
-
-    // 3. Si personne n'a rien encodé → on ne fait rien
+    // Si personne n'a rien encodé → on ne fait rien
     if (joueursPayload.length === 0) {
-    alert("Aucune annonce / aucun résultat encodé pour cette donne.");
-    return;
+      alert('Aucune annonce / aucun résultat encodé pour cette donne.');
+      return;
     }
+
     const dealerIndex = donneNumber % players.length;
     const DealerPlayerId = playerIds[dealerIndex] ?? null;
-    
-    
-    const payload = {
-    tableConfigId,
-    tableName,
-    mancheNumber: Number(mancheNumber),
-    donneNumber,
-    SessionId,
-    DealerPlayerId,
-    joueurs: joueursPayload
-    };
-
-    console.log("Payload envoyé à l'API :", payload);
-
-    try {
-    const res = await fetch(`${API_BASE_URL}/api/donne`,  { // adapte au besoin
-    method: "POST",
-    headers: {
-    "Content-Type": "application/json"
-    },
-    body: JSON.stringify(payload)
-    });
-
-    if (!res.ok) {
-    const text = await res.text();
-    console.error("Erreur API :", text);
-    alert("Erreur lors de l'enregistrement de la donne 😢");
-    return;
-    }
-
-    //  alert("Donne enregistrée ✅");
 
     // 🔹 Calcul des scores de la donne courante (en tenant compte des joueurs inactifs)
     const inactive = getInactivePlayersForDonne(donneNumber, players);
 
     const scoresDonne = computeScoresForState(
-    players,
-    annonceByPlayer,
-    emballes,
-    plis,
-    resultats,
-    dames,
-    inactive
+      players,
+      annonceByPlayer,
+      emballes,
+      plis,
+      resultats,
+      dames,
+      inactive
     );
-
 
     // 🔹 Préparer le payload des scores à envoyer en DB
     const scoresPayload = {
-    tableName,
-    mancheNumber: Number(mancheNumber),
-    donneNumber,
-    SessionId ,
-    scores: players.map((p, index) => {
-    const scoreDonne = scoresDonne[p] ?? 0;
-    const cumulAvant = scoresCumulés[p] ?? 0;
-    const cumulApres = cumulAvant + scoreDonne;
+      tableName,
+      mancheNumber: Number(mancheNumber),
+      donneNumber,
+      SessionId,
+      scores: players.map((p, index) => {
+        const scoreDonne = scoresDonne[p] ?? 0;
+        const cumulAvant = scoresCumulés[p] ?? 0;
+        const cumulApres = cumulAvant + scoreDonne;
 
-    return {
-    // alias, comme avant
-    joueur: p,
-
-    // 🔹 nouveau : PK
-    joueurPk: playerIds[index] ?? null,
-
-    score: scoreDonne,
-    cumul: cumulApres
-    };
-    })
+        return {
+          joueur: p,
+          joueurPk: playerIds[index] ?? null,
+          score: scoreDonne,
+          cumul: cumulApres
+        };
+      })
     };
 
+    // 🔹 Payload de la donne (avec un ID client unique)
+    const clientDonneId = generateClientDonneId();
 
-    console.log("Scores envoyés à l'API :", scoresPayload);
+    const donnePayload = {
+      tableConfigId,
+      tableName,
+      mancheNumber: Number(mancheNumber),
+      donneNumber,
+      SessionId,
+      DealerPlayerId,
+      clientDonneId,
+      joueurs: joueursPayload
+    };
 
-    try {
-    const resScores = await fetch(`${API_BASE_URL}/api/scores`, {
-    method: "POST",
-    headers: {
-    "Content-Type": "application/json"
-    },
-    body: JSON.stringify(scoresPayload)
+    console.log('Donne ajoutée à la file d’attente locale :', {
+      donneNumber,
+      donnePayload,
+      scoresPayload
     });
 
-    if (!resScores.ok) {
-    const text = await resScores.text();
-    console.error("Erreur API scores:", text);
-    // ici tu peux décider si tu bloques ou pas, pour l'instant on log juste
-    }
-    } catch (err) {
-    console.error("Impossible d'envoyer les scores à l'API 😢", err);
-    }
+    // 🔹 Ajouter à la file d’attente locale
+    const pending: PendingDonne = {
+      clientDonneId,
+      donneNumber,
+      donnePayload,
+      scoresPayload
+    };
+    pendingDonnes = [...pendingDonnes, pending];
+    savePendingToLocalStorage();
 
 
+console.log(
+  '[PENDING] Donne ajoutée en file d’attente',
+  { donneNumber, clientDonneId, pendingCount: pendingDonnes.length }
+);
 
 
-    // 🔹 Ajouter cette donne à l'historique local
+    // 🔹 Ajouter cette donne à l'historique local (pour la feuille de points, etc.)
     const donneHistorique: DonneHistorique = {
-    donneNumber,
-    joueurs: joueursPayload
+      donneNumber,
+      joueurs: joueursPayload
     };
     history = [...history, donneHistorique];
 
     // 🔚 Si c'était la dernière donne de la manche → on termine ici
     if (donneNumber >= rows) {
-    const now = new Date();
-    mancheEndTime = formatHeure(now);
-    mancheEndDate = now.toISOString();
+      const now = new Date();
+      mancheEndTime = formatHeure(now);
+      mancheEndDate = now.toISOString();
 
-    if (mancheStartTime) {
-    dureeManche = calculerDureeEntre(mancheStartTime, now);
-    } else {
-    dureeManche = null;
+      if (mancheStartTime) {
+        dureeManche = calculerDureeEntre(mancheStartTime, now);
+      } else {
+        dureeManche = null;
+      }
+
+      let dureeMinutes = 0;
+      if (mancheStartDate) {
+        const start = new Date(mancheStartDate);
+        const diffMs = now.getTime() - start.getTime();
+        if (diffMs > 0) {
+          dureeMinutes = Math.floor(diffMs / 60000);
+        }
+      }
+
+      // Envoi en DB (WhistTableConfig) → si ça plante, ce n’est pas bloquant
+      saveMancheTimingToServer(dureeMinutes);
+
+      mancheTerminee = true;
+      markMancheClean();
+
+      const v: Record<string, boolean> = {};
+      for (const p of players) {
+        v[p] = false;
+      }
+      validations = v;
+
+      showEndOfMancheModal = true;
+
+      showConfetti = true;
+      setTimeout(() => {
+        showConfetti = false;
+      }, 4000);
+
+      // 💌 Générer la feuille de points et l'envoyer par email
+      await exportFeuillePointsPdf({ sendByEmail: true });
+
+      resetDonneState();
+
+      // 🔁 On tente d’envoyer toutes les donnes en attente,
+      // mais on ne bloque pas l’UI si ça échoue
+      flushPendingDonnes().catch((e) =>
+        console.error('Erreur flush pendings en fin de manche', e)
+      );
+
+      return;
     }
-    // ⏱ Durée en minutes (pour la DB)
-    let dureeMinutes = 0;
-    if (mancheStartDate) {
-    const start = new Date(mancheStartDate);
-    const diffMs = now.getTime() - start.getTime();
-    if (diffMs > 0) {
-    dureeMinutes = Math.floor(diffMs / 60000);
-    }
-    }
-    // Envoi en DB (WhistTableConfig)
-    saveMancheTimingToServer(dureeMinutes);
 
-    mancheTerminee = true;
-
-    markMancheClean();
-    // Initialiser les validations à false pour chaque joueur
-    const v: Record<string, boolean>
-    = {};
-    for (const p of players) {
-    v[p] = false;
-    }
-    validations = v;
-
-    showEndOfMancheModal = true;
-
-    // 🎉 Lancer les confettis
-    showConfetti = true;
-    setTimeout(() => {
-    showConfetti = false;
-    }, 4000); // 4 secondes de confettis
-
-  // 💌 Générer la feuille de points et l'envoyer par email
-  await exportFeuillePointsPdf({ sendByEmail: true });
-
-    resetDonneState();      // on vide les encodages de la donne courante
-    return;                 // surtout ne pas appeler nextDonne()
-    }
-
-
-    // 4. On passe à la donne suivante ET on nettoie tout
+    // 4. On passe à la donne suivante (les joueurs continuent à jouer)
     nextDonne();
-    // On sauvegarde l'état (nouvelle donne vide ou manche terminée)
     saveDraftLocallyAndRemotely();
 
+    // 🔁 On essaie d'envoyer toutes les donnes en attente en arrière-plan
+    flushPendingDonnes().catch((e) =>
+      console.error('Erreur lors du flush des donnes pendantes', e)
+    );
+
+  } finally {
+    isSubmittingDonne = false;
+  }
+}
 
 
-    } catch (err) {
-    console.error(err);
-    alert("Impossible de contacter l'API 😢");
-    }
-    }
+
+
+// Type sécurisé optionnel, adapte si tu veux
+type LigneFeuille = {
+  donneNumber: number | string;
+  annonce: string | null;
+  scores: Record<string, { score: number; cumul: number }>;
+  isTotal?: boolean;
+};
+
+// ...
+
+// 🔥 Version étendue de la feuille de points avec ligne "Total" si manche terminée
+$: feuillePointsAvecTotal = (() => {
+  if (!feuillePoints || feuillePoints.length === 0) return [];
+
+  // Manche finie si ton flag est à true ou si toutes les donnes sont jouées
+  const mancheFinie = mancheTerminee || feuillePoints.length >= rows;
+
+  if (!mancheFinie) {
+    return feuillePoints;
+  }
+
+  const last = feuillePoints[feuillePoints.length - 1];
+
+  const totalRow: LigneFeuille = {
+    donneNumber: '',
+    annonce: 'Total',
+    scores: {},
+    isTotal: true
+  };
+
+  for (const p of players) {
+    const cumulFinal = last.scores?.[p]?.cumul ?? 0;
+
+    (totalRow.scores as any)[p] = {
+      score: 0,          // on ne l’utilisera pas à l’affichage
+      cumul: cumulFinal
+    };
+  }
+
+  return [...feuillePoints, totalRow];
+})();
+
+//
+// 🔝 Cumul gagnant sur la ligne TOTAL
+$: winnerCumul = (() => {
+  if (!feuillePointsAvecTotal || feuillePointsAvecTotal.length === 0) return null;
+
+  const totalRow = feuillePointsAvecTotal.find((l) => l.isTotal);
+  if (!totalRow) return null;
+
+  let max = -Infinity;
+  for (const p of players) {
+    const c = totalRow.scores?.[p]?.cumul ?? 0;
+    if (c > max) max = c;
+  }
+
+  return max === -Infinity ? null : max;
+})();
+
 
 function clearLocalDrafts() {
   if (typeof window === 'undefined') return;
@@ -2712,6 +2922,31 @@ $: showGainsInTable =
   !payoutError &&
   payouts.length > 0;
 
+
+
+
+
+let lastDonneIndex = -1;
+
+$: {
+  lastDonneIndex = -1;
+
+  if (feuillePointsAvecTotal && feuillePointsAvecTotal.length > 0) {
+    // On part de la fin et on cherche la dernière ligne qui n'est pas TOTAL
+    for (let i = feuillePointsAvecTotal.length - 1; i >= 0; i--) {
+      const ligne = feuillePointsAvecTotal[i];
+      if (!ligne.isTotal) {
+        lastDonneIndex = i;
+        break;
+      }
+    }
+  }
+}
+
+
+
+
+
     </script>
 <!-- Bandeau supérieur + logos extérieurs -->
 <div class="page-header-wrapper">
@@ -2865,6 +3100,7 @@ $: showGainsInTable =
                             <th>Résultat</th>
                             <th>Dames</th>
                             <th>Arbitre</th>
+                          <th>Carteur</th>
                         </tr>
                     </thead>
                    <tbody>
@@ -2885,7 +3121,12 @@ $: showGainsInTable =
                         ✓
                     {/if}
                 </td>
-            </tr>
+               {#if idx === 0}
+          <td rowspan={donne.joueurs.length}>
+            {getDealerAliasForDonne(donne.donneNumber, players)}
+          </td>
+          {/if}
+        </tr>
         {/each}
     {/each}
 </tbody>
@@ -2901,6 +3142,8 @@ $: showGainsInTable =
 {#if showFeuillePoints}
     <div class="modal-backdrop" on:click={() => showFeuillePoints = false}>
         <div class="modal feuille-points-modal" on:click|stopPropagation>
+
+
             <h3>Feuille de points</h3>
 
             {#if history.length === 0}
@@ -2911,6 +3154,8 @@ $: showGainsInTable =
                         <tr>
                             <th rowspan="2" class="col-donne">Donne</th>
                            <th rowspan="2" class="col-annonce">Annonce</th> 
+                          
+                          
                             {#each players as p}
                                 <th colspan="2" class="col-player">{p}</th>
                             {/each}
@@ -2922,26 +3167,74 @@ $: showGainsInTable =
                             {/each}
                         </tr>
                     </thead>
-                    <tbody>
-                        {#each feuillePoints as ligne, idx}
-                            <tr class:total-row={idx === feuillePoints.length - 1}>
-                                <td class="cell-donne">{ligne.donneNumber}</td>
-                                <td class="cell-annonce">{ligne.annonce}</td> 
-                              
-                                {#each players as p}
-                                    <td class="cell-score">
-                                      {displayScoreValue(ligne, p)}
-                                    </td>
-                                    <td
-                                        class="cell-cumul"
-                                        class:cell-cumul-final={idx === feuillePoints.length - 1}
-                                    >
-                                        {ligne.scores[p]?.cumul ?? 0}
-                                    </td>
-                                {/each}
-                            </tr>
-                        {/each}
-                    </tbody>
+<tbody>
+  {#each feuillePointsAvecTotal as ligne, idx}
+    {#if ligne.isTotal}
+    
+       <!-- 🌿 Ligne vide pour créer l'espace -->
+      <tr class="classement-spacer-row">
+        <td colspan={2 + players.length * 2}></td>
+      </tr>
+    
+    
+      <tr class="total-row">
+        
+        <td class="cell-total-label" colspan="2">CLASSEMENT</td>
+
+    {#each players as p}
+      <td
+        class="cell-total-value"
+        class:cell-cumul-final={rankByPlayer[p] === 1}
+        colspan="2"
+      >
+        {#if rankByPlayer[p]}
+          {rankByPlayer[p]}
+          {#if rankByPlayer[p] === 1}
+        
+          {/if}
+        {:else}
+          -
+        {/if}
+      </td>
+    {/each}
+  </tr>
+   {:else}
+  {@const inactivePlayers = getInactivePlayersForDonne(ligne.donneNumber, players)}
+
+  <tr class:last-donne-row={idx === lastDonneIndex}>
+    <td class="cell-donne">{ligne.donneNumber}</td>
+    <td class="cell-annonce">{ligne.annonce}</td>
+
+   {#each players as p}
+  <!-- SCORE -->
+  <td
+    class="cell-score"
+    class:cell-score-negative={!inactivePlayers.includes(p) && displayScoreValue(ligne, p) < 0}
+  >
+    {#if inactivePlayers.includes(p)}
+      -
+    {:else}
+      {displayScoreValue(ligne, p)}
+    {/if}
+  </td>
+
+  <!-- CUMUL (toujours affiché, même si inactif) -->
+  <td
+    class="cell-cumul"
+    class:cell-cumul-final={idx === lastDonneIndex}
+  >
+    {ligne.scores[p]?.cumul ?? 0}
+  </td>
+{/each}
+
+  </tr>
+{/if}
+
+  {/each}
+</tbody>
+
+
+
                 </table>
             {/if}
 
@@ -3979,6 +4272,22 @@ $: showGainsInTable =
   0 0 0 1px #78350f inset,
   0 0 10px rgba(250, 204, 21, .55);
   }
+
+
+
+  /* Surbrillance de toute la dernière ligne de donne */
+  .feuille-table tr.last-donne-row td.cell-cumul-final {
+  background: radial-gradient(circle at top, #fff7cf 0%, #ffd46a 45%, #f59e0b 100%);
+  color: #111;
+  font-weight: 900;
+  font-size: 0.98rem;
+  border: 2px solid #fbbf24;
+  box-shadow:
+  0 0 0 1px #78350f inset,
+  0 0 10px rgba(250, 204, 21, .55);
+  }
+
+
   /* Tous les textes de la dernière ligne : bien foncés */
   .feuille-table tr.total-row td,
   .feuille-table tr.total-row th {
@@ -5204,6 +5513,74 @@ $: showGainsInTable =
   /* on remet la ligne sous Joueur + Score uniquement */
   .preview-scores .preview-table tbody tr:not(:last-child) td:nth-child(n + 2) {
   border-bottom: 1px solid rgba(255, 255, 255, 0.2);
+  }
+
+
+  .cell-score-negative {
+  color: #ff8b8b;      /* rouge doux */
+  font-weight: 600;    /* léger accent sans être criard */
+  }
+
+
+  /* Ligne Total en bas de la feuille de points */
+  .total-row td {
+  background: rgba(247, 198, 79, 0.12);   /* léger fond doré */
+  font-weight: 600;
+  border-top: 2px solid rgba(247, 198, 79, 0.7); /* petite séparation au-dessus */
+  }
+
+  /* Optionnel : style du libellé "Total" */
+  .total-row .cell-annonce {
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  }
+
+  /* Ligne TOTAL (fond léger + séparation) */
+  .total-row td {
+  background: rgba(247, 198, 79, 0.12);
+  font-weight: 600;
+  border-top: 2px solid rgba(247, 198, 79, 0.7);
+  }
+
+  /* Cellule "TOTAL" à gauche */
+  .cell-total-label {
+  text-align: center;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  }
+
+  /* Cellule de total par joueur */
+  .cell-total-value {
+  text-align: center;
+  }
+
+  /* Gagnant en surbrillance 📌 */
+  .winner-total {
+  background: rgba(247, 198, 79, 0.35);
+  box-shadow: 0 0 0 1px rgba(0, 0, 0, 0.4) inset;
+  font-weight: 700;
+  }
+
+  .feuille-points-modal {
+  position: relative;
+  overflow: hidden;
+  }
+
+
+
+  /* Harmoniser l'encadré doré sur la dernière ligne de donne */
+
+  /* Bordures dorées pour Score + Cumul sur la dernière donne */
+  .feuille-table tr.last-donne-row td.cell-score,
+  .feuille-table tr.last-donne-row td.cell-cumul-final {
+  border-right: 2px solid #fbbf24;
+  }
+
+
+  .feuille-table tr.classement-spacer-row td {
+  height: 0.3rem;     /* épaisseur de l'espace */
+  background: transparent;
+  border: none;
   }
 
 
