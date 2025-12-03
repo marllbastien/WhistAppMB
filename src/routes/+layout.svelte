@@ -1,8 +1,9 @@
 <script lang="ts">
   import { onMount } from 'svelte';
   import favicon from '$lib/assets/favicon.svg';
+  import CookieBubble from '$lib/components/CookieBubble.svelte';
 
-  let { children } = $props();
+
 
   let updateAvailable = false;
 
@@ -12,32 +13,29 @@
 
   onMount(() => {
   if ('serviceWorker' in navigator) {
-  // 🔔 écouter les messages du service worker
+  // 🔔 messages du SW
   navigator.serviceWorker.addEventListener('message', (event) => {
   if (event.data?.type === 'NEW_VERSION') {
   updateAvailable = true;
   }
   });
 
-  // Si jamais un SW est déjà en attente (cas rare)
+  // SW déjà waiting ?
   navigator.serviceWorker.ready.then((reg) => {
   if (reg.waiting) {
   updateAvailable = true;
   }
   });
 
-  // Enregistrer le SW uniquement en prod
+  // SW uniquement en prod
   if (import.meta.env.PROD) {
   navigator.serviceWorker
   .register('/service-worker.js')
   .then((reg) => {
-  console.log('Service worker enregistré avec succès :', reg.scope);
+  console.log('Service worker enregistré :', reg.scope);
   })
   .catch((err) => {
-  console.error(
-  "Échec de l'enregistrement du service worker :",
-  err
-  );
+  console.error("Échec de l'enregistrement du service worker :", err);
   });
   }
   }
@@ -45,23 +43,25 @@
 </script>
 
 <svelte:head>
-  <!-- ici il faut le vrai chemin, pas la string "favicon" -->
-  <link rel="icon" href={"favicon"} />
+  <link rel="icon" href={favicon} />
 </svelte:head>
 
-{@render children()}
+<slot />
+
+<CookieBubble />
+
+
 
 {#if updateAvailable}
-<div class="update-banner">
-  <span>Une nouvelle version de Wb-Scoring est disponible.</span>
-  <button type="button" on:click={"reloadApp"}>Recharger</button>
-</div>
+  <div class="update-banner">
+    <span>Une nouvelle version de WB-Scoring est disponible.</span>
+    <button type="button" on:click={reloadApp}>Recharger</button>
+  </div>
 {/if}
-
 <style>
   .update-banner {
   position: fixed;
-  bottom: 0.75rem;
+  bottom: 4.5rem; /* ⭐ placé au-dessus de la cookie banner */
   left: 50%;
   transform: translateX(-50%);
   background: rgba(15, 23, 42, 0.95);
@@ -90,4 +90,6 @@
   .update-banner button:hover {
   filter: brightness(1.05);
   }
+
+
 </style>

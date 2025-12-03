@@ -1418,10 +1418,14 @@ async function saveNewPlayer() {
 
 
 
-  <footer class="copyright">
-    © 2025 WB-Scoring — Tous droits réservés —
-    <a href="mailto:contact@wb-scoring.com" class="footer-mail">contact@wb-scoring.com</a>
-  </footer>
+<footer class="copyright">
+  © 2025 WB-Scoring — Tous droits réservés —
+  <a href="/legal">Mentions légales</a> —
+  <a href="mailto:contact@wb-scoring.com" class="footer-mail">
+    contact@wb-scoring.com
+  </a>
+</footer>
+
 </main>
 {/if}
 
@@ -1648,12 +1652,7 @@ async function saveNewPlayer() {
   }
 
 
-  @media (max-width: 480px) {
-  .copyright {
-  font-size: 0.7rem;
-  padding: 3px 8px;
-  }
-  }
+
 
   .modal {
   background: rgba(2, 12, 7, 0.96);
@@ -1746,16 +1745,6 @@ async function saveNewPlayer() {
   }
 
 
-  .footer-mail {
-  color: #d4af37; /* ton doré */
-  text-decoration: none;
-  margin-left: 4px;
-  }
-  .footer-mail:hover {
-  text-decoration: underline;
-  }
-
-
   /* Modale "Nouveau joueur" un peu plus large et travaillée */
   .modal.new-player-modal {
   max-width: 520px;
@@ -1825,5 +1814,51 @@ async function saveNewPlayer() {
   'Segoe UI', sans-serif;
   }
 
+  /* Footer global */
+  .copyright {
+  position: fixed;
+  bottom: 10px;
+  left: 50%;
+  transform: translateX(-50%);
+
+  background: rgba(0, 0, 0, 0.8);
+  padding: 4px 12px;
+  border-radius: 10px;
+  backdrop-filter: blur(4px);
+
+  font-family: 'Poppins', sans-serif;
+  font-size: 0.8rem;
+  color: #d9d9d9;
+  white-space: nowrap;
+  z-index: 9999;
+
+  opacity: 0.9;
+  }
+
+  /* Tous les liens du footer : doré + propre */
+  .copyright a,
+  .footer-mail {
+  color: #f5b942 !important;  /* doré premium */
+  text-decoration: none;
+  }
+
+  .copyright a:hover,
+  .footer-mail:hover {
+  text-decoration: underline;
+  }
+
+  /* Couleur visitée toujours dorée aussi */
+  .copyright a:visited,
+  .footer-mail:visited {
+  color: #f5b942 !important;
+  }
+
+  /* Adaptation mobile */
+  @media (max-width: 480px) {
+  .copyright {
+  font-size: 0.7rem;
+  padding: 3px 8px;
+  }
+  }
 
 </style>

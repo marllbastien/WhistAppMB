@@ -2098,28 +2098,24 @@ $: scoresCumulés = (() => {
 
 
 
-      function arrayBufferToBase64(buffer: ArrayBuffer): string {
-      let binary = '';
-      const bytes = new Uint8Array(buffer);
-      const len = bytes.byteLength;
-      for (let i = 0; i < len; i++) {
-    binary += String.fromCharCode(bytes[i]);
-  }
-  return btoa(binary);
-}
 
 async function sendFeuillePointsByEmail(doc: jsPDF) {
-  const arrayBuffer = doc.output('arraybuffer');
-  const pdfBase64 = arrayBufferToBase64(arrayBuffer);
+  // ✅ jsPDF fournit directement un data URI en base64
+  const dataUri = doc.output('datauristring');   // "data:application/pdf;base64,AAAA..."
+  const pdfBase64 = dataUri.split(',')[1];      // on garde juste la partie base64
+
+  console.log('Longueur base64 PDF :', pdfBase64.length);
 
   const payload = {
     tableName,
     mancheNumber: Number(mancheNumber),
     competitionType,
     competitionNumber,
+      competitionTypeLabel,
+  competitionSubtypeLabel,
     pdfBase64,
     fileName: `Feuille_points_Table_${tableName}_Manche_${mancheNumber}.pdf`,
-    recipient: 'contact@wb-scoring.com', // tu peux changer + plus tard mettre un champ
+    recipient: 'contact@wb-scoring.com',
   };
 
   try {
@@ -2129,8 +2125,12 @@ async function sendFeuillePointsByEmail(doc: jsPDF) {
       body: JSON.stringify(payload)
     });
 
+    console.log('Status envoi email :', res.status);
+
     if (!res.ok) {
       console.error('Erreur envoi email feuille de points', await res.text());
+    } else {
+      console.log('Email envoyé (API OK)');
     }
   } catch (e) {
     console.error('Erreur réseau envoi email feuille de points', e);
@@ -2149,7 +2149,12 @@ async function exportFeuillePointsPdf(options?: { sendByEmail?: boolean }) {
     return;
   }
 
-  const doc = new jsPDF('l', 'pt', 'a4');
+  const doc = new jsPDF({
+  orientation: 'l',
+  unit: 'pt',
+  format: 'a4',
+  compress: true   // ✅ compression
+});
   const pageWidth = doc.internal.pageSize.getWidth();
   const pageHeight = doc.internal.pageSize.getHeight();
 
@@ -2188,7 +2193,7 @@ const competitionLine = [competitionTypeText, competitionSubtypeText]
   // 🧱 2) BANDEAU HAUT + LOGO NON DÉFORMÉ
   try {
     const img = new Image();
-    img.src = '/Logo_App_Rond.png';
+    img.src = '/Logo_App_Rond_T_NB.png';
 
     await new Promise<void>
       ((resolve, reject) => {
@@ -2466,11 +2471,15 @@ const competitionLine = [competitionTypeText, competitionSubtypeText]
 
         // Colonne "CLASSEMENT"
         if (c === 1) {
-        cell.styles.fillColor = [120, 53, 15];
-        cell.styles.textColor = [255, 247, 237];
+        cell.styles.fillColor = [30, 41, 59];
+        cell.styles.textColor = [249, 250, 251];
         cell.styles.fontSize = 9;
-        cell.styles.halign = 'right';
+        cell.styles.halign = 'center';
+    
         }
+
+      
+
 
         // Colonnes joueurs
         if (c >= 2) {
@@ -2490,7 +2499,7 @@ const competitionLine = [competitionTypeText, competitionSubtypeText]
         cell.text = [String(rank)];
         if (rank === 1) {
         // Petit bonus possible : 👑 pour le vainqueur
-        cell.text = ['1 👑'];
+        cell.text = ['1'];
         }
         } else {
         // La 2e cellule (Cumul) du joueur est vidée (le colSpan la recouvre)
@@ -2501,10 +2510,10 @@ const competitionLine = [competitionTypeText, competitionSubtypeText]
         return;
         }
 
-// 🌱 LIGNES NORMALES
-if (raw._type === 'normal') {
-  // Score négatif en rouge (UNIQUEMENT colonne "Score")
-  if (c >= 2 && c % 2 === 0) {
+        // 🌱 LIGNES NORMALES
+        if (raw._type === 'normal') {
+        // Score négatif en rouge (UNIQUEMENT colonne "Score")
+        if (c >= 2 && c % 2 === 0) {
     const rawText = (cell.text?.[0] ?? '').trim(); // ex: "-24", "", "-"
     const val = parseInt(rawText, 10);
 
@@ -3813,8 +3822,11 @@ $: {
 </div>
 <footer class="copyright">
   © 2025 WB-Scoring — Tous droits réservés —
-  <a href="mailto:contact@wb-scoring.com" class="footer-mail">contact@wb-scoring.com</a>
+  <a href="mailto:contact@wb-scoring.com" class="footer-mail">
+    contact@wb-scoring.com
+  </a>
 </footer>
+
 
 <style>
   :root {
