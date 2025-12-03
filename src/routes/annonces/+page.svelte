@@ -4035,6 +4035,7 @@ $: {
   flex-direction: column;
   align-items: center;
   gap: 0.5rem;
+  box-sizing: border-box;
   }
 
   .player-block strong {
@@ -5744,6 +5745,28 @@ $: {
   border: none;
   }
 
+  /* ✅ Ajustement spécial tablettes (paysage) : 769px à 1200px */
+  @media (min-width: 769px) and (max-width: 1200px) {
+  .page-header-wrapper {
+  max-width: 100%;      /* pas plus large que l'écran */
+  gap: 1rem;            /* un peu moins d'espace entre logo / header */
+  padding: 0 0.5rem;    /* petit padding intérieur pour éviter d'être collé au bord */
+  box-sizing: border-box;
+  }
 
+  .corner-logo {
+  height: 120px;        /* au lieu de 180px → plus adapté à une tablette */
+  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.65));
+  }
+
+  .corner-logo-left {
+  margin-left: 0;       /* évite de pousser vers l'extérieur */
+  }
+
+  .corner-logo-right {
+  margin-right: 0;
+  }
+  }
+ 
 </style>
 
