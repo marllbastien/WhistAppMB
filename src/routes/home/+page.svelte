@@ -1421,8 +1421,6 @@ async function saveNewPlayer() {
 <footer class="copyright">
   © 2025 WB-Scoring — Tous droits réservés —
   <a href="/legal">Mentions légales</a>
-    contact@wb-scoring.com
-  </a>
 </footer>
 
 </main>
