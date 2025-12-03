@@ -2599,13 +2599,15 @@ didDrawCell(data) {
         }
         });
 
+const fileName = `Feuille_points_Table_${tableName}_Manche_${mancheNumber}.pdf`;
 
-        if (sendByEmail) {
-        await sendFeuillePointsByEmail(doc);
-        }
-
-        doc.save(`Feuille_points_Table_${tableName}_Manche_${mancheNumber}.pdf`);
-        }
+if (sendByEmail) {
+  // ✉️ Cas "Envoyer par mail" → on n’ouvre pas la boîte de téléchargement
+  await sendFeuillePointsByEmail(doc);
+} else {
+  // 💾 Cas "Exporter en PDF" → on télécharge seulement
+  doc.save(fileName);
+}
 
 
 
