@@ -360,29 +360,52 @@
       opacity: 0.9;
       }
 
-      /* Tous les liens du footer : doré + propre */
-      .copyright a,
-      .footer-mail {
-      color: #f5b942 !important;  /* doré premium */
+      .copyright {
+      width: 100%;
+      text-align: center;
+      font-size: 0.85rem;
+      color: rgba(248, 250, 252, 0.7);
+      padding: 0.6rem 1rem 0.8rem;
+      background: transparent; /* ou un léger dégradé si tu veux */
+      }
+
+      .copyright-main {
+      font-weight: 500;
+      }
+
+      .copyright-links {
+      margin-top: 0.15rem;
+      }
+
+      .copyright a {
+      color: #fbbf24;
       text-decoration: none;
       }
 
-      .copyright a:hover,
-      .footer-mail:hover {
+      .copyright a:hover {
       text-decoration: underline;
       }
 
-      /* Couleur visitée toujours dorée aussi */
-      .copyright a:visited,
-      .footer-mail:visited {
-      color: #f5b942 !important;
+      .copyright .dot {
+      margin: 0 0.35rem;
       }
 
-      /* Adaptation mobile */
-      @media (max-width: 480px) {
+      @media (max-width: 768px) {
       .copyright {
-      font-size: 0.7rem;
-      padding: 3px 8px;
+      font-size: 0.75rem;
+      padding: 0.4rem 0.6rem 0.6rem;
+      line-height: 1.3;
+      }
+
+      .copyright-links {
+      display: flex;
+      flex-direction: column;   /* liens l’un sous l’autre */
+      gap: 0.1rem;
+      margin-top: 0.1rem;
+      }
+
+      .copyright .dot {
+      display: none;           /* plus de point séparateur sur mobile */
       }
       }
 
@@ -436,12 +459,19 @@
     <p class="error">{error}</p>
     {/if}
   </section>
-  <footer class="copyright">
-    © 2025 WB-Scoring — Tous droits réservés —
-    <a href="/legal">Mentions légales</a> —
+<footer class="copyright">
+  <div class="copyright-main">
+    © 2025 WB-Scoring
+  </div>
+
+  <div class="copyright-links">
+    <a href="/mentions-legales">Mentions légales</a>
+    <span class="dot">·</span>
     <a href="mailto:contact@wb-scoring.com" class="footer-mail">
       contact@wb-scoring.com
     </a>
-  </footer>
+  </div>
+</footer>
+
 
 </main>
