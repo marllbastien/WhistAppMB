@@ -409,7 +409,12 @@
       }
       }
 
-
+      /* 💊 TABLETTE (paysage / portrait ~10") : intermédiaire */
+      @media (min-width: 769px) and (max-width: 1200px) {
+      .page-logo {
+      height: 150px; /* ajuste 140 / 160 si tu veux */
+      }
+      }
     </style>
 
 <main class="login-page">
@@ -435,8 +440,7 @@
       <button
         type="button"
         class="toggle-password"
-        on:click={() =>
-        (showPassword = !showPassword)}
+        on:click={() =>(showPassword = !showPassword)}
         >
         {#if showPassword}
         <svg viewBox="0 0 24 24" class="eye-icon">
@@ -449,7 +453,7 @@
         {/if}
       </button>
      
-
+    </div>
 
     <button class="login-button" on:click={submit}>
       Continuer

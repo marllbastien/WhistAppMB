@@ -3821,7 +3821,7 @@ $: {
 
 </div>
 <footer class="copyright">
-  © 2025 WB-Scoring — Tous droits réservés —
+  © 2025 WB-Scoring — 
   <a href="mailto:contact@wb-scoring.com" class="footer-mail">
     contact@wb-scoring.com
   </a>
