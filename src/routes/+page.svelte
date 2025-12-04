@@ -4,7 +4,7 @@
   let code = '';
   let error = '';
 
-  const CORRECT_CODE = 'Bigoudi'; // TODO: appel API pour le code du jour
+  const CORRECT_CODE = 'Cougnole'; // TODO: appel API pour le code du jour
 
   function submit() {
   if (code.trim() === CORRECT_CODE) {
