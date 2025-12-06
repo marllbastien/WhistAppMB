@@ -239,9 +239,50 @@
     }
   }
 
-  function downloadFile(file: ArchiveFile) {
-    // Ouvrir dans un nouvel onglet (le blob storage gère le téléchargement)
-    window.open(file.url, '_blank');
+  async function downloadFile(file: ArchiveFile) {
+    try {
+      // Passer par le backend pour télécharger le fichier (évite le problème d'accès public)
+      const res = await fetch(`${API_BASE_URL}/api/admin/archives/download?path=${encodeURIComponent(file.name)}`);
+      
+      if (!res.ok) {
+        throw new Error(`Erreur HTTP ${res.status}`);
+      }
+
+      const blob = await res.blob();
+      const url = window.URL.createObjectURL(blob);
+      const a = document.createElement('a');
+      a.href = url;
+      a.download = file.fileName;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+      window.URL.revokeObjectURL(url);
+    } catch (err) {
+      console.error('Erreur téléchargement:', err);
+      alert('Erreur lors du téléchargement du fichier.');
+    }
+  }
+
+  async function deleteFile(file: ArchiveFile) {
+    if (!confirm(`Supprimer définitivement "${file.fileName}" ?\n\nCette action est irréversible.`)) {
+      return;
+    }
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/archives/delete?path=${encodeURIComponent(file.name)}`, {
+        method: 'DELETE'
+      });
+
+      if (!res.ok) {
+        throw new Error(`Erreur HTTP ${res.status}`);
+      }
+
+      // Recharger la liste
+      await loadArchives();
+    } catch (err) {
+      console.error('Erreur suppression:', err);
+      alert('Erreur lors de la suppression du fichier.');
+    }
   }
 
   function clearFilters() {
@@ -441,9 +482,14 @@
                     </div>
                   {/if}
                 </div>
-                <button class="btn-download" on:click={() => downloadFile(file)} title="Télécharger">
-                  ⬇️
-                </button>
+                <div class="file-actions">
+                  <button class="btn-download" on:click={() => downloadFile(file)} title="Télécharger">
+                    ⬇️
+                  </button>
+                  <button class="btn-delete" on:click={() => deleteFile(file)} title="Supprimer">
+                    🗑️
+                  </button>
+                </div>
               </div>
             {/each}
           </div>
@@ -768,6 +814,27 @@
 
   .btn-download:hover {
     background: rgba(34, 197, 94, 0.15);
+    transform: scale(1.05);
+  }
+
+  .file-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .btn-delete {
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid rgba(239, 68, 68, 0.5);
+    background: transparent;
+    color: #ef4444;
+    cursor: pointer;
+    font-size: 1rem;
+    transition: all 0.2s;
+  }
+
+  .btn-delete:hover {
+    background: rgba(239, 68, 68, 0.15);
     transform: scale(1.05);
   }
 
