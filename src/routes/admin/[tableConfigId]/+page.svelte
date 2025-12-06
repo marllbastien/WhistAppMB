@@ -1334,13 +1334,16 @@ function getChangeClass(after: number, before: number) {
       {/if}
 
       <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.8rem;">
-        <button on:click={exportFeuillePointsPdf}>
-          Exporter en PDF
+        <button on:click={exportFeuillePointsServerPdf} disabled={exportingPdf}>
+          {exportingPdf ? 'Export en cours…' : 'Exporter en PDF'}
         </button>
         <button on:click={closeFeuillePoints}>
           Fermer
         </button>
       </div>
+      {#if exportPdfError}
+        <p class="error">{exportPdfError}</p>
+      {/if}
     </div>
   </div>
 {/if}
