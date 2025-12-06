@@ -2147,6 +2147,13 @@ async function exportFeuillePointsPdf(options?: { sendByEmail?: boolean,
   const sendByEmail = options?.sendByEmail ?? false;
    const archiveOnline = options?.archiveOnline ?? false;
    
+  // 🔥 OPTIMISATION : Si on veut juste archiver, le serveur génère le PDF
+  // → pas besoin de le générer sur le téléphone !
+  if (archiveOnline && !sendByEmail) {
+    await archiveFeuillePoints();
+    return;
+  }
+
   if (!feuillePoints.length) {
     alert('Aucune donne pour la feuille de points.');
     return;
@@ -2604,21 +2611,14 @@ didDrawCell(data) {
 
 const fileName = `Feuille_points_Table_${tableName}_Manche_${mancheNumber}.pdf`;
 
-  // 1️⃣ Archivage Azure (si demandé)
-  if (archiveOnline) {
-    await archiveFeuillePoints(doc);
-    // 🔇 pas de téléchargement dans ce cas
-    return;
-  }
-
-  // 2️⃣ Envoi par email (si demandé)
+  // 1️⃣ Envoi par email (si demandé)
   if (sendByEmail) {
     await sendFeuillePointsByEmail(doc);
     // 🔇 pas de téléchargement
     return;
   }
 
-  // 3️⃣ Sinon → export PDF local
+  // 2️⃣ Sinon → export PDF local
   doc.save(fileName);
 }
 
@@ -3116,34 +3116,27 @@ $: {
   }
 }
 
-async function archiveFeuillePoints(doc: jsPDF) {
-  const dataUri = doc.output('datauristring');   // "data:application/pdf;base64,AAAA..."
-  const pdfBase64 = dataUri.split(',')[1];      // uniquement la partie base64
-
-  const payload = {
-    tableName,
-    mancheNumber: Number(mancheNumber),
-    competitionType,
-    competitionNumber,
-    competitionTypeLabel,
-    competitionSubtypeLabel,
-    pdfBase64
-  };
+async function archiveFeuillePoints(_doc?: jsPDF) {
+  // 🔥 NOUVEAU : Le PDF est généré côté serveur, plus besoin d'envoyer le base64
+  if (!tableConfigId) {
+    console.warn('Impossible d\'archiver : tableConfigId manquant.');
+    return;
+  }
 
   try {
-    const res = await fetch(`${API_BASE_URL}/api/reports/feuille-points-archive`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(payload)
-    });
+    const res = await fetch(
+      `${API_BASE_URL}/api/reports/feuille-points-generate?tableConfigId=${tableConfigId}`,
+      { method: 'POST' }
+    );
 
-    console.log('Status archivage PDF :', res.status);
+    console.log('Status archivage PDF (serveur) :', res.status);
 
     if (!res.ok) {
       console.error('Erreur archivage feuille de points', await res.text());
       alert("Erreur lors de l'archivage de la feuille de points.");
     } else {
-      console.log('Feuille archivée dans Azure Blob Storage');
+      const data = await res.json();
+      console.log('Feuille archivée dans Azure Blob Storage:', data.blobPath);
       // tu peux mettre un toast discret ici si tu veux
       // alert("Feuille de points archivée avec succès.");
     }

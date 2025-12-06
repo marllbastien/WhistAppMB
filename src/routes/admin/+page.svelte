@@ -11,6 +11,34 @@
   let pinInput = '';
   let authError = '';
   const currentYear = new Date().getFullYear();
+
+  // Mode d'affichage : 'menu' ou 'manches'
+  let viewMode: 'menu' | 'manches' = 'menu';
+
+  // Éléments du menu admin
+  const adminMenuItems = [
+    {
+      id: 'manches',
+      title: 'Gestion des manches',
+      description: 'Consulter, modifier et supprimer les manches de jeu',
+      icon: '♤',
+      action: () => { viewMode = 'manches'; }
+    },
+    {
+      id: 'joueurs',
+      title: 'Gestion des joueurs',
+      description: 'Gérer les joueurs internes et externes',
+      icon: '👥',
+      href: '/admin/joueurs'
+    },
+    {
+      id: 'archives',
+      title: 'Archives PDF',
+      description: 'Consulter les feuilles de points archivées',
+      icon: '📄',
+      href: '/admin/archives'
+    }
+  ];
   interface AdminPlayerDto {
   playerId: number | null;
   alias: string;
@@ -263,7 +291,7 @@
     const flag = localStorage.getItem('whist_admin_ok');
     if (flag === 'true') {
       isAdmin = true;
-      loadManches();
+      // On ne charge plus les manches automatiquement, on reste sur le menu
     }
   });
 
@@ -272,10 +300,14 @@
       isAdmin = true;
       authError = '';
       localStorage.setItem('whist_admin_ok', 'true');
-      await loadManches();
+      // On reste sur le menu après validation
     } else {
       authError = 'Code incorrect';
     }
+  }
+
+  function goToMenu() {
+    viewMode = 'menu';
   }
 
   async function loadManches() {
@@ -326,7 +358,7 @@ function formatCompetitionType(m: AdminMancheHeaderDto): string {
 }
 
 
-function formatCompetitionName(m) {
+function formatCompetitionName(m: AdminMancheHeaderDto): string {
   const t = m.competitionType;
   const num = m.competitionNumber;
   const name = m.competitionName;
@@ -360,11 +392,18 @@ function formatCompetitionName(m) {
 </script>
 
 <svelte:head>
-  <title>Administration – Manches</title>
+  <title>Administration</title>
 </svelte:head>
 
 <div class="admin-page">
-  <h1>Administration <span class="sep">⟶</span> Gestion des manches</h1>
+  {#if viewMode === 'menu'}
+    <h1>Administration</h1>
+  {:else}
+    <h1>
+      <button class="back-link" on:click={goToMenu}>← Administration</button>
+      <span class="sep">⟶</span> Gestion des manches
+    </h1>
+  {/if}
 
 
   {#if !isAdmin}
@@ -384,7 +423,27 @@ function formatCompetitionName(m) {
         <p class="error">{authError}</p>
       {/if}
     </div>
+  {:else if viewMode === 'menu'}
+    <!-- Menu principal admin -->
+    <div class="admin-menu-grid">
+      {#each adminMenuItems as item}
+        {#if item.href}
+          <a href={item.href} class="admin-menu-card">
+            <span class="menu-icon">{item.icon}</span>
+            <h2>{item.title}</h2>
+            <p>{item.description}</p>
+          </a>
+        {:else}
+          <button class="admin-menu-card" on:click={() => { item.action?.(); loadManches(); }}>
+            <span class="menu-icon gold">{item.icon}</span>
+            <h2>{item.title}</h2>
+            <p>{item.description}</p>
+          </button>
+        {/if}
+      {/each}
+    </div>
   {:else}
+    <!-- Vue Gestion des manches -->
     <div class="admin-card">
       <h2>Liste des manches</h2>
 
@@ -619,6 +678,87 @@ function formatCompetitionName(m) {
   h1 {
   font-size: 1.8rem;
   margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  }
+
+  .back-link {
+  background: none;
+  border: none;
+  color: #22c55e;
+  font-size: 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  }
+
+  .back-link:hover {
+  text-decoration: underline;
+  }
+
+  /* Menu Grid */
+  .admin-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  }
+
+  @media (max-width: 900px) {
+  .admin-menu-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  }
+
+  @media (max-width: 600px) {
+  .admin-menu-grid {
+    grid-template-columns: 1fr;
+  }
+  }
+
+  .admin-menu-card {
+  display: block;
+  background: linear-gradient(135deg, #052e16 0%, #020617 100%);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 16px;
+  padding: 1.5rem;
+  text-decoration: none;
+  color: #f9fafb;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  width: 100%;
+  box-sizing: border-box;
+  }
+
+  .admin-menu-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(34, 197, 94, 0.6);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  }
+
+  .admin-menu-card .menu-icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: 0.75rem;
+  }
+
+  .admin-menu-card .menu-icon.gold {
+  color: #d4a03a;
+  opacity: 0.85;
+  }
+
+  .admin-menu-card h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.25rem;
+  color: #22c55e;
+  }
+
+  .admin-menu-card p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #9ca3af;
   }
 
   .admin-card {

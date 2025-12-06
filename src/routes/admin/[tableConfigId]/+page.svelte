@@ -93,6 +93,8 @@
   let feuilleLoading = false;
   let feuilleError = '';
 
+  let exportingPdf = false;
+  let exportPdfError = '';
 
   const currentYear = new Date().getFullYear();
 
@@ -243,6 +245,44 @@ function exportFeuillePointsPdf() {
   });
 
   doc.save(`Feuille_points_Table_${detail.tableName}_M${detail.mancheNumber}.pdf`);
+}
+
+async function exportFeuillePointsServerPdf() {
+  if (!detail) return;
+
+  exportingPdf = true;
+  exportPdfError = '';
+
+  try {
+    // Appel au backend pour générer le PDF
+    const res = await fetch(
+      `${API_BASE_URL}/api/reports/feuille-points-generate?tableConfigId=${tableConfigId}`,
+      { method: 'POST' }
+    );
+
+    if (!res.ok) {
+      const errorText = await res.text();
+      throw new Error(`Erreur HTTP ${res.status}: ${errorText}`);
+    }
+
+    // Récupérer le PDF en blob
+    const blob = await res.blob();
+
+    // Télécharger le fichier
+    const url = window.URL.createObjectURL(blob);
+    const a = document.createElement('a');
+    a.href = url;
+    a.download = `Feuille_points_Table_${detail.tableName}_M${detail.mancheNumber}.pdf`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    window.URL.revokeObjectURL(url);
+  } catch (err: any) {
+    console.error('Erreur export PDF:', err);
+    exportPdfError = err.message || "Erreur lors de l'export PDF";
+  } finally {
+    exportingPdf = false;
+  }
 }
 
 
