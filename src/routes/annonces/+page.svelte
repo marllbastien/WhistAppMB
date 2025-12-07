@@ -364,6 +364,14 @@ function applyCorrectedHistory(corrected: SyncDonneServer[]) {
   let arbitreMessage = "";
   let mancheTerminee = false;
 
+  // ✏️ Mode édition de la donne précédente
+  let isEditingPreviousDonne = false;
+  let editingDonneNumber: number | null = null;
+  let showEditConfirmModal = false;
+  let showCancelEditModal = false;
+  let isSubmittingEdit = false;
+  let editError: string | null = null;
+
   // 🔐 Manche en cours : protège la navigation (flèche arrière, changement de page)
   let hasUnsavedManche = false;
 
@@ -857,6 +865,306 @@ function getDisplayName(p: string): string {
     soloPlayer = null;
 
     saveDraftLocallyAndRemotely();
+    }
+
+    // ─────────────────────────────────────────────────────────────────────
+    // ✏️ MODE ÉDITION DE LA DONNE PRÉCÉDENTE
+    // ─────────────────────────────────────────────────────────────────────
+
+    /**
+     * Vérifie si on peut modifier la donne précédente.
+     * On ne peut modifier que s'il y a au moins une donne dans l'historique
+     * et qu'on n'est pas en train de flusher les donnes pending.
+     */
+    function canEditPreviousDonne(): boolean {
+        if (history.length === 0) return false;
+        if (isFlushingPending) return false;
+        if (mancheTerminee) return false;
+        if (isEditingPreviousDonne) return false;
+        return true;
+    }
+
+    /**
+     * Vérifie si la dernière donne est dans pendingDonnes (non encore envoyée).
+     */
+    function isLastDonneInPending(): boolean {
+        const lastDonneNumber = history.length;
+        return pendingDonnes.some(p => p.donneNumber === lastDonneNumber);
+    }
+
+    /**
+     * Ouvre la confirmation pour modifier la donne précédente.
+     */
+    function requestEditPreviousDonne() {
+        if (!canEditPreviousDonne()) return;
+        const lastDonne = history[history.length - 1];
+        if (!lastDonne) return;
+        editingDonneNumber = lastDonne.donneNumber;
+        showHistorique = false;
+        showEditConfirmModal = true;
+    }
+
+    /**
+     * Confirme l'entrée en mode édition et charge les données de la donne N-1.
+     */
+    function confirmEditPreviousDonne() {
+        showEditConfirmModal = false;
+        const lastDonne = history[history.length - 1];
+        if (!lastDonne) return;
+
+        editingDonneNumber = lastDonne.donneNumber;
+        isEditingPreviousDonne = true;
+        editError = null;
+
+        // Charger les données de la donne précédente dans les formulaires
+        loadDonneDataIntoForm(lastDonne);
+
+        // Sauvegarder le draft avec le mode édition
+        saveDraftLocallyAndRemotely();
+    }
+
+    /**
+     * Charge les données d'une donne historique dans les formulaires.
+     */
+    function loadDonneDataIntoForm(donne: DonneHistorique) {
+        // Reset d'abord
+        annonceByPlayer = {};
+        emballes = {};
+        plis = {};
+        resultats = {};
+        dames = {};
+        soloPlayer = null;
+
+        // Remplir avec les données de la donne
+        for (const j of donne.joueurs) {
+            const playerName = j.nom;
+            if (!players.includes(playerName)) continue;
+
+            if (j.annonce) {
+                annonceByPlayer[playerName] = j.annonce;
+                // Si c'est un solo, marquer le joueur
+                if (JEUX_SOLOS_CODES.has(j.annonce) && !j.annonce.includes('2')) {
+                    soloPlayer = playerName;
+                }
+            }
+            if (j.emballageAvec) {
+                emballes[playerName] = j.emballageAvec;
+            }
+            if (j.plis !== null && j.plis !== undefined) {
+                plis[playerName] = j.plis;
+            }
+            if (j.resultat) {
+                resultats[playerName] = j.resultat;
+            }
+            if (j.dames !== null && j.dames !== undefined) {
+                dames[playerName] = j.dames;
+            }
+        }
+    }
+
+    /**
+     * Annule le mode édition et restaure l'état normal.
+     */
+    function cancelEditPreviousDonne() {
+        showCancelEditModal = false;
+        isEditingPreviousDonne = false;
+        editingDonneNumber = null;
+        editError = null;
+        
+        // Restaurer l'état vide pour la donne actuelle
+        resetDonneState();
+    }
+
+    /**
+     * Demande confirmation avant d'annuler les modifications.
+     */
+    function requestCancelEdit() {
+        showCancelEditModal = true;
+    }
+
+    /**
+     * Sauvegarde les modifications de la donne précédente.
+     */
+    async function saveEditedDonne() {
+        if (!isEditingPreviousDonne || editingDonneNumber === null) return;
+        if (isSubmittingEdit) return;
+
+        isSubmittingEdit = true;
+        editError = null;
+
+        try {
+            // 1) Construire le payload des joueurs
+            const joueursPayload = players.map((p, index) => {
+                const annonce = annonceByPlayer[p] || null;
+                const infoArbitre = isArbitreRequis(annonce, p);
+                const joueurPk = playerIds[index] ?? null;
+
+                const partenaireAlias = emballes[p] || null;
+                let partenairePk: number | null = null;
+
+                if (partenaireAlias) {
+                    const idxPartenaire = players.indexOf(partenaireAlias);
+                    if (idxPartenaire !== -1) {
+                        partenairePk = playerIds[idxPartenaire] ?? null;
+                    }
+                }
+
+                return {
+                    joueurPk: joueurPk,
+                    nom: p,
+                    annonce,
+                    partenairePk,
+                    emballageAvec: partenaireAlias,
+                    plis: typeof plis[p] === 'number' ? plis[p] : null,
+                    resultat: resultats[p] || null,
+                    dames: typeof dames[p] === 'number' ? dames[p] : null,
+                    arbitre: infoArbitre.required
+                };
+            }).filter(j => j.joueurPk !== null);
+
+            // 2) Vérifier si la donne est dans pendingDonnes
+            if (isLastDonneInPending()) {
+                // Modifier dans pendingDonnes
+                const pendingIndex = pendingDonnes.findIndex(p => p.donneNumber === editingDonneNumber);
+                if (pendingIndex !== -1) {
+                    const oldPending = pendingDonnes[pendingIndex];
+                    
+                    // Mettre à jour le payload de la donne
+                    oldPending.donnePayload.joueurs = joueursPayload;
+                    
+                    // Recalculer les scores
+                    const inactive = getInactivePlayersForDonne(editingDonneNumber, players);
+                    const scoresDonne = computeScoresForState(
+                        players,
+                        annonceByPlayer,
+                        emballes,
+                        plis,
+                        resultats,
+                        dames,
+                        inactive
+                    );
+
+                    // Mettre à jour les scores dans le pending
+                    oldPending.scoresPayload.scores = players.map((p, index) => {
+                        const scoreDonne = scoresDonne[p] ?? 0;
+                        // Recalculer le cumul basé sur l'historique précédent
+                        let cumulAvant = 0;
+                        if (editingDonneNumber > 1) {
+                            // Trouver le cumul à la donne précédente
+                            const lignePrecedente = feuillePoints.find(l => l.donneNumber === editingDonneNumber - 1);
+                            if (lignePrecedente) {
+                                cumulAvant = lignePrecedente.scores[p]?.cumul ?? 0;
+                            }
+                        }
+                        const cumulApres = cumulAvant + scoreDonne;
+
+                        return {
+                            joueur: p,
+                            joueurPk: playerIds[index] ?? null,
+                            score: scoreDonne,
+                            cumul: cumulApres
+                        };
+                    });
+
+                    pendingDonnes = [...pendingDonnes];
+                    savePendingToLocalStorage();
+                }
+
+                // Mettre à jour l'historique local
+                updateHistoryForEditedDonne(joueursPayload);
+
+                // Sortir du mode édition
+                exitEditMode();
+
+                // Essayer de flusher les donnes
+                flushPendingDonnes();
+            } else {
+                // Appeler l'API pour mettre à jour en DB
+                const response = await fetch(`${API_BASE_URL}/api/donne/update-previous`, {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({
+                        tableConfigId,
+                        mancheNumber: Number(mancheNumber),
+                        donneNumber: editingDonneNumber,
+                        sessionId: SessionId,
+                        scores: joueursPayload.map(j => ({
+                            joueurPk: j.joueurPk,
+                            nom: j.nom,
+                            annonce: j.annonce,
+                            partenairePk: j.partenairePk,
+                            emballageAvec: j.emballageAvec,
+                            plis: j.plis,
+                            resultat: j.resultat,
+                            dames: j.dames,
+                            arbitre: j.arbitre
+                        }))
+                    })
+                });
+
+                if (!response.ok) {
+                    const errorText = await response.text();
+                    throw new Error(errorText || 'Erreur lors de la modification');
+                }
+
+                // Mettre à jour l'historique local
+                updateHistoryForEditedDonne(joueursPayload);
+
+                // Recalculer la feuille de points
+                recomputeFeuillePoints();
+
+                // Sortir du mode édition
+                exitEditMode();
+            }
+        } catch (e: any) {
+            console.error('Erreur lors de la sauvegarde de la donne modifiée:', e);
+            editError = e.message || 'Erreur lors de la sauvegarde. Veuillez réessayer.';
+        } finally {
+            isSubmittingEdit = false;
+        }
+    }
+
+    /**
+     * Met à jour l'historique local avec les données modifiées.
+     */
+    function updateHistoryForEditedDonne(joueursPayload: any[]) {
+        if (editingDonneNumber === null) return;
+
+        const historyIndex = history.findIndex(d => d.donneNumber === editingDonneNumber);
+        if (historyIndex === -1) return;
+
+        // Créer la nouvelle entrée historique
+        const newDonneHistorique: DonneHistorique = {
+            donneNumber: editingDonneNumber,
+            joueurs: joueursPayload.map(j => ({
+                nom: j.nom,
+                annonce: j.annonce,
+                emballageAvec: j.emballageAvec,
+                plis: j.plis,
+                resultat: j.resultat,
+                dames: j.dames,
+                arbitre: j.arbitre
+            }))
+        };
+
+        // Remplacer dans l'historique
+        history = [
+            ...history.slice(0, historyIndex),
+            newDonneHistorique,
+            ...history.slice(historyIndex + 1)
+        ];
+    }
+
+    /**
+     * Sort du mode édition et retourne à la donne actuelle.
+     */
+    function exitEditMode() {
+        isEditingPreviousDonne = false;
+        editingDonneNumber = null;
+        editError = null;
+
+        // Remettre les formulaires vides pour la donne actuelle
+        resetDonneState();
     }
 
 
@@ -3504,12 +3812,30 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
                         </tr>
                     </thead>
                    <tbody>
-    {#each history as donne}
+    {#each history as donne, donneIdx}
         {@const joueursAvecAnnonce = donne.joueurs.filter(j => j.annonce)}
+        {@const isLastDonne = donneIdx === history.length - 1}
+        {@const canEdit = isLastDonne && canEditPreviousDonne()}
         {#each joueursAvecAnnonce as j, idx}
-            <tr>
+            <tr 
+                class:history-row-editable={canEdit}
+                on:click={() => { if (canEdit) requestEditPreviousDonne(); }}
+                role={canEdit ? "button" : undefined}
+                tabindex={canEdit && idx === 0 ? 0 : undefined}
+                on:keydown={(e) => { if (canEdit && (e.key === 'Enter' || e.key === ' ')) requestEditPreviousDonne(); }}
+            >
                 {#if idx === 0}
-                    <td rowspan={joueursAvecAnnonce.length || 1}>{donne.donneNumber}</td>
+                    <td rowspan={joueursAvecAnnonce.length || 1} class="cell-donne-number">
+                        {donne.donneNumber}
+                        {#if canEdit}
+                            <span class="edit-icon" title="Modifier cette donne">
+                                <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+                                </svg>
+                            </span>
+                        {/if}
+                    </td>
                 {/if}
                 <td>{j.nom}</td>
                 <td>{j.annonce ?? ''}</td>
@@ -3817,10 +4143,90 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 </div>
 {/if}
 
+<!-- MODALE : Confirmation d'édition de la donne précédente -->
+{#if showEditConfirmModal}
+<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="edit-confirm-title">
+  <div class="modal edit-confirm-modal">
+    <div class="edit-confirm-icon">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+        <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+        <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+      </svg>
+    </div>
+    <h3 id="edit-confirm-title">Modifier la donne précédente ?</h3>
+    <p class="edit-confirm-text">
+      Vous êtes sur le point de modifier la <strong>donne n°{editingDonneNumber}</strong>.<br />
+    </p>
+   
+    <div class="edit-confirm-buttons">
+      <button class="btn-cancel" on:click={() => { showEditConfirmModal = false; editingDonneNumber = null; showHistorique = true; }}>
+        Annuler
+      </button>
+      <button class="btn-confirm" on:click={confirmEditPreviousDonne}>
+        Confirmer
+      </button>
+    </div>
+  </div>
+</div>
+{/if}
+
+<!-- MODALE : Confirmation d'annulation de l'édition -->
+{#if showCancelEditModal}
+<div class="modal-backdrop" role="dialog" aria-modal="true" aria-labelledby="cancel-edit-title">
+  <div class="modal cancel-edit-modal">
+    <div class="cancel-edit-icon">⚠️</div>
+    <h3 id="cancel-edit-title">Annuler les modifications ?</h3>
+    <p class="cancel-edit-text">
+      Vous avez des modifications en cours sur la <strong>donne n°{editingDonneNumber}</strong>.<br />
+      Si vous annulez, vos modifications seront perdues.
+    </p>
+    <div class="cancel-edit-buttons">
+      <button class="btn-continue" on:click={() => { showCancelEditModal = false; }}>
+        Continuer l'édition
+      </button>
+      <button class="btn-discard" on:click={cancelEditPreviousDonne}>
+        Abandonner les modifications
+      </button>
+    </div>
+  </div>
+</div>
+{/if}
 
 
-<div class="donne">
-	<h3>Donne n° {donneNumber} / {rows}</h3>
+<div class="donne" class:donne-edit-mode={isEditingPreviousDonne}>
+	{#if isEditingPreviousDonne}
+		<div class="edit-mode-banner">
+			<span class="edit-mode-icon">
+				<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+					<path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+					<path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"></path>
+				</svg>
+			</span>
+			<span class="edit-mode-text">
+				Mode modification - Donne n°{editingDonneNumber}
+			</span>
+			<div class="edit-mode-actions">
+				<button class="btn-edit-cancel" on:click={requestCancelEdit} disabled={isSubmittingEdit}>
+					Annuler
+				</button>
+				<button class="btn-edit-save" on:click={saveEditedDonne} disabled={isSubmittingEdit}>
+					{#if isSubmittingEdit}
+						Enregistrement...
+					{:else}
+						Enregistrer
+					{/if}
+				</button>
+			</div>
+		</div>
+		{#if editError}
+			<div class="edit-error-message">
+				⚠️ {editError}
+			</div>
+		{/if}
+		<h3 class="edit-mode-title">Modification de la donne n°{editingDonneNumber}</h3>
+	{:else}
+		<h3>Donne n° {donneNumber} / {rows}</h3>
+	{/if}
 	<div class="choixAnnonce">
 		{#each players as p}
 			<div class="player-row">
@@ -4054,7 +4460,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   
   
 <div class="BoutonValidate">
-    {#if showValidateButton}
+    {#if showValidateButton && !isEditingPreviousDonne}
         <button class="btn-primary" on:click={validate} disabled={!canValidateDonne}>
             Valider la donne
         </button>
@@ -6009,6 +6415,269 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   .corner-logo-right {
   margin-right: 0;
   }
+  }
+
+  /* ========================================
+     STYLES POUR LE MODE ÉDITION DE DONNE
+     ======================================== */
+
+  /* Ligne cliquable dans l'historique (dernière donne) */
+  .history-row-editable {
+    cursor: pointer;
+    transition: background 0.2s ease;
+  }
+
+  .history-row-editable:hover {
+    background: rgba(15, 118, 110, 0.25);
+  }
+
+  .history-row-editable:focus {
+    outline: 2px solid #0f766e;
+    outline-offset: -2px;
+  }
+
+  /* Icône d'édition dans la cellule de numéro de donne */
+  .cell-donne-number {
+    position: relative;
+  }
+
+  .edit-icon {
+    margin-left: 0.4rem;
+    display: inline-flex;
+    align-items: center;
+    opacity: 0.7;
+    transition: opacity 0.2s ease;
+  }
+
+  .edit-icon svg {
+    width: 1rem;
+    height: 1rem;
+    color: #f5b942;
+    filter: drop-shadow(0 0 3px rgba(245, 185, 66, 0.5));
+  }
+
+  .history-row-editable:hover .edit-icon {
+    opacity: 1;
+  }
+
+  /* Container donne en mode édition */
+  .donne-edit-mode {
+    border: 2px solid #991b1b;
+    border-radius: var(--radius-md);
+    position: relative;
+  }
+
+  /* Bandeau mode édition */
+  .edit-mode-banner {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    gap: 1rem;
+    padding: 0.8rem 1.2rem;
+    background: linear-gradient(135deg, #991b1b 0%, #7f1d1d 100%);
+    border-radius: var(--radius-sm) var(--radius-sm) 0 0;
+    margin: -0.5rem -0.5rem 1rem -0.5rem;
+    flex-wrap: wrap;
+  }
+
+  .edit-mode-icon {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .edit-mode-icon svg {
+    width: 1.6rem;
+    height: 1.6rem;
+    color: #f5b942;
+    filter: drop-shadow(0 0 4px rgba(245, 185, 66, 0.6));
+  }
+
+  .edit-mode-text {
+    flex: 1;
+    font-weight: 600;
+    color: #fef2f2;
+    font-size: 1rem;
+  }
+
+  .edit-mode-actions {
+    display: flex;
+    gap: 0.5rem;
+  }
+
+  .btn-edit-cancel {
+    padding: 0.5rem 1rem;
+    background: rgba(255, 255, 255, 0.2);
+    color: #1f2937;
+    border: 1px solid rgba(0, 0, 0, 0.2);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s ease;
+  }
+
+  .btn-edit-cancel:hover:not(:disabled) {
+    background: rgba(255, 255, 255, 0.35);
+  }
+
+  .btn-edit-cancel:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  .btn-edit-save {
+    padding: 0.5rem 1.2rem;
+    background: #065f46;
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.2s ease;
+  }
+
+  .btn-edit-save:hover:not(:disabled) {
+    background: #047857;
+  }
+
+  .btn-edit-save:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* Message d'erreur en mode édition */
+  .edit-error-message {
+    padding: 0.75rem 1rem;
+    background: #fef2f2;
+    color: #b91c1c;
+    border-radius: var(--radius-sm);
+    margin-bottom: 1rem;
+    font-weight: 500;
+    text-align: center;
+  }
+
+  /* Titre en mode édition - rouge foncé */
+  .edit-mode-title {
+    color: #991b1b !important;
+  }
+
+  /* Modale de confirmation d'édition */
+  .edit-confirm-modal,
+  .cancel-edit-modal {
+    text-align: center;
+    padding: 2rem;
+    max-width: 420px;
+  }
+
+  .edit-confirm-icon,
+  .cancel-edit-icon {
+    display: flex;
+    justify-content: center;
+    margin-bottom: 1rem;
+  }
+
+  .edit-confirm-icon svg,
+  .cancel-edit-icon svg {
+    width: 3.5rem;
+    height: 3.5rem;
+    color: #f5b942;
+    filter: drop-shadow(0 0 8px rgba(245, 185, 66, 0.6));
+  }
+
+  .edit-confirm-text,
+  .cancel-edit-text {
+    margin-bottom: 1rem;
+    line-height: 1.5;
+    color: var(--text-muted);
+  }
+
+  .edit-confirm-warning {
+    padding: 0.75rem;
+    background: rgba(245, 158, 11, 0.15);
+    border-radius: var(--radius-sm);
+    color: #f59e0b;
+    font-size: 0.9rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .edit-confirm-buttons,
+  .cancel-edit-buttons {
+    display: flex;
+    gap: 1rem;
+    justify-content: center;
+    flex-wrap: wrap;
+  }
+
+  .btn-cancel,
+  .btn-continue {
+    padding: 0.75rem 1.5rem;
+    background: rgba(255, 255, 255, 0.1);
+    color: var(--text-main);
+    border: 1px solid var(--border-strong);
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 500;
+    transition: background 0.2s ease;
+  }
+
+  .btn-cancel:hover,
+  .btn-continue:hover {
+    background: rgba(255, 255, 255, 0.2);
+  }
+
+  .btn-confirm {
+    padding: 0.75rem 1.5rem;
+    background: #0f766e;
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.2s ease;
+  }
+
+  .btn-confirm:hover {
+    background: #0d9488;
+  }
+
+  .btn-discard {
+    padding: 0.75rem 1.5rem;
+    background: #b91c1c;
+    color: white;
+    border: none;
+    border-radius: var(--radius-sm);
+    cursor: pointer;
+    font-weight: 600;
+    transition: background 0.2s ease;
+  }
+
+  .btn-discard:hover {
+    background: #dc2626;
+  }
+
+  /* Responsive pour les modales d'édition */
+  @media (max-width: 480px) {
+    .edit-mode-banner {
+      flex-direction: column;
+      text-align: center;
+    }
+
+    .edit-mode-actions {
+      width: 100%;
+      justify-content: center;
+    }
+
+    .edit-confirm-buttons,
+    .cancel-edit-buttons {
+      flex-direction: column;
+    }
+
+    .btn-cancel,
+    .btn-confirm,
+    .btn-continue,
+    .btn-discard {
+      width: 100%;
+    }
   }
  
 </style>
