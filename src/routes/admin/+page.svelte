@@ -190,6 +190,80 @@
   }
   }
 
+  // Sélection multiple pour suppression
+  let selectedIds: Set<number> = new Set();
+  let deletingManches = false;
+  let deleteError = '';
+  let deleteSuccess = '';
+
+  // Réactive : tout est sélectionné ?
+  $: allSelected = filteredSortedManches.length > 0 && 
+    filteredSortedManches.every(m => selectedIds.has(m.tableConfigId));
+
+  function toggleSelectAll() {
+    if (allSelected) {
+      // Désélectionner tout
+      selectedIds = new Set();
+    } else {
+      // Sélectionner toutes les manches filtrées
+      selectedIds = new Set(filteredSortedManches.map(m => m.tableConfigId));
+    }
+  }
+
+  function toggleSelect(id: number) {
+    if (selectedIds.has(id)) {
+      selectedIds.delete(id);
+    } else {
+      selectedIds.add(id);
+    }
+    selectedIds = selectedIds; // trigger reactivity
+  }
+
+  async function deleteSelectedManches() {
+    if (selectedIds.size === 0) return;
+
+    const count = selectedIds.size;
+    if (!confirm(`Êtes-vous sûr de vouloir supprimer ${count} manche(s) ? Cette action est irréversible.`)) {
+      return;
+    }
+
+    deletingManches = true;
+    deleteError = '';
+    deleteSuccess = '';
+
+    let successCount = 0;
+    let errorCount = 0;
+
+    for (const tableConfigId of selectedIds) {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/admin/table/delete`, {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ tableConfigId })
+        });
+        if (res.ok) {
+          successCount++;
+        } else {
+          errorCount++;
+        }
+      } catch (err) {
+        console.error(`Erreur suppression manche ${tableConfigId}:`, err);
+        errorCount++;
+      }
+    }
+
+    if (successCount > 0) {
+      deleteSuccess = `${successCount} manche(s) supprimée(s) avec succès.`;
+      selectedIds = new Set();
+      await loadManches();
+    }
+    if (errorCount > 0) {
+      deleteError = `${errorCount} manche(s) n'ont pas pu être supprimées.`;
+    }
+
+    deletingManches = false;
+  }
+
   // Filtres
   let filters = {
   id: '',
@@ -535,10 +609,32 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
     <div class="admin-card">
       <div class="list-header">
         <h2>Liste des manches</h2>
-        {#if !isLoading && !loadError && manches.length > 0}
-          <span class="result-count">{filteredSortedManches.length} / {manches.length} manches</span>
-        {/if}
+        <div class="header-actions">
+          {#if !isLoading && !loadError && manches.length > 0}
+            <span class="result-count">{filteredSortedManches.length} / {manches.length} manches</span>
+          {/if}
+          {#if selectedIds.size > 0}
+            <button 
+              class="btn-delete-selected" 
+              on:click={deleteSelectedManches}
+              disabled={deletingManches}
+            >
+              {#if deletingManches}
+                Suppression...
+              {:else}
+                🗑️ Supprimer ({selectedIds.size})
+              {/if}
+            </button>
+          {/if}
+        </div>
       </div>
+      
+      {#if deleteSuccess}
+        <p class="success">{deleteSuccess}</p>
+      {/if}
+      {#if deleteError}
+        <p class="error">{deleteError}</p>
+      {/if}
 
       {#if isLoading}
         <p>Chargement…</p>
@@ -547,14 +643,88 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
       {:else if manches.length === 0}
         <p>Aucune manche trouvée.</p>
       {:else}
+        <!-- Filtres desktop -->
+        <div class="desktop-filters">
+          <div class="filter-row-desktop">
+            <div class="filter-item filter-item-small">
+              <span class="filter-label">ID</span>
+              <input 
+                type="text" 
+                class="desktop-filter" 
+                bind:value={filters.id}
+                placeholder="ID"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">Type</span>
+              <select class="desktop-filter" bind:value={filters.competitionType}>
+                <option value="">Tous</option>
+                <option value="1">Championnat</option>
+                <option value="2">Interclub</option>
+                <option value="3">Manche libre</option>
+                <option value="4">Concours</option>
+              </select>
+            </div>
+            <div class="filter-item filter-item-small">
+              <span class="filter-label">N°</span>
+              <input 
+                type="text" 
+                class="desktop-filter" 
+                bind:value={filters.competitionNumber}
+                placeholder="N°"
+              />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">Manche</span>
+              <select class="desktop-filter" bind:value={filters.mancheNumber}>
+                <option value="">Toutes</option>
+                {#each availableMancheNumbers as num}
+                  <option value={String(num)}>Manche {num}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">Table</span>
+              <select class="desktop-filter" bind:value={filters.tableName}>
+                <option value="">Toutes</option>
+                <option value="A">Table A</option>
+                <option value="B">Table B</option>
+                <option value="C">Table C</option>
+                <option value="D">Table D</option>
+                <option value="E">Table E</option>
+                <option value="F">Table F</option>
+                <option value="G">Table G</option>
+                <option value="H">Table H</option>
+              </select>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">Statut</span>
+              <select class="desktop-filter" bind:value={filters.statut}>
+                <option value="">Tous</option>
+                <option value="en cours">En cours</option>
+                <option value="terminée">Terminée</option>
+              </select>
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">Date</span>
+              <input 
+                type="date" 
+                class="desktop-filter desktop-filter-date" 
+                bind:value={filters.startTime}
+              />
+            </div>
+          </div>
+        </div>
+
              <table class="admin-table">
   <colgroup>
+    <col class="col-checkbox" />
     <col class="col-id" />
     <col class="col-type" />
     <col class="col-compnum" />
 
-    <col class="col-table" />
     <col class="col-manche" />
+    <col class="col-table" />
     <col class="col-joueurs" />
     <col class="col-donnes" />
     <col class="col-debut" />
@@ -565,157 +735,56 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
                <thead>
                  <!-- Ligne 1 : en-têtes "généraux" -->
                  <tr>
-                   <th on:click={() =>
+                   <th class="col-checkbox-header">
+                     <input 
+                       type="checkbox" 
+                       checked={allSelected}
+                       on:change={toggleSelectAll}
+                       on:click|stopPropagation
+                       title="Tout sélectionner"
+                     />
+                   </th>
+                   <th class="hide-tablet" on:click={() =>
                      toggleSort('tableConfigId')}>
                      ID {#if sortKey === 'tableConfigId'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
                    </th>
 
-                   <th  on:click={() =>
+                   <th class="th-type" on:click={() =>
                      toggleSort('competitionType')}>
                      Type {#if sortKey === 'competitionType'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
                    </th>
-                   <th  on:click={() =>
+                   <th class="hide-tablet" on:click={() =>
                      toggleSort('competitionNumber')}>
-                     N° comp. {#if sortKey === 'competitionNumber'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+                     N° {#if sortKey === 'competitionNumber'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
                    </th>
 
-                   <th  on:click={() =>
-                     toggleSort('tableName')}>
-                     Table {#if sortKey === 'tableName'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
-                   </th>
-                   <th  on:click={() =>
+                   <th class="th-manche" on:click={() =>
                      toggleSort('mancheNumber')}>
                      Manche {#if sortKey === 'mancheNumber'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
                    </th>
-                   <th  on:click={() =>
+                   <th class="th-table" on:click={() =>
+                     toggleSort('tableName')}>
+                     Table {#if sortKey === 'tableName'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
+                   </th>
+                   <th class="hide-mobile" on:click={() =>
                      toggleSort('playerCount')}>
                      Joueurs {#if sortKey === 'playerCount'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
                    </th>
-                   <th  on:click={() =>
+                   <th class="hide-mobile" on:click={() =>
                      toggleSort('donnesCount')}>
                      Donnes {#if sortKey === 'donnesCount'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
                    </th>
-                   <th  on:click={() =>
+                   <th class="th-debut" on:click={() =>
                      toggleSort('startTime')}>
                      Début {#if sortKey === 'startTime'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
                    </th>
-                   <th  on:click={() =>
+                   <th class="hide-mobile" on:click={() =>
                      toggleSort('endTime')}>
                      Fin {#if sortKey === 'endTime'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
                    </th>
-                   <th  on:click={() =>
+                   <th class="th-statut" on:click={() =>
                      toggleSort('isCompleted')}>
                      Statut {#if sortKey === 'isCompleted'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
-                   </th>
-                 </tr>
-
-                 <!-- Ligne 3 : filtres -->
-                 <tr class="filter-row">
-                   <th>
-                     <input
-                       class="filter-input"
-                       type="text"
-                       placeholder="Filtrer..."
-                       bind:value={filters.id}
-                       on:click|stopPropagation
-      />
-                   </th>
-                   <th>
-                     <select
-                       class="filter-input"
-                       bind:value={filters.competitionType}
-                       on:click|stopPropagation
-      >
-                       <option value="">Tous</option>
-                       <option value="1">Championnat</option>
-                       <option value="2">Interclub</option>
-                       <option value="3">Manche libre</option>
-                       <option value="4">Concours</option>
-                     </select>
-                   </th>
-                   <th>
-                     <input
-                       class="filter-input"
-                       type="text"
-                       placeholder="N°..."
-                       bind:value={filters.competitionNumber}
-                       on:click|stopPropagation
-      />
-                   </th>
-          
-                   <th>
-                     <select
-                       class="filter-input"
-                       bind:value={filters.tableName}
-                       on:click|stopPropagation
-                     >
-                       <option value="">Toutes</option>
-                       <option value="A">A</option>
-                       <option value="B">B</option>
-                       <option value="C">C</option>
-                       <option value="D">D</option>
-                       <option value="E">E</option>
-                       <option value="F">F</option>
-                       <option value="G">G</option>
-                       <option value="H">H</option>
-                     </select>
-                   </th>
-                   <th>
-                     <select
-                       class="filter-input"
-                       bind:value={filters.mancheNumber}
-                       on:click|stopPropagation
-                     >
-                       <option value="">Toutes</option>
-                       {#each availableMancheNumbers as num}
-                         <option value={String(num)}>{num}</option>
-                       {/each}
-                     </select>
-                   </th>
-                   <th>
-                     <input
-                       class="filter-input"
-                       type="text"
-                       placeholder="Filtrer..."
-                       bind:value={filters.playerCount}
-                       on:click|stopPropagation
-      />
-                   </th>
-                   <th>
-                     <input
-                       class="filter-input"
-                       type="text"
-                       placeholder="Filtrer..."
-                       bind:value={filters.donnesCount}
-                       on:click|stopPropagation
-      />
-                   </th>
-                   <th>
-                     <input
-                       class="filter-input filter-date"
-                       type="date"
-                       bind:value={filters.startTime}
-                       on:click|stopPropagation
-      />
-                   </th>
-                   <th>
-                     <input
-                       class="filter-input filter-date"
-                       type="date"
-                       bind:value={filters.endTime}
-                       on:click|stopPropagation
-      />
-                   </th>
-                   <th>
-                     <select
-                       class="filter-input"
-                       bind:value={filters.statut}
-                       on:click|stopPropagation
-      >
-                       <option value="">Tous</option>
-                       <option value="en cours">En cours</option>
-                       <option value="terminée">Terminée</option>
-                     </select>
                    </th>
                  </tr>
                </thead>
@@ -726,20 +795,113 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
                <tbody>
     {#each filteredSortedManches as m}
       <tr class="clickable" on:click={() => gotoManche(m.tableConfigId)}>
-        <td class="cell-id">{m.tableConfigId}</td>
-        <td><span class="badge badge-type type-{m.competitionType ?? 0}">{formatCompetitionType(m)}</span></td>
-        <td>{m.competitionNumber ?? '-'}</td>
+        <td class="cell-checkbox" on:click|stopPropagation>
+          <input 
+            type="checkbox" 
+            checked={selectedIds.has(m.tableConfigId)}
+            on:change={() => toggleSelect(m.tableConfigId)}
+          />
+        </td>
+        <td class="cell-id hide-tablet">{m.tableConfigId}</td>
+        <td class="cell-type"><span class="badge badge-type type-{m.competitionType ?? 0}">{formatCompetitionType(m)}</span></td>
+        <td class="cell-compnum hide-tablet">{m.competitionNumber ?? '-'}</td>
+        <td class="cell-manche">{m.mancheNumber}</td>
         <td class="cell-table">{m.tableName}</td>
-        <td>{m.mancheNumber}</td>
-        <td><span class="cell-players">👤 {m.playerCount}</span></td>
-        <td><span class="cell-donnes">{m.donnesCount}</span></td>
-        <td class="cell-date">{formatDate(m.startTime)}</td>
-        <td class="cell-date">{formatDate(m.endTime)}</td>
-        <td><span class="badge {m.isCompleted ? 'badge-success' : 'badge-warning'}">{m.isCompleted ? '✓ Terminée' : '⏳ En cours'}</span></td>
+        <td class="cell-joueurs hide-mobile"><span class="cell-players">👤 {m.playerCount}</span></td>
+        <td class="cell-donnes-td hide-mobile"><span class="cell-donnes">{m.donnesCount}</span></td>
+        <td class="cell-date cell-debut">{formatDate(m.startTime)}</td>
+        <td class="cell-date cell-fin hide-mobile">{formatDate(m.endTime)}</td>
+        <td class="cell-statut"><span class="badge {m.isCompleted ? 'badge-success' : 'badge-warning'}">{m.isCompleted ? '✓' : '⏳'}</span></td>
       </tr>
     {/each}
   </tbody>
 </table>
+
+        <!-- Vue mobile : filtres + cartes -->
+        <div class="mobile-view">
+          <!-- Filtres mobiles -->
+          <div class="mobile-filters">
+            <div class="filter-group">
+              <select class="mobile-filter" bind:value={filters.competitionType}>
+                <option value="">Type: Tous</option>
+                <option value="1">Championnat</option>
+                <option value="2">Interclub</option>
+                <option value="3">Manche libre</option>
+                <option value="4">Concours</option>
+              </select>
+              <input 
+                type="text" 
+                class="mobile-filter mobile-filter-num" 
+                bind:value={filters.competitionNumber}
+                placeholder="N°"
+              />
+            </div>
+            <div class="filter-group">
+              <select class="mobile-filter" bind:value={filters.mancheNumber}>
+                <option value="">Manche: Toutes</option>
+                {#each availableMancheNumbers as num}
+                  <option value={String(num)}>Manche {num}</option>
+                {/each}
+              </select>
+              <select class="mobile-filter" bind:value={filters.tableName}>
+                <option value="">Table: Toutes</option>
+                <option value="A">Table A</option>
+                <option value="B">Table B</option>
+                <option value="C">Table C</option>
+                <option value="D">Table D</option>
+                <option value="E">Table E</option>
+                <option value="F">Table F</option>
+                <option value="G">Table G</option>
+                <option value="H">Table H</option>
+              </select>
+            </div>
+            <div class="filter-group">
+              <select class="mobile-filter" bind:value={filters.statut}>
+                <option value="">Statut: Tous</option>
+                <option value="en cours">En cours</option>
+                <option value="terminée">Terminée</option>
+              </select>
+              <input 
+                type="date" 
+                class="mobile-filter mobile-filter-date" 
+                bind:value={filters.startTime}
+                placeholder="Date début"
+              />
+            </div>
+          </div>
+
+          <!-- Cartes -->
+          <div class="mobile-cards">
+            {#each filteredSortedManches as m}
+              <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+              <div class="manche-card" on:click={() => gotoManche(m.tableConfigId)}>
+                <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+                <div class="card-checkbox" on:click|stopPropagation>
+                  <input 
+                    type="checkbox" 
+                    checked={selectedIds.has(m.tableConfigId)}
+                    on:change={() => toggleSelect(m.tableConfigId)}
+                  />
+                </div>
+              <div class="card-content">
+                <div class="card-header">
+                  <span class="badge badge-type type-{m.competitionType ?? 0}">{formatCompetitionType(m)}</span>
+                  {#if m.competitionNumber}
+                    <span class="badge badge-compnum">N°{m.competitionNumber}</span>
+                  {/if}
+                  <span class="card-manche">Manche {m.mancheNumber}</span>
+                  <span class="card-table">Table {m.tableName}</span>
+                  <span class="badge {m.isCompleted ? 'badge-success' : 'badge-warning'}">{m.isCompleted ? '✓ Terminée' : '⏳ En cours'}</span>
+                </div>
+                <div class="card-details">
+                  <span class="card-date">📅 {formatDate(m.startTime)}</span>
+                  <span class="card-info">👤 {m.playerCount} joueurs • {m.donnesCount} donnes</span>
+                </div>
+              </div>
+            </div>
+          {/each}
+        </div>
+        </div> <!-- fin mobile-view -->
 
       {/if}
     </div>
@@ -904,6 +1066,62 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
   margin-top: 0.75rem;
   }
 
+  /* Filtres desktop */
+  .desktop-filters {
+    background: linear-gradient(135deg, rgba(5, 46, 22, 0.6) 0%, rgba(2, 6, 23, 0.8) 100%);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: 12px;
+    padding: 1rem 1.25rem;
+    margin-bottom: 1rem;
+  }
+
+  .filter-row-desktop {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: flex-end;
+  }
+
+  .filter-item {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+    min-width: 120px;
+  }
+
+  .filter-item-small {
+    min-width: 60px;
+    max-width: 80px;
+  }
+
+  .filter-item .filter-label {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    font-weight: 500;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+  }
+
+  .desktop-filter {
+    background: rgba(0, 0, 0, 0.4);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: 8px;
+    color: #e5e7eb;
+    padding: 0.5rem 0.75rem;
+    font-size: 0.85rem;
+    transition: all 0.2s ease;
+  }
+
+  .desktop-filter:focus {
+    outline: none;
+    border-color: #22c55e;
+    box-shadow: 0 0 0 2px rgba(34, 197, 94, 0.2);
+  }
+
+  .desktop-filter-date {
+    color-scheme: dark;
+  }
+
   .admin-table {
   width: 100%;
   border-collapse: collapse;
@@ -913,6 +1131,10 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
   }
 
   /* Largeurs des colonnes – total ≈ 100% */
+
+  .col-checkbox {
+  width: 3%;
+  }
 
   .col-id {
   width: 5%;
@@ -1026,11 +1248,6 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
 
 
 
-  .filter-row th {
-  background: #020617;
-  border-bottom: 1px solid rgba(51, 65, 85, 0.9);
-  }
-
   .filter-input {
   width: 100%;
   box-sizing: border-box;
@@ -1114,17 +1331,20 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
   text-align: center;
   }
 
-  /* Centrer le contenu des selects aussi */
-  .filter-input option {
-  text-align: center;
-  }
-
   /* Header avec compteur */
   .list-header {
     display: flex;
     align-items: center;
     justify-content: space-between;
     margin-bottom: 0.5rem;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+  }
+
+  .header-actions {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
   }
 
   .list-header h2 {
@@ -1138,6 +1358,51 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
     border-radius: 999px;
     font-size: 0.85rem;
     font-weight: 500;
+  }
+
+  /* Bouton de suppression multiple */
+  .btn-delete-selected {
+    background: linear-gradient(to bottom, #dc2626, #b91c1c);
+    color: #fff;
+    border: 1px solid #ef4444;
+    padding: 0.4rem 0.9rem;
+    font-size: 0.85rem;
+    font-weight: 600;
+    border-radius: 999px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn-delete-selected:hover:not(:disabled) {
+    background: linear-gradient(to bottom, #ef4444, #dc2626);
+    box-shadow: 0 4px 12px rgba(220, 38, 38, 0.4);
+  }
+
+  .btn-delete-selected:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* Checkbox dans le tableau */
+  .col-checkbox-header,
+  .col-checkbox-filter,
+  .cell-checkbox {
+    text-align: center;
+    width: 40px;
+  }
+
+  .cell-checkbox input[type="checkbox"],
+  .col-checkbox-header input[type="checkbox"] {
+    width: 16px;
+    height: 16px;
+    cursor: pointer;
+    accent-color: #22c55e;
+  }
+
+  .success {
+    color: #4ade80;
+    margin-top: 0.5rem;
+    margin-bottom: 0.5rem;
   }
 
   /* Badges de statut */
@@ -1198,6 +1463,16 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
     background: rgba(75, 85, 99, 0.25);
     color: #6b7280;
     border: 1px solid rgba(75, 85, 99, 0.5);
+  }
+
+  /* Badge numéro de compétition */
+  .badge-compnum {
+    background: rgba(20, 184, 166, 0.25);
+    color: #2dd4bf;
+    border: 1px solid rgba(20, 184, 166, 0.5);
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+    font-weight: 700;
   }
 
   /* Cellules spéciales */
@@ -1361,6 +1636,280 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
   .loading {
     color: #9ca3af;
     font-style: italic;
+  }
+
+  /* ====================== RESPONSIVE MOBILE ====================== */
+
+  /* Vue mobile - cachée par défaut sur desktop */
+  .mobile-view {
+    display: none;
+  }
+
+  /* Tablettes */
+  @media (max-width: 900px) {
+    .admin-page {
+      padding: 0.5rem;
+      margin: 1rem auto;
+    }
+
+    h1 {
+      font-size: 1.4rem;
+      flex-wrap: wrap;
+    }
+
+    .admin-card {
+      padding: 1rem;
+    }
+
+    /* Masquer les colonnes tablet */
+    .hide-tablet {
+      display: none !important;
+    }
+
+    .admin-table {
+      font-size: 0.8rem;
+    }
+
+    .admin-table th,
+    .admin-table td {
+      padding: 0.35rem 0.2rem;
+    }
+
+    .filter-input {
+      font-size: 0.7rem;
+      padding: 0.15rem 0.2rem;
+    }
+
+    .badge {
+      font-size: 0.65rem;
+      padding: 0.15rem 0.4rem;
+    }
+
+    .cell-date {
+      font-size: 0.7rem;
+    }
+  }
+
+  /* Mobile - afficher les cartes, masquer le tableau */
+  @media (max-width: 700px) {
+    .admin-page {
+      padding: 0.5rem;
+      margin: 0.5rem auto;
+    }
+
+    h1 {
+      font-size: 1.2rem;
+    }
+
+    .back-link {
+      font-size: 1rem;
+    }
+
+    .sep {
+      display: none;
+    }
+
+    .list-header {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.75rem;
+    }
+
+    .list-header h2 {
+      font-size: 1.1rem;
+    }
+
+    .header-actions {
+      width: 100%;
+      justify-content: space-between;
+    }
+
+    .result-count {
+      font-size: 0.8rem;
+      padding: 0.3rem 0.7rem;
+    }
+
+    .btn-delete-selected {
+      font-size: 0.8rem;
+      padding: 0.4rem 0.8rem;
+    }
+
+    /* Masquer le tableau sur mobile */
+    .admin-table {
+      display: none !important;
+    }
+
+    /* Masquer les filtres desktop sur mobile */
+    .desktop-filters {
+      display: none !important;
+    }
+
+    /* Afficher la vue mobile */
+    .mobile-view {
+      display: block;
+    }
+
+    /* Filtres mobiles */
+    .mobile-filters {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+      margin-bottom: 0.75rem;
+      padding: 0.75rem;
+      background: rgba(0, 0, 0, 0.3);
+      border-radius: 10px;
+      border: 1px solid rgba(34, 197, 94, 0.2);
+    }
+
+    .filter-group {
+      display: flex;
+      gap: 0.5rem;
+    }
+
+    .mobile-filter {
+      flex: 1;
+      padding: 0.5rem 0.6rem;
+      border-radius: 8px;
+      border: 1px solid rgba(75, 85, 99, 0.8);
+      background: #020617;
+      color: #e5e7eb;
+      font-size: 0.85rem;
+    }
+
+    .mobile-filter:focus {
+      outline: none;
+      border-color: #22c55e;
+    }
+
+    .mobile-filter-date {
+      color-scheme: dark;
+    }
+
+    .mobile-filter-num {
+      max-width: 60px;
+      text-align: center;
+    }
+
+    /* Cartes */
+    .mobile-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 0.6rem;
+    }
+
+    .manche-card {
+      display: flex;
+      align-items: stretch;
+      background: linear-gradient(135deg, #052e16 0%, #020617 100%);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      border-radius: 10px;
+      overflow: hidden;
+      cursor: pointer;
+      transition: all 0.2s ease;
+    }
+
+    .manche-card:hover {
+      border-color: rgba(34, 197, 94, 0.6);
+      transform: translateX(2px);
+    }
+
+    .card-checkbox {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      padding: 0.75rem;
+      background: rgba(0, 0, 0, 0.3);
+      border-right: 1px solid rgba(34, 197, 94, 0.2);
+    }
+
+    .card-checkbox input[type="checkbox"] {
+      width: 18px;
+      height: 18px;
+      cursor: pointer;
+      accent-color: #22c55e;
+    }
+
+    .card-content {
+      flex: 1;
+      padding: 0.6rem 0.75rem;
+      display: flex;
+      flex-direction: column;
+      gap: 0.4rem;
+    }
+
+    .card-header {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
+      flex-wrap: wrap;
+    }
+
+    .card-table {
+      font-weight: 600;
+      color: #9ca3af;
+      font-size: 0.9rem;
+    }
+
+    .card-manche {
+      font-weight: 700;
+      color: #22c55e;
+      font-size: 1rem;
+    }
+
+    .card-details {
+      display: flex;
+      flex-direction: column;
+      gap: 0.2rem;
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+
+    .card-date {
+      color: #e5e7eb;
+    }
+
+    .card-info {
+      font-size: 0.75rem;
+    }
+
+    /* Admin card */
+    .admin-card {
+      padding: 0.75rem;
+      border-radius: 12px;
+    }
+  }
+
+  /* Très petits écrans */
+  @media (max-width: 400px) {
+    .filter-group {
+      flex-direction: column;
+    }
+
+    .mobile-filter {
+      font-size: 0.8rem;
+      padding: 0.45rem 0.5rem;
+    }
+
+    .card-header {
+      gap: 0.35rem;
+    }
+
+    .card-manche {
+      font-size: 0.9rem;
+    }
+
+    .badge {
+      font-size: 0.6rem;
+      padding: 0.1rem 0.3rem;
+    }
+
+    .card-details {
+      font-size: 0.75rem;
+    }
+
+    .card-info {
+      font-size: 0.7rem;
+    }
   }
 
 </style>
