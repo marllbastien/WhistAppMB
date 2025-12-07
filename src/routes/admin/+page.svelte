@@ -11,6 +11,34 @@
   let pinInput = '';
   let authError = '';
   const currentYear = new Date().getFullYear();
+
+  // Mode d'affichage : 'menu' ou 'manches'
+  let viewMode: 'menu' | 'manches' = 'menu';
+
+  // Éléments du menu admin
+  const adminMenuItems = [
+    {
+      id: 'manches',
+      title: 'Gestion des manches',
+      description: 'Consulter, modifier et supprimer les manches de jeu',
+      icon: '♤',
+      action: () => { viewMode = 'manches'; }
+    },
+    {
+      id: 'joueurs',
+      title: 'Gestion des joueurs',
+      description: 'Gérer les joueurs internes et externes',
+      icon: '👥',
+      href: '/admin/joueurs'
+    },
+    {
+      id: 'archives',
+      title: 'Archives PDF',
+      description: 'Consulter les feuilles de points archivées',
+      icon: '📄',
+      href: '/admin/archives'
+    }
+  ];
   interface AdminPlayerDto {
   playerId: number | null;
   alias: string;
@@ -114,6 +142,9 @@
   statut: ''
   };
 
+  // Liste des numéros de manches disponibles (triée)
+  $: availableMancheNumbers = [...new Set(manches.map(m => m.mancheNumber))].sort((a, b) => a - b);
+
   $: filteredSortedManches = manches
   // 1) Filtres
   .filter((m) => {
@@ -151,11 +182,8 @@
       return false;
     }
 
-    // Manche
-    if (
-      filters.mancheNumber &&
-      !String(m.mancheNumber).includes(filters.mancheNumber.trim())
-    ) {
+    // Manche (comparaison exacte)
+    if (filters.mancheNumber && String(m.mancheNumber) !== filters.mancheNumber) {
       return false;
     }
 
@@ -175,23 +203,13 @@
       return false;
     }
 
-    // Début (valeur brute de l’API)
-    if (
-      filters.startTime &&
-      !(m.startTime ?? '')
-        .toLowerCase()
-        .includes(filters.startTime.toLowerCase())
-    ) {
+    // Start date filter
+    if (filters.startTime && extractDateOnly(m.startTime) !== filters.startTime) {
       return false;
     }
 
-    // Fin
-    if (
-      filters.endTime &&
-      !(m.endTime ?? '')
-        .toLowerCase()
-        .includes(filters.endTime.toLowerCase())
-    ) {
+    // End date filter
+    if (filters.endTime && extractDateOnly(m.endTime) !== filters.endTime) {
       return false;
     }
 
@@ -263,7 +281,7 @@
     const flag = localStorage.getItem('whist_admin_ok');
     if (flag === 'true') {
       isAdmin = true;
-      loadManches();
+      // On ne charge plus les manches automatiquement, on reste sur le menu
     }
   });
 
@@ -272,10 +290,14 @@
       isAdmin = true;
       authError = '';
       localStorage.setItem('whist_admin_ok', 'true');
-      await loadManches();
+      // On reste sur le menu après validation
     } else {
       authError = 'Code incorrect';
     }
+  }
+
+  function goToMenu() {
+    viewMode = 'menu';
   }
 
   async function loadManches() {
@@ -298,7 +320,20 @@
   function formatDate(dateStr: string | null) {
     if (!dateStr) return '-';
     const d = new Date(dateStr);
-    return d.toLocaleString('fr-BE');
+    return d.toLocaleString('fr-BE', {
+      day: '2-digit',
+      month: '2-digit',
+      year: 'numeric',
+      hour: '2-digit',
+      minute: '2-digit'
+    });
+  }
+
+  // Extrait la date au format YYYY-MM-DD pour comparaison avec input date
+  function extractDateOnly(dateStr: string | null): string {
+    if (!dateStr) return '';
+    const d = new Date(dateStr);
+    return d.toISOString().split('T')[0];
   }
 
   function gotoManche(id: number) {
@@ -326,7 +361,7 @@ function formatCompetitionType(m: AdminMancheHeaderDto): string {
 }
 
 
-function formatCompetitionName(m) {
+function formatCompetitionName(m: AdminMancheHeaderDto): string {
   const t = m.competitionType;
   const num = m.competitionNumber;
   const name = m.competitionName;
@@ -360,11 +395,18 @@ function formatCompetitionName(m) {
 </script>
 
 <svelte:head>
-  <title>Administration – Manches</title>
+  <title>Administration</title>
 </svelte:head>
 
 <div class="admin-page">
-  <h1>Administration <span class="sep">⟶</span> Gestion des manches</h1>
+  {#if viewMode === 'menu'}
+    <h1>Administration</h1>
+  {:else}
+    <h1>
+      <button class="back-link" on:click={goToMenu}>← Administration</button>
+      <span class="sep">⟶</span> Gestion des manches
+    </h1>
+  {/if}
 
 
   {#if !isAdmin}
@@ -384,9 +426,34 @@ function formatCompetitionName(m) {
         <p class="error">{authError}</p>
       {/if}
     </div>
+  {:else if viewMode === 'menu'}
+    <!-- Menu principal admin -->
+    <div class="admin-menu-grid">
+      {#each adminMenuItems as item}
+        {#if item.href}
+          <a href={item.href} class="admin-menu-card">
+            <span class="menu-icon">{item.icon}</span>
+            <h2>{item.title}</h2>
+            <p>{item.description}</p>
+          </a>
+        {:else}
+          <button class="admin-menu-card" on:click={() => { item.action?.(); loadManches(); }}>
+            <span class="menu-icon gold">{item.icon}</span>
+            <h2>{item.title}</h2>
+            <p>{item.description}</p>
+          </button>
+        {/if}
+      {/each}
+    </div>
   {:else}
+    <!-- Vue Gestion des manches -->
     <div class="admin-card">
-      <h2>Liste des manches</h2>
+      <div class="list-header">
+        <h2>Liste des manches</h2>
+        {#if !isLoading && !loadError && manches.length > 0}
+          <span class="result-count">{filteredSortedManches.length} / {manches.length} manches</span>
+        {/if}
+      </div>
 
       {#if isLoading}
         <p>Chargement…</p>
@@ -492,22 +559,33 @@ function formatCompetitionName(m) {
                    </th>
           
                    <th>
-                     <input
+                     <select
                        class="filter-input"
-                       type="text"
-                       placeholder="Filtrer..."
                        bind:value={filters.tableName}
                        on:click|stopPropagation
-      />
+                     >
+                       <option value="">Toutes</option>
+                       <option value="A">A</option>
+                       <option value="B">B</option>
+                       <option value="C">C</option>
+                       <option value="D">D</option>
+                       <option value="E">E</option>
+                       <option value="F">F</option>
+                       <option value="G">G</option>
+                       <option value="H">H</option>
+                     </select>
                    </th>
                    <th>
-                     <input
+                     <select
                        class="filter-input"
-                       type="text"
-                       placeholder="Filtrer..."
                        bind:value={filters.mancheNumber}
                        on:click|stopPropagation
-      />
+                     >
+                       <option value="">Toutes</option>
+                       {#each availableMancheNumbers as num}
+                         <option value={String(num)}>{num}</option>
+                       {/each}
+                     </select>
                    </th>
                    <th>
                      <input
@@ -529,18 +607,16 @@ function formatCompetitionName(m) {
                    </th>
                    <th>
                      <input
-                       class="filter-input"
-                       type="text"
-                       placeholder="Filtrer..."
+                       class="filter-input filter-date"
+                       type="date"
                        bind:value={filters.startTime}
                        on:click|stopPropagation
       />
                    </th>
                    <th>
                      <input
-                       class="filter-input"
-                       type="text"
-                       placeholder="Filtrer..."
+                       class="filter-input filter-date"
+                       type="date"
                        bind:value={filters.endTime}
                        on:click|stopPropagation
       />
@@ -565,17 +641,16 @@ function formatCompetitionName(m) {
                <tbody>
     {#each filteredSortedManches as m}
       <tr class="clickable" on:click={() => gotoManche(m.tableConfigId)}>
-        <td>{m.tableConfigId}</td>
-        <td>{formatCompetitionType(m)}</td>
+        <td class="cell-id">{m.tableConfigId}</td>
+        <td><span class="badge badge-type type-{m.competitionType ?? 0}">{formatCompetitionType(m)}</span></td>
         <td>{m.competitionNumber ?? '-'}</td>
-   
-        <td>{m.tableName}</td>
+        <td class="cell-table">{m.tableName}</td>
         <td>{m.mancheNumber}</td>
-        <td>{m.playerCount}</td>
-        <td>{m.donnesCount}</td>
-        <td>{formatDate(m.startTime)}</td>
-        <td>{formatDate(m.endTime)}</td>
-        <td>{m.isCompleted ? 'Terminée' : 'En cours'}</td>
+        <td><span class="cell-players">👤 {m.playerCount}</span></td>
+        <td><span class="cell-donnes">{m.donnesCount}</span></td>
+        <td class="cell-date">{formatDate(m.startTime)}</td>
+        <td class="cell-date">{formatDate(m.endTime)}</td>
+        <td><span class="badge {m.isCompleted ? 'badge-success' : 'badge-warning'}">{m.isCompleted ? '✓ Terminée' : '⏳ En cours'}</span></td>
       </tr>
     {/each}
   </tbody>
@@ -619,6 +694,87 @@ function formatCompetitionName(m) {
   h1 {
   font-size: 1.8rem;
   margin-bottom: 1rem;
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  }
+
+  .back-link {
+  background: none;
+  border: none;
+  color: #22c55e;
+  font-size: 1.2rem;
+  font-weight: 600;
+  cursor: pointer;
+  padding: 0;
+  }
+
+  .back-link:hover {
+  text-decoration: underline;
+  }
+
+  /* Menu Grid */
+  .admin-menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 1.5rem;
+  margin-top: 1.5rem;
+  }
+
+  @media (max-width: 900px) {
+  .admin-menu-grid {
+    grid-template-columns: repeat(2, 1fr);
+  }
+  }
+
+  @media (max-width: 600px) {
+  .admin-menu-grid {
+    grid-template-columns: 1fr;
+  }
+  }
+
+  .admin-menu-card {
+  display: block;
+  background: linear-gradient(135deg, #052e16 0%, #020617 100%);
+  border: 1px solid rgba(34, 197, 94, 0.3);
+  border-radius: 16px;
+  padding: 1.5rem;
+  text-decoration: none;
+  color: #f9fafb;
+  cursor: pointer;
+  transition: all 0.2s ease;
+  text-align: left;
+  width: 100%;
+  box-sizing: border-box;
+  }
+
+  .admin-menu-card:hover {
+  transform: translateY(-4px);
+  border-color: rgba(34, 197, 94, 0.6);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.5);
+  }
+
+  .admin-menu-card .menu-icon {
+  font-size: 2.5rem;
+  display: block;
+  margin-bottom: 0.75rem;
+  }
+
+  .admin-menu-card .menu-icon.gold {
+  color: #d4a03a;
+  opacity: 0.85;
+  }
+
+  .admin-menu-card h2 {
+  margin: 0 0 0.5rem 0;
+  font-size: 1.25rem;
+  color: #22c55e;
+  }
+
+  .admin-menu-card p {
+  margin: 0;
+  font-size: 0.9rem;
+  color: #9ca3af;
   }
 
   .admin-card {
@@ -878,6 +1034,125 @@ function formatCompetitionName(m) {
   text-align: center;
   }
 
+  /* Header avec compteur */
+  .list-header {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    margin-bottom: 0.5rem;
+  }
 
+  .list-header h2 {
+    margin: 0;
+  }
+
+  .result-count {
+    background: rgba(34, 197, 94, 0.15);
+    color: #22c55e;
+    padding: 0.35rem 0.8rem;
+    border-radius: 999px;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+
+  /* Badges de statut */
+  .badge {
+    display: inline-block;
+    padding: 0.25rem 0.6rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    white-space: nowrap;
+  }
+
+  .badge-success {
+    background: rgba(34, 197, 94, 0.2);
+    color: #4ade80;
+    border: 1px solid rgba(34, 197, 94, 0.4);
+  }
+
+  .badge-warning {
+    background: rgba(251, 191, 36, 0.2);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.4);
+  }
+
+  /* Badges de type de compétition */
+  .badge-type {
+    font-size: 0.7rem;
+    padding: 0.2rem 0.5rem;
+    font-weight: 700;
+    letter-spacing: 0.03em;
+  }
+
+  .type-1 { /* Championnat */
+    background: rgba(168, 85, 247, 0.25);
+    color: #c084fc;
+    border: 1px solid rgba(168, 85, 247, 0.5);
+  }
+
+  .type-2 { /* Interclub */
+    background: rgba(59, 130, 246, 0.25);
+    color: #60a5fa;
+    border: 1px solid rgba(59, 130, 246, 0.5);
+  }
+
+  .type-3 { /* Manche libre */
+    background: rgba(107, 114, 128, 0.25);
+    color: #9ca3af;
+    border: 1px solid rgba(107, 114, 128, 0.5);
+  }
+
+  .type-4 { /* Concours */
+    background: rgba(251, 191, 36, 0.25);
+    color: #fbbf24;
+    border: 1px solid rgba(251, 191, 36, 0.5);
+  }
+
+  .type-0 { /* Non défini */
+    background: rgba(75, 85, 99, 0.25);
+    color: #6b7280;
+    border: 1px solid rgba(75, 85, 99, 0.5);
+  }
+
+  /* Cellules spéciales */
+  .cell-id {
+    font-weight: 600;
+    color: #9ca3af;
+  }
+
+  .cell-table {
+    font-weight: 600;
+    color: #22c55e;
+  }
+
+  .cell-players {
+    color: #60a5fa;
+  }
+
+  .cell-donnes {
+    background: rgba(34, 197, 94, 0.1);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-weight: 500;
+  }
+
+  .cell-date {
+    font-size: 0.8rem;
+    color: #9ca3af;
+  }
+
+  /* Animation sur les lignes */
+  .admin-table tbody tr {
+    transition: all 0.15s ease;
+  }
+
+  .clickable:hover td {
+    color: #ffffff;
+  }
+
+  .clickable:hover .cell-date {
+    color: #e5e7eb;
+  }
 
 </style>
