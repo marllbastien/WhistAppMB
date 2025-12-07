@@ -1,19 +1,67 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
 
+  const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
+
   let code = '';
   let error = '';
+  let isLoading = false;
 
-  const CORRECT_CODE = 'Cougnole'; // TODO: appel API pour le code du jour
+  // Mot de passe de secours (fallback) si l'API n'est pas joignable
+  const FALLBACK_PASSWORD = 'Armani';
 
-  function submit() {
-  if (code.trim() === CORRECT_CODE) {
-  error = '';
-  localStorage.setItem('authorized', 'true');
-  goto('/home');
-  } else {
-  error = 'Code incorrect. Veuillez réessayer.';
+  async function submit() {
+    if (!code.trim()) {
+      error = 'Veuillez entrer un code.';
+      return;
+    }
+
+    isLoading = true;
+    error = '';
+
+    try {
+      // Essayer de valider via l'API
+      const response = await fetch(`${API_BASE_URL}/api/auth/validate-user-password`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ password: code.trim() })
+      });
+
+      if (response.ok) {
+        const result = await response.json();
+        if (result.isValid) {
+          // Stocker l'autorisation avec timestamp pour expiration
+          localStorage.setItem('authorized', 'true');
+          localStorage.setItem('authorizedAt', Date.now().toString());
+          goto('/home');
+          return;
+        } else {
+          error = 'Code incorrect. Veuillez réessayer.';
+        }
+      } else {
+        // Erreur serveur, utiliser le fallback
+        console.warn('API erreur, utilisation du fallback');
+        validateWithFallback();
+      }
+    } catch (err) {
+      // API injoignable (mauvaise connexion), utiliser le fallback
+      console.warn('API injoignable, utilisation du fallback:', err);
+      validateWithFallback();
+    } finally {
+      isLoading = false;
+    }
   }
+
+  function validateWithFallback() {
+    if (code.trim() === FALLBACK_PASSWORD) {
+      error = '';
+      // Stocker l'autorisation avec timestamp pour expiration
+      localStorage.setItem('authorized', 'true');
+      localStorage.setItem('authorizedAt', Date.now().toString());
+      goto('/home');
+    } else {
+      error = 'Code incorrect. Veuillez réessayer.';
+    }
   }
 
   let showPassword = false;
@@ -455,8 +503,12 @@
      
     </div>
 
-    <button class="login-button" on:click={submit}>
-      Continuer
+    <button class="login-button" on:click={submit} disabled={isLoading}>
+      {#if isLoading}
+        Vérification...
+      {:else}
+        Continuer
+      {/if}
     </button>
 
     {#if error}
