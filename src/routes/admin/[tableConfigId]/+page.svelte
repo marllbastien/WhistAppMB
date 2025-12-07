@@ -267,9 +267,12 @@ async function exportFeuillePointsServerPdf() {
 
     // Récupérer le PDF en blob
     const blob = await res.blob();
+    
+    // Forcer le type MIME correct pour le PDF
+    const pdfBlob = new Blob([blob], { type: 'application/pdf' });
 
     // Télécharger le fichier
-    const url = window.URL.createObjectURL(blob);
+    const url = window.URL.createObjectURL(pdfBlob);
     const a = document.createElement('a');
     a.href = url;
     a.download = `Feuille_points_Table_${detail.tableName}_M${detail.mancheNumber}.pdf`;
