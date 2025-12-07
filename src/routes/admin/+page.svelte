@@ -4,16 +4,13 @@
   const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
 
-  // --- Sécurité "light" : petit PIN admin stocké en localStorage ---
-  const ADMIN_PIN = '060784'; // TU PEUX LE CHANGER ICI
+  // PIN admin (utilisé pour les appels API)
+  const ADMIN_PIN = '060784';
 
-  let isAdmin = false;
-  let pinInput = '';
-  let authError = '';
   const currentYear = new Date().getFullYear();
 
-  // Mode d'affichage : 'menu' ou 'manches'
-  let viewMode: 'menu' | 'manches' = 'menu';
+  // Mode d'affichage : 'menu', 'manches' ou 'password'
+  let viewMode: 'menu' | 'manches' | 'password' = 'menu';
 
   // Éléments du menu admin
   const adminMenuItems = [
@@ -37,8 +34,73 @@
       description: 'Consulter les feuilles de points archivées',
       icon: '📄',
       href: '/admin/archives'
+    },
+    {
+      id: 'password',
+      title: 'Mot de passe utilisateur',
+      description: 'Gérer le code d\'accès hebdomadaire',
+      icon: '🔐',
+      action: () => { viewMode = 'password'; loadCurrentPassword(); }
     }
   ];
+
+  // --- Gestion du mot de passe utilisateur ---
+  let currentUserPassword = '';
+  let newUserPassword = '';
+  let passwordLoading = false;
+  let passwordError = '';
+  let passwordSuccess = '';
+
+  async function loadCurrentPassword() {
+    passwordLoading = true;
+    passwordError = '';
+    passwordSuccess = '';
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/user-password`, {
+        headers: { 'X-Admin-Pin': ADMIN_PIN }
+      });
+      if (res.ok) {
+        const data = await res.json();
+        currentUserPassword = data.password || '';
+        newUserPassword = currentUserPassword;
+      } else {
+        passwordError = 'Erreur lors du chargement du mot de passe';
+      }
+    } catch (err) {
+      passwordError = 'Impossible de contacter le serveur';
+    } finally {
+      passwordLoading = false;
+    }
+  }
+
+  async function updateUserPassword() {
+    if (!newUserPassword.trim()) {
+      passwordError = 'Le mot de passe ne peut pas être vide';
+      return;
+    }
+    passwordLoading = true;
+    passwordError = '';
+    passwordSuccess = '';
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/auth/user-password`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ adminPin: ADMIN_PIN, newPassword: newUserPassword.trim() })
+      });
+      if (res.ok) {
+        currentUserPassword = newUserPassword.trim();
+        passwordSuccess = 'Mot de passe mis à jour avec succès !';
+      } else {
+        const errData = await res.json().catch(() => ({}));
+        passwordError = errData.error || 'Erreur lors de la mise à jour';
+      }
+    } catch (err) {
+      passwordError = 'Impossible de contacter le serveur';
+    } finally {
+      passwordLoading = false;
+    }
+  }
+
   interface AdminPlayerDto {
   playerId: number | null;
   alias: string;
@@ -278,23 +340,8 @@
 
 
   onMount(() => {
-    const flag = localStorage.getItem('whist_admin_ok');
-    if (flag === 'true') {
-      isAdmin = true;
-      // On ne charge plus les manches automatiquement, on reste sur le menu
-    }
+    // L'authentification admin est gérée par le layout parent
   });
-
-  async function validatePin() {
-    if (pinInput === ADMIN_PIN) {
-      isAdmin = true;
-      authError = '';
-      localStorage.setItem('whist_admin_ok', 'true');
-      // On reste sur le menu après validation
-    } else {
-      authError = 'Code incorrect';
-    }
-  }
 
   function goToMenu() {
     viewMode = 'menu';
@@ -401,32 +448,20 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
 <div class="admin-page">
   {#if viewMode === 'menu'}
     <h1>Administration</h1>
-  {:else}
+  {:else if viewMode === 'manches'}
     <h1>
       <button class="back-link" on:click={goToMenu}>← Administration</button>
       <span class="sep">⟶</span> Gestion des manches
     </h1>
+  {:else if viewMode === 'password'}
+    <h1>
+      <button class="back-link" on:click={goToMenu}>← Administration</button>
+      <span class="sep">⟶</span> Mot de passe utilisateur
+    </h1>
   {/if}
 
 
-  {#if !isAdmin}
-    <div class="admin-card">
-      <h2>Accès réservé</h2>
-      <p>Entrez votre code administrateur pour accéder à la gestion.</p>
-      <div class="pin-row">
-        <input
-          type="password"
-          bind:value={pinInput}
-          placeholder="Code admin"
-          on:keydown={(e) => e.key === 'Enter' && validatePin()}
-        />
-        <button on:click={validatePin}>Valider</button>
-      </div>
-      {#if authError}
-        <p class="error">{authError}</p>
-      {/if}
-    </div>
-  {:else if viewMode === 'menu'}
+  {#if viewMode === 'menu'}
     <!-- Menu principal admin -->
     <div class="admin-menu-grid">
       {#each adminMenuItems as item}
@@ -445,7 +480,57 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
         {/if}
       {/each}
     </div>
-  {:else}
+  {:else if viewMode === 'password'}
+    <!-- Vue Gestion du mot de passe utilisateur -->
+    <div class="admin-card password-card">
+      <h2>🔐 Mot de passe utilisateur</h2>
+      <p class="password-description">
+        Ce mot de passe est demandé aux utilisateurs pour accéder à l'application.
+        Changez-le régulièrement pour contrôler l'accès.
+      </p>
+
+      {#if passwordLoading}
+        <p class="loading">Chargement...</p>
+      {:else}
+        <div class="password-section">
+          <div class="password-current">
+            <span class="label-text">Mot de passe actuel :</span>
+            <span class="current-password">{currentUserPassword || '(non défini)'}</span>
+          </div>
+
+          <div class="password-form">
+            <label for="newPassword">Nouveau mot de passe :</label>
+            <input 
+              type="text" 
+              id="newPassword"
+              bind:value={newUserPassword} 
+              placeholder="Entrez le nouveau mot de passe"
+              class="password-input"
+            />
+            <button 
+              class="btn-save-password" 
+              on:click={updateUserPassword}
+              disabled={passwordLoading || !newUserPassword.trim() || newUserPassword.trim() === currentUserPassword}
+            >
+              💾 Enregistrer
+            </button>
+          </div>
+
+          {#if passwordError}
+            <p class="error">{passwordError}</p>
+          {/if}
+          {#if passwordSuccess}
+            <p class="success">{passwordSuccess}</p>
+          {/if}
+        </div>
+      {/if}
+
+      <div class="password-info">
+        <p><strong>💡 Astuce :</strong> Communiquez le nouveau mot de passe aux participants avant la prochaine session.</p>
+        <p><strong>🔄 Fallback :</strong> En cas de problème de connexion, le mot de passe de secours codé dans l'application est : <code>Armani</code></p>
+      </div>
+    </div>
+  {:else if viewMode === 'manches'}
     <!-- Vue Gestion des manches -->
     <div class="admin-card">
       <div class="list-header">
@@ -1153,6 +1238,129 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
 
   .clickable:hover .cell-date {
     color: #e5e7eb;
+  }
+
+  /* --- Styles pour la section Mot de passe --- */
+  .password-card {
+    max-width: 600px;
+  }
+
+  .password-description {
+    color: #9ca3af;
+    margin-bottom: 1.5rem;
+    font-size: 0.95rem;
+  }
+
+  .password-section {
+    display: flex;
+    flex-direction: column;
+    gap: 1.5rem;
+  }
+
+  .password-current {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    background: rgba(34, 197, 94, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(34, 197, 94, 0.3);
+  }
+
+  .password-current .label-text {
+    font-weight: 600;
+    color: #9ca3af;
+  }
+
+  .current-password {
+    font-size: 1.3rem;
+    font-weight: 700;
+    color: #22c55e;
+    font-family: monospace;
+  }
+
+  .password-form {
+    display: flex;
+    flex-direction: column;
+    gap: 0.75rem;
+  }
+
+  .password-form label {
+    font-weight: 600;
+    color: #e5e7eb;
+  }
+
+  .password-input {
+    padding: 0.75rem 1rem;
+    font-size: 1.1rem;
+    border-radius: 8px;
+    border: 1px solid #374151;
+    background: #1f2937;
+    color: #f9fafb;
+  }
+
+  .password-input:focus {
+    outline: none;
+    border-color: #22c55e;
+    box-shadow: 0 0 0 3px rgba(34, 197, 94, 0.2);
+  }
+
+  .btn-save-password {
+    align-self: flex-start;
+    padding: 0.75rem 1.5rem;
+    font-size: 1rem;
+    font-weight: 600;
+    background: linear-gradient(135deg, #22c55e, #16a34a);
+    color: #fff;
+    border: none;
+    border-radius: 8px;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn-save-password:hover:not(:disabled) {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(34, 197, 94, 0.4);
+  }
+
+  .btn-save-password:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .password-info {
+    margin-top: 2rem;
+    padding: 1rem;
+    background: rgba(59, 130, 246, 0.1);
+    border-radius: 8px;
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    font-size: 0.9rem;
+  }
+
+  .password-info p {
+    margin: 0.5rem 0;
+    color: #9ca3af;
+  }
+
+  .password-info code {
+    background: rgba(34, 197, 94, 0.2);
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    color: #22c55e;
+    font-weight: 600;
+  }
+
+  .success {
+    color: #22c55e;
+    font-weight: 600;
+    padding: 0.5rem;
+    background: rgba(34, 197, 94, 0.1);
+    border-radius: 6px;
+  }
+
+  .loading {
+    color: #9ca3af;
+    font-style: italic;
   }
 
 </style>

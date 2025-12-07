@@ -1,18 +1,80 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import { goto } from '$app/navigation';
+  import { page } from '$app/stores';
+  import { browser } from '$app/environment';
   import favicon from '$lib/assets/favicon.svg';
   import CookieBubble from '$lib/components/CookieBubble.svelte';
 
-
+  // Pages publiques (pas besoin d'être authentifié)
+  const PUBLIC_ROUTES = ['/', '/legal'];
+  
+  // Durée de validité de l'autorisation (12 heures en millisecondes)
+  const AUTH_EXPIRY_MS = 12 * 60 * 60 * 1000;
 
   let updateAvailable = false;
+  let isAuthorized = false;
+  let isChecking = true;
 
   function reloadApp() {
-  window.location.reload();
+    window.location.reload();
+  }
+
+  // Vérifie si l'autorisation est encore valide (non expirée)
+  function isAuthValid(): boolean {
+    const authorized = localStorage.getItem('authorized') === 'true';
+    if (!authorized) return false;
+    
+    const authorizedAt = localStorage.getItem('authorizedAt');
+    if (!authorizedAt) {
+      // Pas de timestamp = ancienne autorisation, on la considère expirée
+      clearAuth();
+      return false;
+    }
+    
+    const elapsed = Date.now() - parseInt(authorizedAt, 10);
+    if (elapsed > AUTH_EXPIRY_MS) {
+      // Autorisation expirée
+      clearAuth();
+      return false;
+    }
+    
+    return true;
+  }
+  
+  // Supprime l'autorisation du localStorage
+  function clearAuth() {
+    localStorage.removeItem('authorized');
+    localStorage.removeItem('authorizedAt');
+  }
+
+  // Vérification de l'autorisation
+  function checkAuth(pathname: string) {
+    if (!browser) return;
+    
+    const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+    const authorized = isAuthValid();
+    
+    if (!isPublicRoute && !authorized) {
+      // Redirection vers la page de login
+      goto('/');
+      return;
+    }
+    
+    isAuthorized = authorized || isPublicRoute;
+    isChecking = false;
+  }
+
+  // Réactif : vérifie à chaque changement de page
+  $: if (browser) {
+    checkAuth($page.url.pathname);
   }
 
   onMount(() => {
-  if ('serviceWorker' in navigator) {
+    // Vérification initiale
+    checkAuth($page.url.pathname);
+
+    if ('serviceWorker' in navigator) {
   // 🔔 messages du SW
   navigator.serviceWorker.addEventListener('message', (event) => {
   if (event.data?.type === 'NEW_VERSION') {
@@ -46,7 +108,12 @@
   <link rel="icon" href={favicon} />
 </svelte:head>
 
-<slot />
+{#if isChecking}
+  <!-- Affichage pendant la vérification d'auth -->
+  <div class="auth-checking"></div>
+{:else}
+  <slot />
+{/if}
 
 <CookieBubble />
 
@@ -91,5 +158,9 @@
   filter: brightness(1.05);
   }
 
+  .auth-checking {
+    min-height: 100vh;
+    background: #020506;
+  }
 
 </style>
