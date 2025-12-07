@@ -5,15 +5,37 @@
 	<meta name="viewport" content="width=device-width, initial-scale=1" />
 
 	<!-- Favicons -->
-	<link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" />
-	<link rel="icon" type="image/svg+xml" href="/favicon.svg" />
-	<link rel="shortcut icon" href="/favicon.ico" />
+	<link rel="icon" type="image/png" href="/favicon-96x96.png" sizes="96x96" id="favicon-96" />
+	<link rel="icon" type="image/svg+xml" href="/favicon.svg" id="favicon-svg" />
+	<link rel="shortcut icon" href="/favicon.ico" id="favicon-ico" />
 
 	<!-- Apple / iOS -->
-	<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" />
+	<link rel="apple-touch-icon" sizes="180x180" href="/apple-touch-icon.png" id="apple-touch" />
 
-	<!-- Manifest (PWA) -->
-	<link rel="manifest" href="/site.webmanifest" />
+	<!-- Manifest (PWA) - dynamique selon le sous-domaine -->
+	<link rel="manifest" id="pwa-manifest" href="/site.webmanifest" />
+	<script>
+		// Charger les assets admin sur admin.wb-scoring.com
+		(function() {
+			var isAdmin = window.location.hostname.startsWith('admin.');
+			if (isAdmin) {
+				// Manifest admin
+				document.getElementById('pwa-manifest').href = '/admin.webmanifest';
+				// Favicons admin
+				var fav96 = document.getElementById('favicon-96');
+				if (fav96) fav96.href = '/admin-favicon-96x96.png';
+				var favSvg = document.getElementById('favicon-svg');
+				if (favSvg) favSvg.href = '/admin-favicon.svg';
+				var favIco = document.getElementById('favicon-ico');
+				if (favIco) favIco.href = '/admin-favicon.ico';
+				var apple = document.getElementById('apple-touch');
+				if (apple) apple.href = '/admin-apple-touch-icon.png';
+				// Theme color admin (bleu foncé)
+				var themeColor = document.querySelector('meta[name="theme-color"]');
+				if (themeColor) themeColor.content = '#1e3a5f';
+			}
+		})();
+	</script>
 
 	<!-- ⭐ Important pour Android (barre de statut) -->
 	<meta name="theme-color" content="#04140a" />
