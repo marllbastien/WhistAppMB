@@ -36,10 +36,9 @@
   function scrollToEmballage(player: string) {
   if (!browser) return;
 
-  const el = document.getElementById(`emballage-${player}`) as HTMLSelectElement | null;
+  const el = document.getElementById(`emballage-${player}`) as HTMLElement | null;
   if (el) {
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  el.focus();
   }
   }
 
@@ -4259,21 +4258,19 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   getTemplateForAnnonce(annonceByPlayer[p]) === 2
   || annonceByPlayer[p] === 'TR'
 )}
-  <div class="emballage">
-    <label>
-      <span class="emballage-label-text">Avec qui ?</span>
-      <select
-        id={"emballage-" + p}
-        bind:value={emballes[p]}
-        on:change={() => handleEmballageChange(p)}
-      >
-        <option value="">-- Choisir joueur --</option>
-        {#each players
-          .filter(x => x !== p && !inactivePlayersCurrentDonne.includes(x)) as other}
-          <option value={other}>{other}</option>
-        {/each}
-      </select>
-    </label>
+  <div class="emballage" id={"emballage-" + p} class:attention-pulse={!emballes[p]}>
+    <span class="emballage-label-text">Avec qui ?</span>
+    <div class="partner-buttons">
+      {#each players.filter(x => x !== p && !inactivePlayersCurrentDonne.includes(x)) as other}
+        <button
+          type="button"
+          class:selected={emballes[p] === other}
+          on:click={() => { emballes[p] = other; handleEmballageChange(p); }}
+        >
+          {other}
+        </button>
+      {/each}
+    </div>
   </div>
 {/if}
 
@@ -4715,6 +4712,13 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   .emballage {
   width: 100%;
   margin-top: 0.3rem;
+  padding-bottom: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(20, 35, 28, 0.6);
+  border-radius: 12px;
+  padding: 0.4rem 0.6rem 0.6rem;
   }
 
   .emballage label {
@@ -4725,6 +4729,50 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   .emballage select {
   width: 100%;
   margin-top: 0.2rem;
+  }
+
+  .partner-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+  }
+
+  .partner-buttons button {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.95rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: #07170e;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.05s ease, border-color 0.12s ease;
+  }
+
+  .partner-buttons button:hover {
+  background: #0b2414;
+  }
+
+  .partner-buttons button.selected {
+  background: #d8a25a;
+  border-color: #e8b86a;
+  color: #1c1917;
+  font-weight: 600;
+  }
+
+  /* Effet d'attention pour attirer l'œil sur "Avec qui ?" */
+  .emballage.attention-pulse {
+  animation: attention-glow 1.5s ease-in-out infinite;
+  }
+
+  @keyframes attention-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(216, 162, 90, 0);
+  }
+  50% {
+    box-shadow: 0 0 15px 5px rgba(216, 162, 90, 0.6);
+  }
   }
 
   /* --- ENCODAGE (gros bloc central) --- */
@@ -5902,6 +5950,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  width: 100%;
 
   margin: 0.35rem 0 0.2rem;
 
