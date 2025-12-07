@@ -14,6 +14,7 @@
     email: string | null;
     phone?: string | null;
     isWhisteux?: boolean;
+    noAffilie?: string | null;
     type: 'interne' | 'externe';
   }
 
@@ -26,6 +27,33 @@
   // Filtres
   let searchQuery = '';
   let filterWhisteux: 'all' | 'yes' | 'no' = 'all';
+  let filterNoAffilie = '';
+
+  // Tri
+  type SortColumn = 'id' | 'alias' | 'nom' | 'prenom' | 'email' | 'noAffilie' | 'isWhisteux' | 'phone';
+  let sortColumn: SortColumn = 'alias';
+  let sortDirection: 'asc' | 'desc' = 'asc';
+
+  function toggleSort(column: SortColumn) {
+    if (sortColumn === column) {
+      sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortColumn = column;
+      sortDirection = 'asc';
+    }
+  }
+
+  // Réactif: recalculé à chaque changement de sortColumn ou sortDirection
+  $: sortIcons = {
+    id: sortColumn === 'id' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    alias: sortColumn === 'alias' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    nom: sortColumn === 'nom' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    prenom: sortColumn === 'prenom' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    email: sortColumn === 'email' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    noAffilie: sortColumn === 'noAffilie' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    isWhisteux: sortColumn === 'isWhisteux' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    phone: sortColumn === 'phone' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+  };
 
   // Édition
   let editingJoueur: Joueur | null = null;
@@ -69,7 +97,56 @@
         if (filterWhisteux === 'no' && j.isWhisteux) return false;
       }
 
+      // Filtre N° Affilié (uniquement pour les internes)
+      if (activeTab === 'internes' && filterNoAffilie) {
+        const noAff = j.noAffilie?.toLowerCase() ?? '';
+        if (!noAff.includes(filterNoAffilie.toLowerCase())) return false;
+      }
+
       return true;
+    })
+    .sort((a, b) => {
+      let aVal: string | number | boolean = '';
+      let bVal: string | number | boolean = '';
+
+      switch (sortColumn) {
+        case 'id':
+          aVal = a.id;
+          bVal = b.id;
+          break;
+        case 'alias':
+          aVal = a.alias.toLowerCase();
+          bVal = b.alias.toLowerCase();
+          break;
+        case 'nom':
+          aVal = a.nom.toLowerCase();
+          bVal = b.nom.toLowerCase();
+          break;
+        case 'prenom':
+          aVal = a.prenom.toLowerCase();
+          bVal = b.prenom.toLowerCase();
+          break;
+        case 'email':
+          aVal = (a.email ?? '').toLowerCase();
+          bVal = (b.email ?? '').toLowerCase();
+          break;
+        case 'noAffilie':
+          aVal = (a.noAffilie ?? '').toLowerCase();
+          bVal = (b.noAffilie ?? '').toLowerCase();
+          break;
+        case 'isWhisteux':
+          aVal = a.isWhisteux ? 1 : 0;
+          bVal = b.isWhisteux ? 1 : 0;
+          break;
+        case 'phone':
+          aVal = (a.phone ?? '').toLowerCase();
+          bVal = (b.phone ?? '').toLowerCase();
+          break;
+      }
+
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
     });
 
   onMount(() => {
@@ -279,6 +356,12 @@
       />
 
       {#if activeTab === 'internes'}
+        <input
+          type="text"
+          class="filter-input"
+          placeholder="N° Affilié..."
+          bind:value={filterNoAffilie}
+        />
         <select class="filter-select" bind:value={filterWhisteux}>
           <option value="all">Tous</option>
           <option value="yes">Whisteux uniquement</option>
@@ -301,57 +384,112 @@
     {:else if filteredJoueurs.length === 0}
       <p>Aucun joueur trouvé.</p>
     {:else}
-      <table class="joueurs-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Alias</th>
-            <th>Nom</th>
-            <th>Prénom</th>
-            <th>Email</th>
-            {#if activeTab === 'internes'}
-              <th>Whisteux</th>
-            {:else}
-              <th>Téléphone</th>
-            {/if}
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each filteredJoueurs as joueur}
+      <!-- Vue desktop: tableau -->
+      <div class="desktop-view">
+        <table class="joueurs-table">
+          <thead>
             <tr>
-              <td>{joueur.id}</td>
-              <td class="alias-cell">{joueur.alias}</td>
-              <td>{joueur.nom}</td>
-              <td>{joueur.prenom}</td>
-              <td>{joueur.email ?? '-'}</td>
+              <th class="sortable" on:click={() => toggleSort('id')}>ID <span class="sort-icon">{sortIcons.id}</span></th>
+              <th class="sortable" on:click={() => toggleSort('alias')}>Alias <span class="sort-icon">{sortIcons.alias}</span></th>
+              <th class="sortable" on:click={() => toggleSort('nom')}>Nom <span class="sort-icon">{sortIcons.nom}</span></th>
+              <th class="sortable" on:click={() => toggleSort('prenom')}>Prénom <span class="sort-icon">{sortIcons.prenom}</span></th>
+              <th class="sortable" on:click={() => toggleSort('email')}>Email <span class="sort-icon">{sortIcons.email}</span></th>
               {#if activeTab === 'internes'}
-                <td class="center">
-                  {#if joueur.isWhisteux}
-                    <span class="badge-yes">✓</span>
-                  {:else}
-                    <span class="badge-no">✗</span>
-                  {/if}
-                </td>
+                <th class="sortable" on:click={() => toggleSort('noAffilie')}>N° Affilié <span class="sort-icon">{sortIcons.noAffilie}</span></th>
+                <th class="sortable" on:click={() => toggleSort('isWhisteux')}>Whisteux <span class="sort-icon">{sortIcons.isWhisteux}</span></th>
               {:else}
-                <td>{joueur.phone ?? '-'}</td>
+                <th class="sortable" on:click={() => toggleSort('phone')}>Téléphone <span class="sort-icon">{sortIcons.phone}</span></th>
               {/if}
-              <td>
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each filteredJoueurs as joueur}
+              <tr>
+                <td>{joueur.id}</td>
+                <td class="alias-cell">{joueur.alias}</td>
+                <td>{joueur.nom}</td>
+                <td>{joueur.prenom}</td>
+                <td>{joueur.email ?? '-'}</td>
+                {#if activeTab === 'internes'}
+                  <td>{joueur.noAffilie ?? '-'}</td>
+                  <td class="center">
+                    {#if joueur.isWhisteux}
+                      <span class="badge-yes">✓</span>
+                    {:else}
+                      <span class="badge-no">✗</span>
+                    {/if}
+                  </td>
+                {:else}
+                  <td>{joueur.phone ?? '-'}</td>
+                {/if}
+                <td>
+                  <button class="btn-edit" on:click={() => openEdit(joueur)}>
+                    Modifier
+                  </button>
+                </td>
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Vue mobile: cartes -->
+      <div class="mobile-view">
+        <div class="mobile-cards">
+          {#each filteredJoueurs as joueur}
+            <div class="joueur-card">
+              <div class="card-header">
+                <span class="card-alias">{joueur.alias}</span>
+                <span class="card-id">#{joueur.id}</span>
+              </div>
+              <div class="card-body">
+                <div class="card-name">{joueur.prenom} {joueur.nom}</div>
+                {#if joueur.email}
+                  <div class="card-info">
+                    <span class="card-label">📧</span>
+                    <span class="card-value">{joueur.email}</span>
+                  </div>
+                {/if}
+                {#if activeTab === 'internes'}
+                  {#if joueur.noAffilie}
+                    <div class="card-info">
+                      <span class="card-label">N° Affilié:</span>
+                      <span class="card-value">{joueur.noAffilie}</span>
+                    </div>
+                  {/if}
+                  <div class="card-info">
+                    <span class="card-label">Whisteux:</span>
+                    {#if joueur.isWhisteux}
+                      <span class="badge-yes">✓ Oui</span>
+                    {:else}
+                      <span class="badge-no">✗ Non</span>
+                    {/if}
+                  </div>
+                {:else if joueur.phone}
+                  <div class="card-info">
+                    <span class="card-label">📱</span>
+                    <span class="card-value">{joueur.phone}</span>
+                  </div>
+                {/if}
+              </div>
+              <div class="card-actions">
                 <button class="btn-edit" on:click={() => openEdit(joueur)}>
                   Modifier
                 </button>
-              </td>
-            </tr>
+              </div>
+            </div>
           {/each}
-        </tbody>
-      </table>
+        </div>
+      </div>
     {/if}
   </div>
 
   <!-- Modal édition -->
   {#if editingJoueur}
     <div class="modal-backdrop" on:click={closeEdit} role="presentation">
-      <div class="modal" on:click|stopPropagation role="dialog">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
+      <div class="modal" on:click|stopPropagation role="dialog" tabindex="-1">
         <h2>Modifier le joueur</h2>
         <p class="modal-subtitle">{editingJoueur.alias}</p>
 
@@ -421,7 +559,8 @@
   <!-- Modal nouveau joueur -->
   {#if showNewForm}
     <div class="modal-backdrop" on:click={closeNewForm} role="presentation">
-      <div class="modal" on:click|stopPropagation role="dialog">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
+      <div class="modal" on:click|stopPropagation role="dialog" tabindex="-1">
         <h2>Nouveau joueur externe</h2>
 
         <div class="form-row">
@@ -486,6 +625,8 @@
     margin: 2rem auto;
     padding: 1rem;
     color: #f9fafb;
+    box-sizing: border-box;
+    overflow-x: hidden;
   }
 
   h1 {
@@ -565,6 +706,15 @@
     color: #f9fafb;
   }
 
+  .filter-input {
+    width: 120px;
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.6);
+    background: #020617;
+    color: #f9fafb;
+  }
+
   .filter-select {
     padding: 0.5rem 1rem;
     border-radius: 999px;
@@ -606,6 +756,22 @@
     text-transform: uppercase;
     letter-spacing: 0.06em;
     font-size: 0.78rem;
+  }
+
+  .joueurs-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+  }
+
+  .joueurs-table th.sortable:hover {
+    background: linear-gradient(to bottom, #166534, #14532d);
+  }
+
+  .sort-icon {
+    font-size: 0.7rem;
+    opacity: 0.7;
+    margin-left: 0.3rem;
   }
 
   .joueurs-table tbody tr:nth-child(even) {
@@ -711,12 +877,6 @@
     margin-right: 0.5rem;
   }
 
-  .info {
-    font-size: 0.85rem;
-    color: #6b7280;
-    margin: 0.5rem 0;
-  }
-
   .modal-actions {
     display: flex;
     justify-content: flex-end;
@@ -778,5 +938,188 @@
     border-radius: 10px;
     backdrop-filter: blur(4px);
     z-index: 9999;
+  }
+
+  /* Responsive: desktop vs mobile */
+  .desktop-view {
+    display: block;
+  }
+
+  .mobile-view {
+    display: none;
+  }
+
+  @media (max-width: 700px) {
+    .desktop-view {
+      display: none;
+    }
+
+    .mobile-view {
+      display: block;
+    }
+
+    h1 {
+      font-size: 1.2rem;
+      flex-wrap: wrap;
+    }
+
+    .tabs-row {
+      flex-direction: column;
+    }
+
+    .tab-btn {
+      width: 100%;
+      text-align: center;
+    }
+
+    .filters-row {
+      flex-direction: column;
+    }
+
+    .search-input {
+      width: 100%;
+      min-width: unset;
+      box-sizing: border-box;
+    }
+
+    .filter-input {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .filter-select {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .btn-add {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .admin-card {
+      padding: 1rem;
+      overflow-x: hidden;
+    }
+
+    /* Cartes joueurs - version compacte */
+    .mobile-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .joueur-card {
+      background: linear-gradient(135deg, #0f172a 0%, #020617 100%);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      border-radius: 10px;
+      padding: 0.5rem 0.65rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.25rem;
+      padding-bottom: 0.25rem;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+    }
+
+    .card-alias {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #22c55e;
+    }
+
+    .card-id {
+      font-size: 0.7rem;
+      color: #6b7280;
+      background: rgba(75, 85, 99, 0.3);
+      padding: 0.15rem 0.4rem;
+      border-radius: 5px;
+    }
+
+    .card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .card-name {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #e5e7eb;
+    }
+
+    .card-info {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+
+    .card-label {
+      font-size: 0.75rem;
+    }
+
+    .card-value {
+      color: #d1d5db;
+      word-break: break-all;
+      font-size: 0.8rem;
+    }
+
+    .card-actions {
+      margin-top: 0.4rem;
+      display: flex;
+      justify-content: flex-end;
+    }
+
+    .card-actions .btn-edit {
+      padding: 0.3rem 0.8rem;
+      font-size: 0.75rem;
+    }
+
+    /* Modal responsive */
+    .modal {
+      max-width: 95%;
+      padding: 1rem;
+    }
+
+    .form-row {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .modal-actions {
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .modal-actions button {
+      flex: 1;
+      min-width: 80px;
+    }
+  }
+
+  @media (max-width: 400px) {
+    .admin-page {
+      margin: 1rem auto;
+      padding: 0.5rem;
+    }
+
+    .admin-card {
+      padding: 0.75rem;
+      border-radius: 12px;
+    }
+
+    .joueur-card {
+      padding: 0.6rem;
+    }
+
+    .card-alias {
+      font-size: 1rem;
+    }
   }
 </style>
