@@ -47,6 +47,9 @@
   tableName: string;
   mancheNumber: number;
   playerCount: number;
+  competitionType: number | null;
+  competitionNumber: number | null;
+  competitionName: string | null;
   startTime: string | null;
   endTime: string | null;
   players: AdminPlayerDto[];
@@ -96,6 +99,13 @@
   let exportingPdf = false;
   let exportPdfError = '';
 
+  // Variables pour l'envoi par email
+  let showEmailModal = false;
+  let emailRecipient = '';
+  let sendingEmail = false;
+  let emailSuccess = '';
+  let emailError = '';
+
   const currentYear = new Date().getFullYear();
 
   let finalScoresByAlias: Record<string, number> = {};
@@ -111,6 +121,25 @@ $: if (detail?.finalScores) {
     if (score > finalLeaderScore) finalLeaderScore = score;
   }
 }
+
+  // Fonction pour obtenir le label de compétition
+  function getCompetitionLabel(competitionType: number | null): string {
+    switch (competitionType) {
+      case 1: return 'Championnat';
+      case 2: return 'Interclubs';
+      case 3: return 'Manche libre';
+      case 4: return 'Concours';
+      default: return 'Manche';
+    }
+  }
+
+  // Fonction pour générer le nom du fichier PDF
+  function getPdfFilename(): string {
+    if (!detail) return 'Feuille_points.pdf';
+    const competitionLabel = getCompetitionLabel(detail.competitionType);
+    const safeTableName = detail.tableName.replace(/[^a-zA-Z0-9À-ÿ\s-]/g, '').replace(/\s+/g, '_');
+    return `${competitionLabel}_Manche_${detail.mancheNumber}_Table_${safeTableName}.pdf`;
+  }
 
   
   let feuillePlayers: string[] = [];
@@ -244,7 +273,7 @@ function exportFeuillePointsPdf() {
     styles: { fontSize: 8 }
   });
 
-  doc.save(`Feuille_points_Table_${detail.tableName}_M${detail.mancheNumber}.pdf`);
+  doc.save(getPdfFilename());
 }
 
 async function exportFeuillePointsServerPdf() {
@@ -275,7 +304,7 @@ async function exportFeuillePointsServerPdf() {
     const url = window.URL.createObjectURL(pdfBlob);
     const a = document.createElement('a');
     a.href = url;
-    a.download = `Feuille_points_Table_${detail.tableName}_M${detail.mancheNumber}.pdf`;
+    a.download = getPdfFilename();
     document.body.appendChild(a);
     a.click();
     document.body.removeChild(a);
@@ -285,6 +314,83 @@ async function exportFeuillePointsServerPdf() {
     exportPdfError = err.message || "Erreur lors de l'export PDF";
   } finally {
     exportingPdf = false;
+  }
+}
+
+function openEmailModal() {
+  emailRecipient = '';
+  emailSuccess = '';
+  emailError = '';
+  showEmailModal = true;
+}
+
+function closeEmailModal() {
+  showEmailModal = false;
+  emailRecipient = '';
+  emailSuccess = '';
+  emailError = '';
+}
+
+async function sendFeuillePointsByEmail() {
+  if (!detail || !emailRecipient.trim()) return;
+
+  sendingEmail = true;
+  emailSuccess = '';
+  emailError = '';
+
+  try {
+    // D'abord générer le PDF
+    const pdfRes = await fetch(
+      `${API_BASE_URL}/api/reports/feuille-points-generate?tableConfigId=${tableConfigId}`,
+      { method: 'POST' }
+    );
+
+    if (!pdfRes.ok) {
+      const errorText = await pdfRes.text();
+      throw new Error(`Erreur génération PDF: ${errorText}`);
+    }
+
+    // Convertir le PDF en base64
+    const blob = await pdfRes.blob();
+    const base64 = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onloadend = () => {
+        const result = reader.result as string;
+        // Enlever le préfixe "data:application/pdf;base64,"
+        const base64Data = result.split(',')[1];
+        resolve(base64Data);
+      };
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+
+    // Envoyer par email
+    const competitionLabel = getCompetitionLabel(detail.competitionType);
+    const emailRes = await fetch(`${API_BASE_URL}/api/reports/feuille-points-email`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        pdfBase64: base64,
+        tableName: detail.tableName,
+        mancheNumber: detail.mancheNumber,
+        competitionTypeLabel: competitionLabel,
+        competitionSubtypeLabel: detail.competitionName || '',
+        recipientEmail: emailRecipient.trim()
+      })
+    });
+
+    if (!emailRes.ok) {
+      const errorText = await emailRes.text();
+      throw new Error(`Erreur envoi email: ${errorText}`);
+    }
+
+    emailSuccess = `Email envoyé avec succès à ${emailRecipient}`;
+    setTimeout(() => closeEmailModal(), 2000);
+  } catch (err: any) {
+    console.error('Erreur envoi email:', err);
+    emailError = err.message || "Erreur lors de l'envoi de l'email";
+  } finally {
+    sendingEmail = false;
   }
 }
 
@@ -1340,6 +1446,9 @@ function getChangeClass(after: number, before: number) {
         <button on:click={exportFeuillePointsServerPdf} disabled={exportingPdf}>
           {exportingPdf ? 'Export en cours…' : 'Exporter en PDF'}
         </button>
+        <button on:click={openEmailModal} class="btn-email">
+          @ Envoyer par email
+        </button>
         <button on:click={closeFeuillePoints}>
           Fermer
         </button>
@@ -1351,6 +1460,47 @@ function getChangeClass(after: number, before: number) {
   </div>
 {/if}
 {/if}   <!-- fin du bloc {#if isLoading / {:else if ...} / {:else} -->
+
+<!-- Modal d'envoi par email -->
+{#if showEmailModal}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="modal-backdrop" on:click|self={closeEmailModal}>
+    <div class="modal email-modal" on:click|stopPropagation>
+      <h3>📧 Envoyer la feuille de points par email</h3>
+      
+      <div class="email-form">
+        <label for="email-recipient">Adresse email du destinataire :</label>
+        <input 
+          type="email" 
+          id="email-recipient"
+          bind:value={emailRecipient}
+          placeholder="exemple@email.com"
+          disabled={sendingEmail}
+        />
+      </div>
+
+      {#if emailSuccess}
+        <p class="success">{emailSuccess}</p>
+      {/if}
+      {#if emailError}
+        <p class="error">{emailError}</p>
+      {/if}
+
+      <div class="modal-actions">
+        <button 
+          on:click={sendFeuillePointsByEmail} 
+          disabled={sendingEmail || !emailRecipient.trim()}
+          class="btn-primary"
+        >
+          {sendingEmail ? 'Envoi en cours…' : 'Envoyer'}
+        </button>
+        <button on:click={closeEmailModal} disabled={sendingEmail}>
+          Annuler
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
 </div>  <!-- fin .admin-page -->
 
 <footer class="copyright">
@@ -2027,6 +2177,66 @@ function getChangeClass(after: number, before: number) {
   opacity: 0.7;
   }
 
+  /* Bouton email */
+  .btn-email {
+    background: #16a34a;
+    color: white;
+    border: none;
+  }
+  .btn-email:hover {
+    background: #22c55e;
+  }
+
+  /* Modal email */
+  .email-modal {
+    max-width: 400px;
+  }
+  .email-modal h3 {
+    margin-bottom: 1rem;
+  }
+  .email-form {
+    margin-bottom: 1rem;
+  }
+  .email-form label {
+    display: block;
+    margin-bottom: 0.5rem;
+    font-weight: 500;
+  }
+  .email-form input[type="email"] {
+    width: 100%;
+    padding: 0.6rem;
+    border: 1px solid #334155;
+    border-radius: 4px;
+    background: #1e293b;
+    color: white;
+    font-size: 1rem;
+  }
+  .email-form input[type="email"]:focus {
+    outline: none;
+    border-color: #0ea5e9;
+  }
+  .modal-actions {
+    display: flex;
+    justify-content: flex-end;
+    gap: 0.5rem;
+    margin-top: 1rem;
+  }
+  .btn-primary {
+    background: #16a34a;
+    color: white;
+    border: none;
+  }
+  .btn-primary:hover:not(:disabled) {
+    background: #22c55e;
+  }
+  .btn-primary:disabled {
+    background: #475569;
+    cursor: not-allowed;
+  }
+  .success {
+    color: #22c55e;
+    margin: 0.5rem 0;
+  }
 
 
 </style>
