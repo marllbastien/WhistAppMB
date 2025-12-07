@@ -1,5 +1,5 @@
 <script lang="ts">
-  import { onMount, onDestroy } from 'svelte';
+  import { onMount, onDestroy, tick } from 'svelte';
   import jsPDF from 'jspdf';
   import autoTable from 'jspdf-autotable';
 
@@ -175,6 +175,182 @@ async function flushPendingDonnes() {
 }
 
 
+// ─────────────────────────────────────────────────────────────────────────────
+// Synchronisation avec le serveur (détection des corrections admin)
+// ─────────────────────────────────────────────────────────────────────────────
+
+type SyncJoueurServer = {
+  nom: string;
+  joueurPk: number | null;
+  annonce: string | null;
+  emballageAvec: string | null;
+  partenairePk: number | null;
+  plis: number | null;
+  resultat: string | null;
+  dames: number | null;
+  arbitre: boolean | null;
+  score: number;
+  cumul: number;
+};
+
+type SyncDonneServer = {
+  donneNumber: number;
+  joueurs: SyncJoueurServer[];
+};
+
+type SyncCheckResponse = {
+  isSynced: boolean;
+  serverDonneCount: number;
+  correctedHistory: SyncDonneServer[] | null;
+  message: string | null;
+};
+
+let lastSyncCheck: number = 0;
+const SYNC_CHECK_COOLDOWN_MS = 5000; // Ne pas vérifier plus d'une fois toutes les 5 secondes
+
+/**
+ * Vérifie si l'historique local est synchronisé avec la DB.
+ * Si une correction admin a été faite, resynchronise l'historique local.
+ * @returns true si tout est OK (ou pas de connexion), false si une resync a eu lieu
+ */
+async function checkAndSyncWithServer(): Promise<{ synced: boolean; resynced: boolean }> {
+  // Pas de vérification si pas de tableConfigId ou pas de manche
+  if (!tableConfigId || !mancheNumber) {
+    return { synced: true, resynced: false };
+  }
+
+  // Cooldown pour éviter de spammer le serveur
+  const now = Date.now();
+  if (now - lastSyncCheck < SYNC_CHECK_COOLDOWN_MS) {
+    return { synced: true, resynced: false };
+  }
+  lastSyncCheck = now;
+
+  try {
+    // Préparer l'historique local au format attendu par le serveur
+    const localHistory = history.map(d => ({
+      donneNumber: d.donneNumber,
+      joueurs: d.joueurs.map((j, idx) => ({
+        nom: j.nom,
+        joueurPk: playerIds[players.indexOf(j.nom)] ?? null,
+        annonce: j.annonce,
+        emballageAvec: j.emballageAvec,
+        partenairePk: j.emballageAvec ? (playerIds[players.indexOf(j.emballageAvec)] ?? null) : null,
+        plis: j.plis,
+        resultat: j.resultat,
+        dames: j.dames,
+        arbitre: j.arbitre
+      }))
+    }));
+
+    // Numéros de donnes actuellement en file d'attente (non encore envoyées)
+    const pendingDonneNumbers = pendingDonnes.map(p => p.donneNumber);
+
+    const res = await fetch(`${API_BASE_URL}/api/sync/check`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        tableConfigId,
+        mancheNumber: Number(mancheNumber),
+        sessionId: SessionId,
+        localHistory,
+        pendingDonneNumbers
+      })
+    });
+
+    if (!res.ok) {
+      // Erreur réseau ou serveur → on continue sans bloquer
+      console.warn('[SYNC] Erreur lors du check de synchronisation:', res.status);
+      return { synced: true, resynced: false };
+    }
+
+    const data: SyncCheckResponse = await res.json();
+
+    console.log('[SYNC] Résultat du check:', data);
+
+    if (data.isSynced) {
+      // Tout est synchronisé 👍
+      return { synced: true, resynced: false };
+    }
+
+    // ⚠️ Désynchronisation détectée !
+    console.warn('[SYNC] Désynchronisation détectée:', data.message);
+
+    if (data.correctedHistory && data.correctedHistory.length > 0) {
+      // Appliquer l'historique corrigé du serveur
+      applyCorrectedHistory(data.correctedHistory);
+      
+      // Sauvegarder le draft mis à jour
+      saveDraftLocallyAndRemotely();
+
+      console.log('[SYNC] Historique resynchronisé avec le serveur');
+      return { synced: false, resynced: true };
+    }
+
+    return { synced: false, resynced: false };
+
+  } catch (e) {
+    // Erreur réseau → on continue sans bloquer (mode hors ligne)
+    console.warn('[SYNC] Impossible de vérifier la synchronisation (mode hors ligne?):', e);
+    return { synced: true, resynced: false };
+  }
+}
+
+/**
+ * Applique l'historique corrigé reçu du serveur.
+ * IMPORTANT: On conserve les donnes qui sont dans pendingDonnes car elles ne sont
+ * pas encore sur le serveur et ne sont donc pas incluses dans correctedHistory.
+ */
+function applyCorrectedHistory(corrected: SyncDonneServer[]) {
+  // Reconstruire l'historique à partir des données du serveur
+  const serverHistory: DonneHistorique[] = corrected.map(d => ({
+    donneNumber: d.donneNumber,
+    joueurs: d.joueurs.map(j => ({
+      nom: j.nom,
+      annonce: j.annonce,
+      emballageAvec: j.emballageAvec,
+      plis: j.plis,
+      resultat: j.resultat,
+      dames: j.dames,
+      arbitre: j.arbitre ?? false
+    }))
+  }));
+
+  // 🔥 IMPORTANT: Récupérer les donnes qui sont encore en pending
+  // Ces donnes ne sont pas sur le serveur donc pas dans correctedHistory
+  // On doit les conserver dans l'historique local
+  const pendingDonneNumbers = new Set(pendingDonnes.map(p => p.donneNumber));
+  const pendingHistoryFromLocal = history.filter(d => pendingDonneNumbers.has(d.donneNumber));
+
+  // Fusionner: historique serveur + donnes pending locales
+  const mergedHistory = [...serverHistory, ...pendingHistoryFromLocal]
+    .sort((a, b) => a.donneNumber - b.donneNumber);
+
+  // Mettre à jour l'historique
+  history = mergedHistory;
+
+  // 🔥 Forcer le recalcul immédiat de feuillePoints (la réactivité Svelte ne s'exécute pas immédiatement)
+  recomputeFeuillePoints();
+
+  // Mettre à jour le numéro de donne actuel
+  // = nombre de donnes dans l'historique fusionné + 1
+  const totalDonnes = mergedHistory.length;
+  const newDonneNumber = totalDonnes + 1;
+
+  // Ne pas régresser le numéro de donne si on est déjà plus loin
+  if (newDonneNumber <= donneNumber) {
+    // On est cohérent, pas besoin de changer
+  } else {
+    donneNumber = newDonneNumber;
+  }
+
+  console.log('[SYNC] Historique appliqué:', { 
+    serverDonnes: serverHistory.length,
+    pendingDonnes: pendingHistoryFromLocal.length,
+    totalAfterMerge: mergedHistory.length,
+    newDonneNumber: donneNumber 
+  });
+}
 
 
   let soloPlayer: string | null = null;
@@ -959,9 +1135,20 @@ function getDisplayName(p: string): string {
     loadPendingFromLocalStorage();
 
     // --- tenter un flush au démarrage (si la connexion est OK) ---
-    flushPendingDonnes().catch((e) =>
-    console.error('Erreur lors du flush des donnes pendantes au démarrage', e)
-    );
+    flushPendingDonnes()
+      .then(() => {
+        // 🔄 Après le flush, vérifier la synchronisation avec le serveur
+        // (permet de détecter les corrections admin faites pendant que l'utilisateur était hors ligne)
+        return checkAndSyncWithServer();
+      })
+      .then((syncResult) => {
+        if (syncResult.resynced) {
+          console.log('[STARTUP] Historique resynchronisé avec le serveur après flush');
+        }
+      })
+      .catch((e) => {
+        console.error('Erreur lors du flush/sync au démarrage', e);
+      });
 
     });
 
@@ -2671,6 +2858,18 @@ async function validate() {
   isSubmittingDonne = true;
 
   try {
+    // 🔄 Vérifier la synchronisation avec le serveur AVANT de valider
+    // (détecte si l'admin a fait une correction)
+    const syncResult = await checkAndSyncWithServer();
+    
+    if (syncResult.resynced) {
+      // L'historique a été resynchronisé avec le serveur
+      // On informe l'utilisateur et on le laisse continuer
+      console.log('[VALIDATE] Historique resynchronisé suite à une correction admin');
+      // 🔥 Attendre que Svelte ait traité les mises à jour réactives
+      await tick();
+    }
+
     // 1. Construire les infos par joueur
     const joueursPayload = players
       .map((p, index) => {
@@ -3307,24 +3506,25 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
                     </thead>
                    <tbody>
     {#each history as donne}
-        {#each donne.joueurs as j, idx}
+        {@const joueursAvecAnnonce = donne.joueurs.filter(j => j.annonce)}
+        {#each joueursAvecAnnonce as j, idx}
             <tr>
                 {#if idx === 0}
-                    <td rowspan={donne.joueurs.length}>{donne.donneNumber}</td>
+                    <td rowspan={joueursAvecAnnonce.length || 1}>{donne.donneNumber}</td>
                 {/if}
                 <td>{j.nom}</td>
-                <td>{j.annonce}</td>
-                <td>{j.emballageAvec}</td>
-                <td>{j.plis}</td>
-                <td>{j.resultat}</td>
-                <td>{j.dames}</td>
+                <td>{j.annonce ?? ''}</td>
+                <td>{j.emballageAvec ?? ''}</td>
+                <td>{j.plis ?? ''}</td>
+                <td>{j.resultat ?? ''}</td>
+                <td>{j.dames ?? ''}</td>
                 <td style="text-align:center;">
                     {#if j.arbitre}
                         ✓
                     {/if}
                 </td>
                {#if idx === 0}
-          <td rowspan={donne.joueurs.length}>
+          <td rowspan={joueursAvecAnnonce.length || 1}>
             {getDealerAliasForDonne(donne.donneNumber, players)}
           </td>
           {/if}
