@@ -5278,12 +5278,23 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   flex-direction: column;
   align-items: stretch;
   margin: 0 0.6rem;
+  gap: 0.5rem;
   }
 
   .player-block {
   width: 100%;
   min-width: 0;
-  padding: 0.8rem 1rem;
+  padding: 0.5rem 0.8rem;
+  gap: 0.3rem;
+  }
+
+  .player-block strong {
+  font-size: 0.95rem;
+  }
+
+  .player-block select {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.95rem;
   }
 
   /* Bloc encodage : pleine largeur et moins de padding */
