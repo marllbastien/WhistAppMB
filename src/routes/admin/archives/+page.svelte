@@ -248,8 +248,18 @@
         throw new Error(`Erreur HTTP ${res.status}`);
       }
 
+      // Vérifier le Content-Type de la réponse
+      const contentType = res.headers.get('Content-Type');
+      console.log('Content-Type reçu:', contentType);
+      console.log('Content-Length:', res.headers.get('Content-Length'));
+
       const blob = await res.blob();
-      const url = window.URL.createObjectURL(blob);
+      console.log('Blob size:', blob.size, 'type:', blob.type);
+      
+      // Forcer le type MIME correct pour le PDF
+      const pdfBlob = new Blob([blob], { type: 'application/pdf' });
+      
+      const url = window.URL.createObjectURL(pdfBlob);
       const a = document.createElement('a');
       a.href = url;
       a.download = file.fileName;

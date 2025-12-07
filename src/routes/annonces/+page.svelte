@@ -3316,7 +3316,7 @@ $: {
 }
 
 async function archiveFeuillePoints(_doc?: jsPDF) {
-  // 🔥 NOUVEAU : Le PDF est généré côté serveur, plus besoin d'envoyer le base64
+  // 🔥 NOUVEAU : Le PDF est généré et archivé côté serveur
   if (!tableConfigId) {
     console.warn('Impossible d\'archiver : tableConfigId manquant.');
     return;
@@ -3334,10 +3334,9 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
       console.error('Erreur archivage feuille de points', await res.text());
       alert("Erreur lors de l'archivage de la feuille de points.");
     } else {
-      const data = await res.json();
-      console.log('Feuille archivée dans Azure Blob Storage:', data.blobPath);
-      // tu peux mettre un toast discret ici si tu veux
-      // alert("Feuille de points archivée avec succès.");
+      // Le serveur renvoie maintenant le PDF directement (et l'archive aussi)
+      // On peut ignorer le contenu car l'archivage est fait côté serveur
+      console.log('Feuille archivée avec succès côté serveur');
     }
   } catch (e) {
     console.error('Erreur réseau archivage feuille de points', e);
