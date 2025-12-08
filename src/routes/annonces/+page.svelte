@@ -89,6 +89,13 @@
     resultats = {};
     dames = {};
     
+    // Vérifier si l'arbitre est requis pour les annonces sélectionnées
+    for (const [player, code] of Object.entries(data.annonceByPlayer)) {
+      if (code) {
+        checkArbitreRequirement(code, player);
+      }
+    }
+    
     // Scroll vers la section encodage pour saisir le résultat
     if (resultatSectionEl && browser) {
       resultatSectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
