@@ -1,5 +1,6 @@
 ﻿<script lang="ts">
   import { onMount } from 'svelte';
+  import JetonPoker from '$lib/components/JetonPoker.svelte';
 
   const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
@@ -41,6 +42,20 @@
       description: 'Gérer le code d\'accès hebdomadaire',
       icon: '🔐',
       action: () => { viewMode = 'password'; loadCurrentPassword(); }
+    },
+    {
+      id: 'arbitres',
+      title: 'Gestion des arbitres',
+      description: 'Gérer les arbitres et leurs codes d\'accès',
+      icon: '⚖️',
+      href: '/admin/arbitres'
+    },
+    {
+      id: 'penalites',
+      title: 'Gestion des pénalités',
+      description: 'Attribuer des jetons de pénalité aux joueurs',
+      icon: 'jeton',
+      href: '/admin/penalites'
     }
   ];
 
@@ -541,13 +556,25 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
       {#each adminMenuItems as item}
         {#if item.href}
           <a href={item.href} class="admin-menu-card">
-            <span class="menu-icon">{item.icon}</span>
+            <span class="menu-icon">
+              {#if item.icon === 'jeton'}
+                <JetonPoker color="rouge" size={40} />
+              {:else}
+                {item.icon}
+              {/if}
+            </span>
             <h2>{item.title}</h2>
             <p>{item.description}</p>
           </a>
         {:else}
           <button class="admin-menu-card" on:click={() => { item.action?.(); loadManches(); }}>
-            <span class="menu-icon gold">{item.icon}</span>
+            <span class="menu-icon gold">
+              {#if item.icon === 'jeton'}
+                <JetonPoker color="rouge" size={40} />
+              {:else}
+                {item.icon}
+              {/if}
+            </span>
             <h2>{item.title}</h2>
             <p>{item.description}</p>
           </button>

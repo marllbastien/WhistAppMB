@@ -896,7 +896,7 @@ function checkArbitreRequirement(code: string, player: string) {
     let msg = `L'annonce ${code} choisie par ${player} nécessite un appel à l'arbitre.`;
 
     if (info.byHistory) {
-        msg += `\n\n${player} a déjà raté ${info.fails} fois un jeu individuel (solo / misère / abondance / chelem).`;
+        msg += `\n\n${player} a déjà raté ${info.fails} fois un jeu individuel.`;
     }
 
     arbitreMessage = msg;
