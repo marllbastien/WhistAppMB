@@ -44,6 +44,13 @@
       action: () => { viewMode = 'password'; loadCurrentPassword(); }
     },
     {
+      id: 'competitions',
+      title: 'Configuration compétitions',
+      description: 'Gérer les compétitions et leurs paramètres',
+      icon: '🏆',
+      href: '/admin/competitions'
+    },
+    {
       id: 'arbitres',
       title: 'Gestion des arbitres',
       description: 'Gérer les arbitres et leurs codes d\'accès',
@@ -56,6 +63,13 @@
       description: 'Attribuer des jetons de pénalité aux joueurs',
       icon: 'jeton',
       href: '/admin/penalites'
+    },
+    {
+      id: 'config',
+      title: 'Données de référence',
+      description: 'Gérer les annonces, jetons et grilles par défaut',
+      icon: '⚙️',
+      href: '/admin/config'
     }
   ];
 
