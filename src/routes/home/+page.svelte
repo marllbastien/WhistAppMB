@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import ModeToggle from '$lib/components/ModeToggle.svelte';
 
   const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
@@ -1275,6 +1276,9 @@ async function saveNewPlayer() {
         </div>
       {/if}
     {/if}
+
+    <!-- Mode d'encodage -->
+    <ModeToggle showDescription={true} />
 
     <div class="button-container">
       <button
