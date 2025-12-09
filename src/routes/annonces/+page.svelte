@@ -809,6 +809,43 @@ type DonneHistorique = {
 
 let history: DonneHistorique[] = [];
 
+// --- Pénalités (chargées depuis le backend) ---
+type PenaliteInfo = {
+    id: number;
+    donneNumber: number;
+    joueurId: number;
+    joueurAlias: string;
+    jetonTypeCode: string;
+    jetonColor: string;
+    valeur: number;
+    motif: string | null;
+    arbitreAlias: string;
+};
+
+let penalites: PenaliteInfo[] = [];
+let penalitesLoading = false;
+
+// Fonction pour charger les pénalités de la table
+async function loadPenalites() {
+    if (!tableConfigId) return;
+    penalitesLoading = true;
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/tables/${tableConfigId}/penalites`);
+        if (res.ok) {
+            penalites = await res.json();
+        }
+    } catch (e) {
+        console.error('Erreur chargement pénalités:', e);
+    } finally {
+        penalitesLoading = false;
+    }
+}
+
+// Récupère les pénalités pour une donne donnée
+function getPenalitesForDonne(donneNumber: number): PenaliteInfo[] {
+    return penalites.filter(p => p.donneNumber === donneNumber);
+}
+
 
 // --- Appel à l'arbitre ---
 
@@ -3753,7 +3790,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 
     <div class="header-buttons">
       <button on:click={() => showAnnonceOrder = true}>Ordre des annonces</button>
-      <button on:click={() => showHistorique = true}>Historique des donnes</button>
+      <button on:click={() => { showHistorique = true; loadPenalites(); }}>Historique des donnes</button>
       <button on:click={() => showFeuillePoints = true}>Feuille de points</button>
     </div>
 
@@ -3885,7 +3922,8 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
                             <th>Résultat</th>
                             <th>Dames</th>
                             <th>Arbitre</th>
-                          <th>Carteur</th>
+                            <th>Carteur</th>
+                            <th>Pénalités</th>
                         </tr>
                     </thead>
                    <tbody>
@@ -3893,6 +3931,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
         {@const joueursAvecAnnonce = donne.joueurs.filter(j => j.annonce)}
         {@const isLastDonne = donneIdx === history.length - 1}
         {@const canEdit = isLastDonne && canEditPreviousDonne()}
+        {@const donnePenalites = getPenalitesForDonne(donne.donneNumber)}
         {#each joueursAvecAnnonce as j, idx}
             <tr 
                 class:history-row-editable={canEdit}
@@ -3928,6 +3967,23 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
                {#if idx === 0}
           <td rowspan={joueursAvecAnnonce.length || 1}>
             {getDealerAliasForDonne(donne.donneNumber, players)}
+          </td>
+          <td rowspan={joueursAvecAnnonce.length || 1} class="cell-penalites">
+            {#if donnePenalites.length > 0}
+              <div class="penalites-list">
+                {#each donnePenalites as pen}
+                  <span 
+                    class="penalite-chip" 
+                    style="background-color: {pen.jetonColor};"
+                    title="{pen.joueurAlias}: -{pen.valeur} pts ({pen.motif || 'Sans motif'}) - par {pen.arbitreAlias}"
+                  >
+                    {pen.joueurAlias.substring(0, 3)}: -{pen.valeur}
+                  </span>
+                {/each}
+              </div>
+            {:else}
+              <span class="no-penalite">—</span>
+            {/if}
           </td>
           {/if}
         </tr>
@@ -5118,6 +5174,36 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 
   .history-table th {
   background: #0b2814;
+  }
+
+  /* Styles pour les pénalités dans l'historique */
+  .cell-penalites {
+    min-width: 80px;
+    vertical-align: middle;
+  }
+
+  .penalites-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: center;
+  }
+
+  .penalite-chip {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    white-space: nowrap;
+    cursor: help;
+  }
+
+  .no-penalite {
+    color: #6b7280;
+    font-size: 0.8rem;
   }
 
   .feuille-points-modal {

@@ -78,6 +78,115 @@
   let creating = false;
   let createMessage = '';
 
+  // Conversion joueur externe → interne
+  let showConvertModal = false;
+  let convertingJoueur: Joueur | null = null;
+  let convertForm = {
+    noAffilie: '',
+    nom: '',
+    prenom: '',
+    alias: '',
+    email: '',
+    phone: '',
+    club: '',
+    dateDebut: ''
+  };
+  let converting = false;
+  let convertMessage = '';
+
+  async function openConvertModal(joueur: Joueur) {
+    convertingJoueur = joueur;
+    convertMessage = '';
+    converting = false;
+
+    // Charger les infos suggérées depuis l'API
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/joueurs/convert/${joueur.id}/info`);
+      if (res.ok) {
+        const data = await res.json();
+        convertForm = {
+          noAffilie: data.suggestedNoAffilie ?? '',
+          nom: data.joueur.nom ?? '',
+          prenom: data.joueur.prenom ?? '',
+          alias: data.joueur.alias ?? '',
+          email: data.joueur.email ?? '',
+          phone: data.joueur.phone ?? '',
+          club: 'Les Amis Réunis',
+          dateDebut: new Date().toISOString().split('T')[0] // Format YYYY-MM-DD
+        };
+      } else {
+        convertForm = {
+          noAffilie: '',
+          nom: joueur.nom ?? '',
+          prenom: joueur.prenom ?? '',
+          alias: joueur.alias ?? '',
+          email: joueur.email ?? '',
+          phone: joueur.phone ?? '',
+          club: 'Les Amis Réunis',
+          dateDebut: new Date().toISOString().split('T')[0]
+        };
+      }
+    } catch {
+      convertForm = {
+        noAffilie: '',
+        nom: joueur.nom ?? '',
+        prenom: joueur.prenom ?? '',
+        alias: joueur.alias ?? '',
+        email: joueur.email ?? '',
+        phone: joueur.phone ?? '',
+        club: 'Les Amis Réunis',
+        dateDebut: new Date().toISOString().split('T')[0]
+      };
+    }
+
+    showConvertModal = true;
+  }
+
+  function closeConvertModal() {
+    showConvertModal = false;
+    convertingJoueur = null;
+    convertMessage = '';
+  }
+
+  async function convertJoueur() {
+    if (!convertingJoueur) return;
+
+    converting = true;
+    convertMessage = '';
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/joueurs/convert/${convertingJoueur.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          noAffilie: convertForm.noAffilie || null,
+          nom: convertForm.nom,
+          prenom: convertForm.prenom,
+          alias: convertForm.alias || null,
+          email: convertForm.email || null,
+          phone: convertForm.phone || null,
+          dateDebut: convertForm.dateDebut ? new Date(convertForm.dateDebut) : null
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || 'Erreur lors de la conversion');
+      }
+
+      const result = await res.json();
+      convertMessage = `✅ ${result.message}`;
+      await loadJoueurs();
+      activeTab = 'internes'; // Basculer vers les internes
+      setTimeout(closeConvertModal, 2000);
+    } catch (err: any) {
+      console.error(err);
+      convertMessage = `❌ ${err.message || 'Erreur lors de la conversion'}`;
+    } finally {
+      converting = false;
+    }
+  }
+
   $: filteredJoueurs = (activeTab === 'internes' ? joueursInternes : joueursExternes)
     .filter((j) => {
       // Recherche texte
@@ -423,10 +532,15 @@
                 {:else}
                   <td>{joueur.phone ?? '-'}</td>
                 {/if}
-                <td>
-                  <button class="btn-edit" on:click={() => openEdit(joueur)}>
-                    Modifier
+                <td class="actions-cell">
+                  <button class="btn-edit" on:click={() => openEdit(joueur)} title="Modifier">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                   </button>
+                  {#if activeTab === 'externes'}
+                    <button class="btn-convert" on:click={() => openConvertModal(joueur)} title="Convertir en joueur interne">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </button>
+                  {/if}
                 </td>
               </tr>
             {/each}
@@ -474,9 +588,16 @@
                 {/if}
               </div>
               <div class="card-actions">
-                <button class="btn-edit" on:click={() => openEdit(joueur)}>
-                  Modifier
+                <button class="btn-edit" on:click={() => openEdit(joueur)} title="Modifier">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                  <span>Modifier</span>
                 </button>
+                {#if activeTab === 'externes'}
+                  <button class="btn-convert" on:click={() => openConvertModal(joueur)} title="Convertir en joueur interne">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <span>Affilier</span>
+                  </button>
+                {/if}
               </div>
             </div>
           {/each}
@@ -592,6 +713,61 @@
           <button class="btn-cancel" on:click={closeNewForm}>Annuler</button>
           <button class="btn-save" on:click={createJoueur} disabled={creating}>
             {creating ? 'Création...' : 'Créer le joueur'}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Modal conversion joueur externe vers interne -->
+  {#if showConvertModal && convertingJoueur}
+    <div class="modal-backdrop" on:click={closeConvertModal} role="presentation">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
+      <div class="modal modal-convert" on:click|stopPropagation role="dialog" tabindex="-1">
+        <h2>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Affilier le joueur
+        </h2>
+        <p class="modal-subtitle">Convertir <strong>{convertingJoueur.alias}</strong> en joueur interne affilié</p>
+
+        <div class="convert-info">
+          <p>Ce joueur externe va devenir un membre affilié du club. Veuillez compléter les informations d'affiliation.</p>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="convert-noAffilie">N° Affiliation *</label>
+            <input id="convert-noAffilie" type="text" bind:value={convertForm.noAffilie} placeholder="Ex: 12345" />
+            <span class="hint">Prochain n° suggéré: {convertForm.noAffilie}</span>
+          </div>
+          <div class="form-group">
+            <label for="convert-club">Club</label>
+            <input id="convert-club" type="text" bind:value={convertForm.club} placeholder="Ex: Les Amis Réunis" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="convert-dateDebut">Date début affiliation</label>
+          <input id="convert-dateDebut" type="date" bind:value={convertForm.dateDebut} />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="convert-email">Email</label>
+            <input id="convert-email" type="email" bind:value={convertForm.email} placeholder="email@exemple.com" />
+          </div>
+          <div class="form-group">
+            <label for="convert-phone">Téléphone</label>
+            <input id="convert-phone" type="text" bind:value={convertForm.phone} placeholder="Ex: 0470 12 34 56" />
+          </div>
+        </div>
+
+        {#if convertMessage}
+          <p class={convertMessage.includes('✅') ? 'success' : 'error'}>{convertMessage}</p>
+        {/if}
+
+        <div class="modal-actions">
+          <button class="btn-cancel" on:click={closeConvertModal}>Annuler</button>
+          <button class="btn-convert-confirm" on:click={convertJoueur} disabled={converting}>
+            {converting ? 'Conversion...' : 'Affilier le joueur'}
           </button>
         </div>
       </div>
@@ -801,6 +977,9 @@
   }
 
   .btn-edit {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
     padding: 0.3rem 0.7rem;
     border-radius: 6px;
     border: 1px solid rgba(34, 197, 94, 0.5);
@@ -810,8 +989,39 @@
     font-size: 0.8rem;
   }
 
+  .btn-edit svg {
+    flex-shrink: 0;
+  }
+
   .btn-edit:hover {
     background: rgba(34, 197, 94, 0.1);
+  }
+
+  .actions-cell {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .btn-convert {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 6px;
+    border: 1px solid rgba(59, 130, 246, 0.5);
+    background: transparent;
+    color: #60a5fa;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+
+  .btn-convert:hover {
+    background: rgba(59, 130, 246, 0.1);
+  }
+
+  .btn-convert svg {
+    flex-shrink: 0;
   }
 
   /* Modal */
@@ -923,6 +1133,67 @@
 
   .success {
     color: #22c55e;
+  }
+
+  /* Modal conversion */
+  .modal-convert h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #60a5fa;
+  }
+
+  .modal-convert h2 svg {
+    flex-shrink: 0;
+  }
+
+  .convert-info {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .convert-info p {
+    margin: 0;
+    color: #9ca3af;
+    font-size: 0.85rem;
+  }
+
+  .form-group input[type='date'] {
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid rgba(75, 85, 99, 0.8);
+    background: #020617;
+    color: #e5e7eb;
+  }
+
+  .hint {
+    font-size: 0.75rem;
+    color: #6b7280;
+  }
+
+  .btn-convert-confirm {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    border: none;
+    background: #3b82f6;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-convert-confirm:hover {
+    filter: brightness(1.1);
+  }
+
+  .btn-convert-confirm:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
   }
 
   .copyright {
@@ -1074,9 +1345,11 @@
       margin-top: 0.4rem;
       display: flex;
       justify-content: flex-end;
+      gap: 0.5rem;
     }
 
-    .card-actions .btn-edit {
+    .card-actions .btn-edit,
+    .card-actions .btn-convert {
       padding: 0.3rem 0.8rem;
       font-size: 0.75rem;
     }
