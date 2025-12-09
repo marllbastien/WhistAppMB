@@ -19,10 +19,23 @@
     eventDate: string | null;
     logoPath: string | null;
     reglementText: string | null;
+    clubId: number | null;
+    clubName: string | null;
+    clubShortName: string | null;
+    clubColor: string | null;
+  }
+
+  interface Club {
+    id: number;
+    name: string;
+    shortName: string | null;
+    color: string | null;
+    isActive: boolean;
   }
 
   // État
   let competitions: Competition[] = [];
+  let clubs: Club[] = [];
   let loading = true;
   let error = '';
   let showCreateModal = false;
@@ -46,7 +59,8 @@
     eventDate: null as string | null,
     allowedPlayers: null as string | null,
     logoPath: null as string | null,
-    reglementText: null as string | null
+    reglementText: null as string | null,
+    clubId: null as number | null
   };
 
   const competitionTypes: Record<number, string> = {
@@ -56,16 +70,22 @@
     4: 'Concours'
   };
 
-  // Charger les compétitions
+  // Charger les compétitions et les clubs
   async function loadCompetitions() {
     loading = true;
     error = '';
     try {
-      const res = await fetch(`${API_BASE_URL}/api/admin/competitions`);
-      if (res.ok) {
-        competitions = await res.json();
+      const [resComp, resClubs] = await Promise.all([
+        fetch(`${API_BASE_URL}/api/admin/competitions`),
+        fetch(`${API_BASE_URL}/api/config/clubs/active`)
+      ]);
+      if (resComp.ok) {
+        competitions = await resComp.json();
       } else {
         error = 'Erreur lors du chargement des compétitions';
+      }
+      if (resClubs.ok) {
+        clubs = await resClubs.json();
       }
     } catch (err) {
       error = 'Impossible de contacter le serveur';
@@ -149,7 +169,8 @@
       eventDate: null,
       allowedPlayers: null,
       logoPath: null,
-      reglementText: null
+      reglementText: null,
+      clubId: null
     };
   }
 
@@ -219,6 +240,12 @@
             </span>
           </div>
           <h3 class="card-title">{comp.name}</h3>
+          {#if comp.clubName}
+            <div class="club-info">
+              <span class="club-dot" style="background: {comp.clubColor || '#22c55e'};"></span>
+              <span class="club-name">{comp.clubShortName || comp.clubName}</span>
+            </div>
+          {/if}
           <div class="card-details">
             {#if comp.competitionNumber}
               <div class="detail">
@@ -283,13 +310,24 @@
       <div class="modal" on:click|stopPropagation role="dialog" aria-modal="true">
         <h2>Nouvelle compétition</h2>
         <form on:submit|preventDefault={createCompetition}>
-          <div class="form-group">
-            <label for="type">Type</label>
-            <select id="type" bind:value={newCompetition.competitionType} required>
-              {#each Object.entries(competitionTypes) as [value, label]}
-                <option value={parseInt(value)}>{label}</option>
-              {/each}
-            </select>
+          <div class="form-row">
+            <div class="form-group">
+              <label for="type">Type</label>
+              <select id="type" bind:value={newCompetition.competitionType} required>
+                {#each Object.entries(competitionTypes) as [value, label]}
+                  <option value={parseInt(value)}>{label}</option>
+                {/each}
+              </select>
+            </div>
+            <div class="form-group">
+              <label for="club">Club</label>
+              <select id="club" bind:value={newCompetition.clubId}>
+                <option value={null}>— Aucun club —</option>
+                {#each clubs as club}
+                  <option value={club.id}>{club.name}{club.shortName ? ` (${club.shortName})` : ''}</option>
+                {/each}
+              </select>
+            </div>
           </div>
           <div class="form-group">
             <label for="name">Nom</label>
@@ -528,8 +566,28 @@
   .card-title {
     font-size: 1.15rem;
     color: #4ade80;
-    margin: 0 0 0.75rem 0;
+    margin: 0 0 0.5rem 0;
     font-weight: 600;
+  }
+
+  .club-info {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+    font-size: 0.85rem;
+    color: #94a3b8;
+  }
+
+  .club-dot {
+    width: 10px;
+    height: 10px;
+    border-radius: 50%;
+    flex-shrink: 0;
+  }
+
+  .club-name {
+    font-style: italic;
   }
 
   .card-details {

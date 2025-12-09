@@ -21,6 +21,18 @@
     eventDate: string | null;
     logoPath: string | null;
     reglementText: string | null;
+    clubId: number | null;
+    clubName: string | null;
+    clubShortName: string | null;
+    clubColor: string | null;
+  }
+
+  interface Club {
+    id: number;
+    name: string;
+    shortName: string | null;
+    color: string | null;
+    isActive: boolean;
   }
 
   interface CompetitionAnnonce {
@@ -71,6 +83,7 @@
   // État
   let competitionId: number;
   let competition: Competition | null = null;
+  let clubs: Club[] = [];
   let annonces: CompetitionAnnonce[] = [];
   let jetons: CompetitionJeton[] = [];
   let grille: CompetitionResultat[] = [];
@@ -298,6 +311,17 @@
     }
   }
 
+  async function loadClubs() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/config/clubs/active`);
+      if (res.ok) {
+        clubs = await res.json();
+      }
+    } catch (err) {
+      console.error('Erreur chargement clubs:', err);
+    }
+  }
+
   // Fonction pour déduire le type depuis le code de l'annonce
   function inferAnnonceType(code: string): string {
     if (!code) return 'AUTRE';
@@ -438,7 +462,8 @@
           isActive: competition.isActive,
           eventDate: competition.eventDate,
           logoPath: competition.logoPath,
-          reglementText: competition.reglementText
+          reglementText: competition.reglementText,
+          clubId: competition.clubId
         })
       });
       if (res.ok) {
@@ -615,6 +640,7 @@
   onMount(() => {
     competitionId = parseInt($page.params.id);
     loadCompetition();
+    loadClubs();
   });
 </script>
 
@@ -703,6 +729,24 @@
               <label for="name">Nom de la compétition</label>
               <input id="name" type="text" bind:value={competition.name} required />
             </div>
+
+            {#if competition.competitionType !== 3}
+              <div class="form-group">
+                <label for="clubId">Club organisateur</label>
+                <select id="clubId" bind:value={competition.clubId}>
+                  <option value={null}>-- Aucun club --</option>
+                  {#each clubs as club}
+                    <option value={club.id}>{club.name}</option>
+                  {/each}
+                </select>
+                {#if competition.clubId && competition.clubColor}
+                  <div class="club-info-preview" style="margin-top: 0.5rem; display: flex; align-items: center; gap: 0.5rem;">
+                    <span class="club-color-indicator" style="width: 16px; height: 16px; border-radius: 50%; background-color: {competition.clubColor};"></span>
+                    <span style="color: var(--text-secondary); font-size: 0.875rem;">{competition.clubShortName || competition.clubName}</span>
+                  </div>
+                {/if}
+              </div>
+            {/if}
 
             <div class="form-row">
               <div class="form-group">

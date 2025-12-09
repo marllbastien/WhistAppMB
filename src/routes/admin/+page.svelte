@@ -10,6 +10,19 @@
 
   const currentYear = new Date().getFullYear();
 
+  // 🔥 Interface pour les types de compétition depuis l'API
+  interface CompetitionTypeInfo {
+    id: number;
+    name: string;
+    shortName: string | null;
+    description: string | null;
+    isActive: boolean;
+    sortOrder: number;
+  }
+
+  // 🔥 Types de compétition chargés depuis l'API
+  let allCompetitionTypes: CompetitionTypeInfo[] = [];
+
   // Mode d'affichage : 'menu', 'manches' ou 'password'
   let viewMode: 'menu' | 'manches' | 'password' = 'menu';
 
@@ -28,6 +41,13 @@
       description: 'Gérer les joueurs internes et externes',
       icon: '👥',
       href: '/admin/joueurs'
+    },
+    {
+      id: 'clubs',
+      title: 'Gestion des clubs',
+      description: 'Gérer les clubs et leurs informations',
+      icon: '🏛️',
+      href: '/admin/clubs'
     },
     {
       id: 'archives',
@@ -442,8 +462,39 @@
 
 
 
-  onMount(() => {
+  onMount(async () => {
     // L'authentification admin est gérée par le layout parent
+    
+    // 🔥 Charger les types de compétition depuis l'API
+    try {
+      const resTypes = await fetch(`${API_BASE_URL}/api/config/competition-types`);
+      if (resTypes.ok) {
+        allCompetitionTypes = await resTypes.json();
+        console.log('Types de compétition chargés (admin) :', allCompetitionTypes);
+      } else {
+        console.warn('API competition-types non disponible, utilisation du fallback');
+        allCompetitionTypes = [
+          { id: 1, name: 'Championnat', shortName: 'Ch', description: null, isActive: true, sortOrder: 1 },
+          { id: 2, name: 'Interclub', shortName: 'IC', description: null, isActive: true, sortOrder: 2 },
+          { id: 3, name: 'Manche libre', shortName: 'ML', description: null, isActive: true, sortOrder: 3 },
+          { id: 4, name: 'Concours', shortName: 'CC', description: null, isActive: true, sortOrder: 4 },
+          { id: 5, name: 'Endurance', shortName: 'EN', description: null, isActive: true, sortOrder: 5 },
+          { id: 6, name: 'Funny Games', shortName: 'FG', description: null, isActive: true, sortOrder: 6 },
+          { id: 7, name: 'Edition festive', shortName: 'EF', description: null, isActive: true, sortOrder: 7 }
+        ];
+      }
+    } catch (err) {
+      console.warn('Erreur chargement types de compétition:', err);
+      allCompetitionTypes = [
+        { id: 1, name: 'Championnat', shortName: 'Ch', description: null, isActive: true, sortOrder: 1 },
+        { id: 2, name: 'Interclub', shortName: 'IC', description: null, isActive: true, sortOrder: 2 },
+        { id: 3, name: 'Manche libre', shortName: 'ML', description: null, isActive: true, sortOrder: 3 },
+        { id: 4, name: 'Concours', shortName: 'CC', description: null, isActive: true, sortOrder: 4 },
+        { id: 5, name: 'Endurance', shortName: 'EN', description: null, isActive: true, sortOrder: 5 },
+        { id: 6, name: 'Funny Games', shortName: 'FG', description: null, isActive: true, sortOrder: 6 },
+        { id: 7, name: 'Edition festive', shortName: 'EF', description: null, isActive: true, sortOrder: 7 }
+      ];
+    }
   });
 
   function goToMenu() {
@@ -490,24 +541,34 @@
     window.location.href = `/admin/${id}`;
   }
   
-        
-        const COMP_TYPE_LABEL: Record<number, string> = {
-  1: 'Championnat',
-  2: 'Interclub',
-  3: 'Manche libre',
-  4: 'Concours'
-};
+  // 🔥 Fonctions pour obtenir les labels depuis les données dynamiques
+  function getCompetitionTypeLabel(typeId: number | null): string {
+    if (typeId == null) return '-';
+    const found = allCompetitionTypes.find(t => t.id === typeId);
+    return found?.name ?? `Type ${typeId}`;
+  }
 
-const COMP_TYPE_LABEL_SHORT: Record<number, string> = {
-  1: 'Ch',  // Championnat
-  2: 'IC',  // Interclub
-  3: 'ML',  // Manche libre
-  4: 'CC'   // Concours
-};
+  function getCompetitionTypeShortLabel(typeId: number | null): string {
+    if (typeId == null) return '-';
+    const found = allCompetitionTypes.find(t => t.id === typeId);
+    return found?.shortName ?? found?.name?.substring(0, 2) ?? `T${typeId}`;
+  }
+
+  // 🔥 Fallback hardcodé utilisé si l'API n'est pas disponible
+  const COMP_TYPE_FALLBACK: Record<number, { name: string; shortName: string }> = {
+    1: { name: 'Championnat', shortName: 'Ch' },
+    2: { name: 'Interclub', shortName: 'IC' },
+    3: { name: 'Manche libre', shortName: 'ML' },
+    4: { name: 'Concours', shortName: 'CC' }
+  };
 
 function formatCompetitionType(m: AdminMancheHeaderDto): string {
   if (m.competitionType == null) return '-';
-  return COMP_TYPE_LABEL_SHORT[m.competitionType] ?? `T${m.competitionType}`;
+  // Utiliser les données dynamiques si disponibles, sinon fallback
+  if (allCompetitionTypes.length > 0) {
+    return getCompetitionTypeShortLabel(m.competitionType);
+  }
+  return COMP_TYPE_FALLBACK[m.competitionType]?.shortName ?? `T${m.competitionType}`;
 }
 
 
@@ -518,26 +579,16 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
 
   if (!t) return "-";
 
-  switch (t) {
-    case 1:
-      // Championnat
-      return num ? `Championnat ${num}` : "Championnat";
+  // Récupérer le nom du type depuis les données dynamiques ou fallback
+  const typeName = allCompetitionTypes.length > 0
+    ? getCompetitionTypeLabel(t)
+    : COMP_TYPE_FALLBACK[t]?.name ?? `Type ${t}`;
 
-    case 2:
-      // Interclub
-      return num ? `Interclub ${num}` : "Interclub";
+  // Si on a un nom de compétition personnalisé, l'afficher
+  if (name) return name;
 
-    case 3:
-      // Manche libre → on affiche directement le nom
-      return name ?? "Manche libre";
-
-    case 4:
-      // Concours
-      return num ? `Concours ${num}` : "Concours";
-
-    default:
-      return "-";
-  }
+  // Sinon, construire le nom à partir du type et du numéro
+  return num ? `${typeName} ${num}` : typeName;
 }
 
 
@@ -700,10 +751,15 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
               <span class="filter-label">Type</span>
               <select class="desktop-filter" bind:value={filters.competitionType}>
                 <option value="">Tous</option>
-                <option value="1">Championnat</option>
-                <option value="2">Interclub</option>
-                <option value="3">Manche libre</option>
-                <option value="4">Concours</option>
+                {#each allCompetitionTypes as typeInfo}
+                  <option value={String(typeInfo.id)}>{typeInfo.name}</option>
+                {/each}
+                {#if allCompetitionTypes.length === 0}
+                  <option value="1">Championnat</option>
+                  <option value="2">Interclub</option>
+                  <option value="3">Manche libre</option>
+                  <option value="4">Concours</option>
+                {/if}
               </select>
             </div>
             <div class="filter-item filter-item-small">
@@ -865,10 +921,15 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
             <div class="filter-group">
               <select class="mobile-filter" bind:value={filters.competitionType}>
                 <option value="">Type: Tous</option>
-                <option value="1">Championnat</option>
-                <option value="2">Interclub</option>
-                <option value="3">Manche libre</option>
-                <option value="4">Concours</option>
+                {#each allCompetitionTypes as typeInfo}
+                  <option value={String(typeInfo.id)}>{typeInfo.name}</option>
+                {/each}
+                {#if allCompetitionTypes.length === 0}
+                  <option value="1">Championnat</option>
+                  <option value="2">Interclub</option>
+                  <option value="3">Manche libre</option>
+                  <option value="4">Concours</option>
+                {/if}
               </select>
               <input 
                 type="text" 
