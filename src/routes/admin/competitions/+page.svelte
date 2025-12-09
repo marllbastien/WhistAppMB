@@ -526,25 +526,47 @@
     letter-spacing: 0.5px;
   }
 
+  /* Type 1 - Championnat - Vert */
   .type-badge.type-1 { 
+    background: rgba(34, 197, 94, 0.2); 
+    color: #4ade80; 
+    border-color: #22c55e;
+  }
+  /* Type 2 - Interclub - Bleu */
+  .type-badge.type-2 { 
     background: rgba(59, 130, 246, 0.2); 
     color: #60a5fa; 
     border-color: #3b82f6;
   }
-  .type-badge.type-2 { 
-    background: rgba(245, 158, 11, 0.2); 
-    color: #fbbf24; 
-    border-color: #f59e0b;
-  }
+  /* Type 3 - Manche libre - Violet */
   .type-badge.type-3 { 
     background: rgba(139, 92, 246, 0.2); 
     color: #a78bfa; 
     border-color: #8b5cf6;
   }
+  /* Type 4 - Concours - Orange */
   .type-badge.type-4 { 
+    background: rgba(245, 158, 11, 0.2); 
+    color: #fbbf24; 
+    border-color: #f59e0b;
+  }
+  /* Type 5 - Endurance - Rouge */
+  .type-badge.type-5 { 
+    background: rgba(239, 68, 68, 0.2); 
+    color: #f87171; 
+    border-color: #ef4444;
+  }
+  /* Type 6 - Funny Games - Rose */
+  .type-badge.type-6 { 
     background: rgba(236, 72, 153, 0.2); 
     color: #f472b6; 
     border-color: #ec4899;
+  }
+  /* Type 7 - Edition festive - Cyan */
+  .type-badge.type-7 { 
+    background: rgba(6, 182, 212, 0.2); 
+    color: #22d3ee; 
+    border-color: #06b6d4;
   }
 
   .status-badge {

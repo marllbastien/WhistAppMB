@@ -50,6 +50,13 @@
       href: '/admin/clubs'
     },
     {
+      id: 'competition-types',
+      title: 'Types de compétition',
+      description: 'Gérer les types de compétition (Championnat, Interclub, etc.)',
+      icon: '🏅',
+      href: '/admin/competition-types'
+    },
+    {
       id: 'archives',
       title: 'Archives PDF',
       description: 'Consulter les feuilles de points archivées',
