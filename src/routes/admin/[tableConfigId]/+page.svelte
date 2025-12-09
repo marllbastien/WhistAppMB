@@ -11,6 +11,19 @@
   const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
 
+  // 🔥 Interface pour les types de compétition depuis l'API
+  interface CompetitionTypeInfo {
+    id: number;
+    name: string;
+    shortName: string | null;
+    description: string | null;
+    isActive: boolean;
+    sortOrder: number;
+  }
+
+  // 🔥 Types de compétition chargés depuis l'API
+  let allCompetitionTypes: CompetitionTypeInfo[] = [];
+
   interface AdminPlayerDto {
   playerId: number | null;
   alias: string;
@@ -122,15 +135,24 @@ $: if (detail?.finalScores) {
   }
 }
 
-  // Fonction pour obtenir le label de compétition
+  // 🔥 Fallback hardcodé si l'API n'est pas disponible
+  const COMP_TYPE_FALLBACK: Record<number, string> = {
+    1: 'Championnat',
+    2: 'Interclubs',
+    3: 'Manche libre',
+    4: 'Concours'
+  };
+
+  // Fonction pour obtenir le label de compétition (utilise les données dynamiques)
   function getCompetitionLabel(competitionType: number | null): string {
-    switch (competitionType) {
-      case 1: return 'Championnat';
-      case 2: return 'Interclubs';
-      case 3: return 'Manche libre';
-      case 4: return 'Concours';
-      default: return 'Manche';
+    if (competitionType == null) return 'Manche';
+    // Utiliser les données dynamiques si disponibles
+    if (allCompetitionTypes.length > 0) {
+      const found = allCompetitionTypes.find(t => t.id === competitionType);
+      return found?.name ?? 'Manche';
     }
+    // Fallback
+    return COMP_TYPE_FALLBACK[competitionType] ?? 'Manche';
   }
 
   // Fonction pour générer le nom du fichier PDF
@@ -177,6 +199,7 @@ $: if (detail?.finalScores) {
     onMount(() => {
     loadDetail();
     loadConfig();
+    loadCompetitionTypes();
     });
 
     async function loadDetail() {
@@ -586,6 +609,32 @@ async function loadConfig() {
   }
 }
 
+// 🔥 Charger les types de compétition depuis l'API
+async function loadCompetitionTypes() {
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/config/competition-types`);
+    if (res.ok) {
+      const data: CompetitionTypeInfo[] = await res.json();
+      if (data.length > 0) {
+        allCompetitionTypes = data;
+      }
+    }
+  } catch (err) {
+    console.warn('Impossible de charger les types de compétition, utilisation des valeurs par défaut', err);
+  }
+  // Si échec ou vide, on garde les valeurs par défaut déjà définies
+  if (allCompetitionTypes.length === 0) {
+    allCompetitionTypes = [
+      { id: 1, name: 'Championnat', shortName: 'Ch', description: null, isActive: true, sortOrder: 1 },
+      { id: 2, name: 'Interclub', shortName: 'IC', description: null, isActive: true, sortOrder: 2 },
+      { id: 3, name: 'Manche libre', shortName: 'ML', description: null, isActive: true, sortOrder: 3 },
+      { id: 4, name: 'Concours', shortName: 'CC', description: null, isActive: true, sortOrder: 4 },
+      { id: 5, name: 'Endurance', shortName: 'EN', description: null, isActive: true, sortOrder: 5 },
+      { id: 6, name: 'Funny Games', shortName: 'FG', description: null, isActive: true, sortOrder: 6 },
+      { id: 7, name: 'Edition festive', shortName: 'EF', description: null, isActive: true, sortOrder: 7 }
+    ];
+  }
+}
 
 function closeEdit() {
   selectedDonne = null;
@@ -1086,7 +1135,7 @@ function getChangeClass(after: number, before: number) {
   <!-- Donnes de la manche -->
 <div class="card">
   <div class="card-header-row">
-    <h2>Donnes de la manche</h2>
+    <h2>Donnes de la table</h2>
 
     <!-- 🔥 Nouveau bouton d’ajout -->
     <button type="button" on:click={startAddDonne}>

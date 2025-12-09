@@ -1,6 +1,7 @@
 <script lang="ts">
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
+  import ModeToggle from '$lib/components/ModeToggle.svelte';
 
   const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
@@ -29,9 +30,23 @@
   let newPlayerError: string | null = null;
   
   
+  // 🔥 Interface pour les types de compétition depuis l'API
+  interface CompetitionTypeInfo {
+    id: number;
+    name: string;
+    shortName: string | null;
+    description: string | null;
+    isActive: boolean;
+    sortOrder: number;
+  }
 
-  // 🔢 Type côté front = string "1" | "2" | "3" | "4" (on convertit en number pour l'API)
-  type CompetitionTypeCode = '' | '1' | '2' | '3' | '4';
+  // 🔢 Type côté front = string "1" | "2" | "3" | "4" | ... (on convertit en number pour l'API)
+  type CompetitionTypeCode = '' | string;
+
+  // 🔥 Liste des types de compétition chargés depuis l'API
+  let allCompetitionTypes: CompetitionTypeInfo[] = [];
+  let isLoadingCompetitionTypes = true;
+
 
 
   type ActiveMancheDto = {
@@ -83,7 +98,7 @@
   // pour le scroll automatique des champs
   let competitionTypeEl: HTMLSelectElement | null = null;
   let competitionNumberEl: HTMLSelectElement | null = null;
-  let mancheEl: HTMLInputElement | null = null;
+  let mancheEl: HTMLInputElement | HTMLSelectElement | null = null;
   let tableEl: HTMLSelectElement | null = null;
 
 
@@ -112,14 +127,29 @@
   let competitionSubtypeLabel = '';
 
   function getCompetitionTypeLabel(code: CompetitionTypeCode): string {
-  switch (code) {
-  case '1': return 'Championnat';
-  case '2': return 'Interclubs';
-  case '3': return 'Manche libre';
-  case '4': return 'Concours';
-  default: return '';
+    if (!code) return '';
+    const typeId = Number(code);
+    const found = allCompetitionTypes.find(t => t.id === typeId);
+    return found?.name ?? '';
   }
+
+  function getCompetitionTypeShortName(code: CompetitionTypeCode): string {
+    if (!code) return '';
+    const typeId = Number(code);
+    const found = allCompetitionTypes.find(t => t.id === typeId);
+    return found?.shortName ?? found?.name ?? '';
   }
+
+  // 🔥 Vérifie si le type de compétition sélectionné est "Manche libre"
+  function isMancheLibre(code: CompetitionTypeCode): boolean {
+    if (!code) return false;
+    const typeId = Number(code);
+    const found = allCompetitionTypes.find(t => t.id === typeId);
+    return found?.name.toLowerCase().includes('libre') ?? false;
+  }
+
+  // Variable réactive pour le template
+  $: isCurrentTypeMancheLibre = isMancheLibre(competitionType);
 
   // 🔁 Dès que le type, le numéro ou les définitions changent → recalcul des libellés
   $: {
@@ -164,6 +194,40 @@
   }
   sessionId = stored;
 
+  // 🔥 Charger les types de compétition depuis l'API
+  try {
+    const resTypes = await fetch(`${API_BASE_URL}/api/config/competition-types/active`);
+    if (resTypes.ok) {
+      allCompetitionTypes = await resTypes.json();
+      console.log('Types de compétition chargés :', allCompetitionTypes);
+    } else {
+      // Fallback si l'API échoue - utiliser les valeurs par défaut
+      console.warn('API competition-types non disponible, utilisation du fallback');
+      allCompetitionTypes = [
+        { id: 1, name: 'Championnat', shortName: 'Ch', description: null, isActive: true, sortOrder: 1 },
+        { id: 2, name: 'Interclub', shortName: 'IC', description: null, isActive: true, sortOrder: 2 },
+        { id: 3, name: 'Manche libre', shortName: 'ML', description: null, isActive: true, sortOrder: 3 },
+        { id: 4, name: 'Concours', shortName: 'CC', description: null, isActive: true, sortOrder: 4 },
+        { id: 5, name: 'Endurance', shortName: 'EN', description: null, isActive: true, sortOrder: 5 },
+        { id: 6, name: 'Funny Games', shortName: 'FG', description: null, isActive: true, sortOrder: 6 },
+        { id: 7, name: 'Edition festive', shortName: 'EF', description: null, isActive: true, sortOrder: 7 }
+      ];
+    }
+  } catch (err) {
+    console.warn('Erreur chargement types de compétition, utilisation du fallback:', err);
+    allCompetitionTypes = [
+      { id: 1, name: 'Championnat', shortName: 'Ch', description: null, isActive: true, sortOrder: 1 },
+      { id: 2, name: 'Interclub', shortName: 'IC', description: null, isActive: true, sortOrder: 2 },
+      { id: 3, name: 'Manche libre', shortName: 'ML', description: null, isActive: true, sortOrder: 3 },
+      { id: 4, name: 'Concours', shortName: 'CC', description: null, isActive: true, sortOrder: 4 },
+      { id: 5, name: 'Endurance', shortName: 'EN', description: null, isActive: true, sortOrder: 5 },
+      { id: 6, name: 'Funny Games', shortName: 'FG', description: null, isActive: true, sortOrder: 6 },
+      { id: 7, name: 'Edition festive', shortName: 'EF', description: null, isActive: true, sortOrder: 7 }
+    ];
+  } finally {
+    isLoadingCompetitionTypes = false;
+  }
+
   try {
   const res = await fetch(`${API_BASE_URL}/api/joueurs`);
   if (!res.ok) {
@@ -180,10 +244,15 @@
 
   // ---- après le chargement des joueurs ----
 
-  // Manche libre (3) est toujours disponible
-  availableCompetitionTypes = ['3'];
+  // Manche libre (3) est toujours disponible (type ID=3)
+  const mancheLibreType = allCompetitionTypes.find(t => t.name.toLowerCase().includes('libre'));
+  const mancheLibreId = mancheLibreType?.id ?? 3;
+  availableCompetitionTypes = [String(mancheLibreId)];
 
-  const typesToCheck: CompetitionTypeCode[] = ['1', '2', '4'];
+  // Vérifier quels types ont des compétitions aujourd'hui
+  const typesToCheck: CompetitionTypeCode[] = allCompetitionTypes
+    .filter(t => t.id !== mancheLibreId)
+    .map(t => String(t.id));
 
   for (const t of typesToCheck) {
   const ok = await hasCompetitionsToday(t);
@@ -904,7 +973,7 @@ $: {
 
 
         // 🔗 quand on est en manche libre, CompetitionNumber = numéro de la variante
-        $: if (competitionType === '3') {
+        $: if (isCurrentTypeMancheLibre) {
         if (libreVariantNumber === '') {
         competitionNumber = '';
         } else {
@@ -1045,7 +1114,7 @@ async function saveNewPlayer() {
   bind:this={competitionTypeEl}
   bind:value={competitionType}
   on:change={() => {
-    if (competitionType === '3') {
+    if (isMancheLibre(competitionType)) {
       // Manche libre → 2e box = mode de manche libre
       scrollToEl(libreVariantEl);
     } else if (competitionType !== '') {
@@ -1057,27 +1126,17 @@ async function saveNewPlayer() {
 
   <option value="">-- Choisir --</option>
 
-  {#if availableCompetitionTypes.includes('1')}
-    <option value="1">Championnat</option>
-  {/if}
-
-  {#if availableCompetitionTypes.includes('2')}
-    <option value="2">Interclub</option>
-  {/if}
-
-  {#if availableCompetitionTypes.includes('3')}
-    <option value="3">Manche libre</option>
-  {/if}
-
-  {#if availableCompetitionTypes.includes('4')}
-    <option value="4">Concours</option>
-  {/if}
+  {#each allCompetitionTypes as typeInfo}
+    {#if availableCompetitionTypes.includes(String(typeInfo.id))}
+      <option value={String(typeInfo.id)}>{typeInfo.name}</option>
+    {/if}
+  {/each}
 </select>
 
     </div>
     
     
-{#if competitionType === '3'}
+{#if competitionType && allCompetitionTypes.find(t => t.id === Number(competitionType))?.name.toLowerCase().includes('libre')}
   <div class="field">
     <label>Mode de manche libre :</label>
     <select
@@ -1275,6 +1334,9 @@ async function saveNewPlayer() {
         </div>
       {/if}
     {/if}
+
+    <!-- Mode d'encodage -->
+    <ModeToggle showDescription={true} />
 
     <div class="button-container">
       <button

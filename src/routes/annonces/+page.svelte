@@ -2,7 +2,11 @@
   import { onMount, onDestroy, tick } from 'svelte';
   import jsPDF from 'jspdf';
   import autoTable from 'jspdf-autotable';
+  import ModeToggle from '$lib/components/ModeToggle.svelte';
+  import LightModeEncoder from '$lib/components/LightModeEncoder.svelte';
 
+  // Référence au composant LightModeEncoder
+  let lightEncoderRef: LightModeEncoder;
 
   const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
@@ -30,16 +34,81 @@
   let competitionTypeLabel = '';
   let competitionSubtypeLabel = '';
   
-  
+  // Mode d'encodage : 'classic' ou 'light'
+  let encodingMode: 'classic' | 'light' = 'classic';
+  const ENCODING_MODE_KEY = 'whist-encoding-mode';
+
+  async function handleModeChange(event: CustomEvent<{ mode: 'classic' | 'light' }>) {
+    const previousMode = encodingMode;
+    encodingMode = event.detail.mode;
+    
+    // Si on passe de classique à light, on synchronise le LightModeEncoder avec l'état actuel
+    if (previousMode === 'classic' && encodingMode === 'light') {
+      // Attendre que Svelte monte le composant LightModeEncoder
+      await tick();
+      // Petit délai supplémentaire pour s'assurer que le composant est prêt
+      await new Promise(resolve => setTimeout(resolve, 50));
+      if (lightEncoderRef) {
+        lightEncoderRef.syncFromClassic(annonceByPlayer, emballes);
+      }
+    } else if (previousMode === 'light' && encodingMode === 'classic') {
+      // Quand on passe de light à classique, les données sont déjà synchronisées via handleLightEncode
+      // Rien à faire
+    }
+  }
+
+  // Charger le mode au démarrage
+  function loadEncodingMode() {
+    if (typeof window !== 'undefined') {
+      const saved = sessionStorage.getItem(ENCODING_MODE_KEY);
+      if (saved === 'light' || saved === 'classic') {
+        encodingMode = saved;
+        // Note: on ne réinitialise plus les données au chargement
+        // car elles n'existent pas encore à ce stade
+      }
+    }
+  }
+
+  // Gérer la sélection depuis le LightModeEncoder (annonce + joueur(s))
+  function handleLightEncode(event: CustomEvent<{
+    annonceByPlayer: Record<string, string>;
+    emballes: Record<string, string>;
+  }>) {
+    const data = event.detail;
+    console.log('[LightEncode] Reçu:', data);
+
+    // Mettre à jour annonceByPlayer avec les nouvelles valeurs
+    annonceByPlayer = { ...data.annonceByPlayer };
+    console.log('[LightEncode] annonceByPlayer mis à jour:', annonceByPlayer);
+    
+    // Mettre à jour emballes avec les nouvelles valeurs
+    emballes = { ...data.emballes };
+    
+    // Réinitialiser les résultats pour les nouveaux joueurs
+    plis = {};
+    resultats = {};
+    dames = {};
+    
+    // Vérifier si l'arbitre est requis pour les annonces sélectionnées
+    for (const [player, code] of Object.entries(data.annonceByPlayer)) {
+      if (code) {
+        checkArbitreRequirement(code, player);
+      }
+    }
+    
+    // Scroll vers la section encodage pour saisir le résultat
+    if (resultatSectionEl && browser) {
+      resultatSectionEl.scrollIntoView({ behavior: 'smooth', block: 'start' });
+    }
+  }
 
   let SessionId = '';
   function scrollToEmballage(player: string) {
   if (!browser) return;
 
-  const el = document.getElementById(`emballage-${player}`) as HTMLSelectElement | null;
+  const el = document.getElementById(`emballage-${player}`) as HTMLElement | null;
   if (el) {
   el.scrollIntoView({ behavior: 'smooth', block: 'center' });
-  el.focus();
   }
   }
 
@@ -740,6 +809,43 @@ type DonneHistorique = {
 
 let history: DonneHistorique[] = [];
 
+// --- Pénalités (chargées depuis le backend) ---
+type PenaliteInfo = {
+    id: number;
+    donneNumber: number;
+    joueurId: number;
+    joueurAlias: string;
+    jetonTypeCode: string;
+    jetonColor: string;
+    valeur: number;
+    motif: string | null;
+    arbitreAlias: string;
+};
+
+let penalites: PenaliteInfo[] = [];
+let penalitesLoading = false;
+
+// Fonction pour charger les pénalités de la table
+async function loadPenalites() {
+    if (!tableConfigId) return;
+    penalitesLoading = true;
+    try {
+        const res = await fetch(`${API_BASE_URL}/api/tables/${tableConfigId}/penalites`);
+        if (res.ok) {
+            penalites = await res.json();
+        }
+    } catch (e) {
+        console.error('Erreur chargement pénalités:', e);
+    } finally {
+        penalitesLoading = false;
+    }
+}
+
+// Récupère les pénalités pour une donne donnée
+function getPenalitesForDonne(donneNumber: number): PenaliteInfo[] {
+    return penalites.filter(p => p.donneNumber === donneNumber);
+}
+
 
 // --- Appel à l'arbitre ---
 
@@ -827,7 +933,7 @@ function checkArbitreRequirement(code: string, player: string) {
     let msg = `L'annonce ${code} choisie par ${player} nécessite un appel à l'arbitre.`;
 
     if (info.byHistory) {
-        msg += `\n\n${player} a déjà raté ${info.fails} fois un jeu individuel (solo / misère / abondance / chelem).`;
+        msg += `\n\n${player} a déjà raté ${info.fails} fois un jeu individuel.`;
     }
 
     arbitreMessage = msg;
@@ -863,6 +969,11 @@ function getDisplayName(p: string): string {
     resultats = {};
     dames = {};
     soloPlayer = null;
+
+    // Reset du LightModeEncoder si en mode light
+    if (encodingMode === 'light' && lightEncoderRef) {
+      lightEncoderRef.reset();
+    }
 
     saveDraftLocallyAndRemotely();
     }
@@ -1378,6 +1489,9 @@ function getDisplayName(p: string): string {
 
     onMount(() => {
     if (typeof window === 'undefined') return;
+
+    // Charger le mode d'encodage depuis sessionStorage
+    loadEncodingMode();
 
     const url = new URL(window.location.href);
 
@@ -3664,20 +3778,20 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   <!-- Encadré central -->
   <div class="header">
     <div class="header-top">
+      <ModeToggle compact={true} mode={encodingMode} on:change={handleModeChange} />
       <h2>Table {tableName} — Manche {mancheNumber}</h2>
+      <div class="pause-floating" on:click={handlePauseClick}>
+        <svg viewBox="0 0 24 24">
+          <rect x="7" y="4" width="3" height="16" rx="1.5" />
+          <rect x="14" y="4" width="3" height="16" rx="1.5" />
+        </svg>
+      </div>
     </div>
 
     <div class="header-buttons">
       <button on:click={() => showAnnonceOrder = true}>Ordre des annonces</button>
-      <button on:click={() => showHistorique = true}>Historique des donnes</button>
+      <button on:click={() => { showHistorique = true; loadPenalites(); }}>Historique des donnes</button>
       <button on:click={() => showFeuillePoints = true}>Feuille de points</button>
-   <div class="pause-floating" on:click={handlePauseClick}>
-  <svg viewBox="0 0 24 24">
-    <rect x="7" y="4" width="3" height="16" rx="1.5" />
-    <rect x="14" y="4" width="3" height="16" rx="1.5" />
-  </svg>
-</div>
-
     </div>
 
 <table class="players-table">
@@ -3726,7 +3840,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 
   
   <!-- Logo droit (extérieur) -->
-  <img src="/logo_iwb.png" alt="Logo IWB" class="corner-logo corner-logo-right" />
+  <img src="/Logo_App_Rond.png" alt="Logo App" class="corner-logo corner-logo-right" />
 </div>
 
 
@@ -3808,7 +3922,8 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
                             <th>Résultat</th>
                             <th>Dames</th>
                             <th>Arbitre</th>
-                          <th>Carteur</th>
+                            <th>Carteur</th>
+                            <th>Pénalités</th>
                         </tr>
                     </thead>
                    <tbody>
@@ -3816,6 +3931,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
         {@const joueursAvecAnnonce = donne.joueurs.filter(j => j.annonce)}
         {@const isLastDonne = donneIdx === history.length - 1}
         {@const canEdit = isLastDonne && canEditPreviousDonne()}
+        {@const donnePenalites = getPenalitesForDonne(donne.donneNumber)}
         {#each joueursAvecAnnonce as j, idx}
             <tr 
                 class:history-row-editable={canEdit}
@@ -3851,6 +3967,23 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
                {#if idx === 0}
           <td rowspan={joueursAvecAnnonce.length || 1}>
             {getDealerAliasForDonne(donne.donneNumber, players)}
+          </td>
+          <td rowspan={joueursAvecAnnonce.length || 1} class="cell-penalites">
+            {#if donnePenalites.length > 0}
+              <div class="penalites-list">
+                {#each donnePenalites as pen}
+                  <span 
+                    class="penalite-chip" 
+                    style="background-color: {pen.jetonColor};"
+                    title="{pen.joueurAlias}: -{pen.valeur} pts ({pen.motif || 'Sans motif'}) - par {pen.arbitreAlias}"
+                  >
+                    {pen.joueurAlias.substring(0, 3)}: -{pen.valeur}
+                  </span>
+                {/each}
+              </div>
+            {:else}
+              <span class="no-penalite">—</span>
+            {/if}
           </td>
           {/if}
         </tr>
@@ -4192,7 +4325,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 </div>
 {/if}
 
-
+<!-- Mode d'encodage Classique (avec Light intégré dans choixAnnonce) -->
 <div class="donne" class:donne-edit-mode={isEditingPreviousDonne}>
 	{#if isEditingPreviousDonne}
 		<div class="edit-mode-banner">
@@ -4227,7 +4360,9 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 	{:else}
 		<h3>Donne n° {donneNumber} / {rows}</h3>
 	{/if}
-	<div class="choixAnnonce">
+	
+	<!-- Mode Classique: cartes par joueur -->
+	<div class="choixAnnonce" class:hidden={encodingMode === 'light'}>
 		{#each players as p}
 			<div class="player-row">
 				<div class="player-block">
@@ -4259,21 +4394,19 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   getTemplateForAnnonce(annonceByPlayer[p]) === 2
   || annonceByPlayer[p] === 'TR'
 )}
-  <div class="emballage">
-    <label>
-      <span class="emballage-label-text">Avec qui ?</span>
-      <select
-        id={"emballage-" + p}
-        bind:value={emballes[p]}
-        on:change={() => handleEmballageChange(p)}
-      >
-        <option value="">-- Choisir joueur --</option>
-        {#each players
-          .filter(x => x !== p && !inactivePlayersCurrentDonne.includes(x)) as other}
-          <option value={other}>{other}</option>
-        {/each}
-      </select>
-    </label>
+  <div class="emballage" id={"emballage-" + p} class:attention-pulse={!emballes[p]}>
+    <span class="emballage-label-text">Avec qui ?</span>
+    <div class="partner-buttons">
+      {#each players.filter(x => x !== p && !inactivePlayersCurrentDonne.includes(x)) as other}
+        <button
+          type="button"
+          class:selected={emballes[p] === other}
+          on:click={() => { emballes[p] = other; handleEmballageChange(p); }}
+        >
+          {other}
+        </button>
+      {/each}
+    </div>
   </div>
 {/if}
 
@@ -4285,6 +4418,20 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 		{/each}
 	</div>
 </div>
+
+<!-- Mode Light: sélection annonce puis joueur(s) - EN DEHORS de .donne pour avoir le même style que Encodage -->
+{#if encodingMode === 'light'}
+<div class="encodage">
+	<h3>Annonce</h3>
+	<LightModeEncoder
+		bind:this={lightEncoderRef}
+		{players}
+		inactivePlayers={inactivePlayersCurrentDonne}
+		{annonces}
+		on:update={handleLightEncode}
+	/>
+</div>
+{/if}
 
 <hr />
 
@@ -4495,6 +4642,11 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   --radius-lg: 18px;
 
   --shadow-soft: 0 10px 30px rgba(0, 0, 0, 0.45);
+  }
+
+  /* Classe utilitaire pour cacher des éléments */
+  .hidden {
+    display: none !important;
   }
 
   /* Fond simple, non répétitif */
@@ -4715,6 +4867,13 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   .emballage {
   width: 100%;
   margin-top: 0.3rem;
+  padding-bottom: 0.5rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  background: rgba(20, 35, 28, 0.6);
+  border-radius: 12px;
+  padding: 0.4rem 0.6rem 0.6rem;
   }
 
   .emballage label {
@@ -4725,6 +4884,50 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   .emballage select {
   width: 100%;
   margin-top: 0.2rem;
+  }
+
+  .partner-buttons {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 0.4rem;
+  margin-top: 0.3rem;
+  }
+
+  .partner-buttons button {
+  padding: 0.4rem 0.9rem;
+  font-size: 0.95rem;
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.7);
+  background: #07170e;
+  color: var(--text-main);
+  cursor: pointer;
+  transition: background 0.12s ease, transform 0.05s ease, border-color 0.12s ease;
+  }
+
+  .partner-buttons button:hover {
+  background: #0b2414;
+  }
+
+  .partner-buttons button.selected {
+  background: #d8a25a;
+  border-color: #e8b86a;
+  color: #1c1917;
+  font-weight: 600;
+  }
+
+  /* Effet d'attention pour attirer l'œil sur "Avec qui ?" */
+  .emballage.attention-pulse {
+  animation: attention-glow 1.5s ease-in-out infinite;
+  }
+
+  @keyframes attention-glow {
+  0%, 100% {
+    box-shadow: 0 0 0 0 rgba(216, 162, 90, 0);
+  }
+  50% {
+    box-shadow: 0 0 15px 5px rgba(216, 162, 90, 0.6);
+  }
   }
 
   /* --- ENCODAGE (gros bloc central) --- */
@@ -4973,6 +5176,36 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   background: #0b2814;
   }
 
+  /* Styles pour les pénalités dans l'historique */
+  .cell-penalites {
+    min-width: 80px;
+    vertical-align: middle;
+  }
+
+  .penalites-list {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    align-items: center;
+  }
+
+  .penalite-chip {
+    display: inline-block;
+    padding: 2px 6px;
+    border-radius: 4px;
+    font-size: 0.7rem;
+    font-weight: 600;
+    color: white;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.5);
+    white-space: nowrap;
+    cursor: help;
+  }
+
+  .no-penalite {
+    color: #6b7280;
+    font-size: 0.8rem;
+  }
+
   .feuille-points-modal {
   max-width: 900px;
   width: 95%;
@@ -5158,30 +5391,146 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   }
 
   /* RESPONSIVE */
-  /* RESPONSIVE MOBILE */
-
-  @media (max-width: 768px) {
-  /* Header + logos en colonne */
+  
+  /* RESPONSIVE PETITE TABLETTE (1151px - 1100px) : logos cachés, header réduit - DÉSACTIVÉ car mobile va jusqu'à 1150px */
+  @media (min-width: 1151px) and (max-width: 1100px) {
   .page-header-wrapper {
-  flex-direction: column;
-  align-items: center;
-  gap: 0.6rem;
-  margin: 0.4rem auto 0.8rem;
-  max-width: 100%;
-  }
-
-  /* Logos du haut plus petits */
-  .corner-logo {
-  height: 90px;
-  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
+    display: flex;
+    justify-content: center;
+    margin: 0.4rem auto 0.8rem;
   }
 
   .header {
-  flex: 1;
-  width: calc(100% - 1rem);
-  margin: 0;
+    width: auto;
+    max-width: calc(100vw - 2rem);
+    margin: 0;
+    flex: 0 0 auto;
+    padding: 0.7rem 1rem 0.9rem;
+  }
+
+  /* Cacher les logos sur petite tablette */
+  .corner-logo {
+    display: none !important;
+  }
+
+  /* Header-top plus compact */
+  .header-top {
+    gap: 0.6rem;
+  }
+
+  .header h2 {
+    font-size: 1.1rem;
+  }
+
+  /* Boutons plus petits */
+  .header-buttons {
+    gap: 0.5rem;
+  }
+
+  .header-buttons button {
+    font-size: 0.85rem;
+    padding: 0.4rem 0.9rem;
+  }
+
+  /* Tableau plus compact */
+  .players-table {
+    font-size: 0.9rem;
+  }
+
+  .players-table th,
+  .players-table td {
+    padding: 0.4rem 0.8rem;
+  }
+  }
+
+  /* RESPONSIVE GRANDE TABLETTE (1101px - 1424px) : logos visibles */
+  @media (min-width: 1101px) and (max-width: 1424px) {
+  /* Header centré */
+  .page-header-wrapper {
+    display: flex;
+    justify-content: center;
+    margin: 0.4rem auto 0.8rem;
+  }
+
+  /* Header prend sa taille naturelle */
+  .header {
+    width: auto;
+    margin: 0;
+    flex: 0 0 auto;
+  }
+
+  /* Logos en fixed, positionnés par rapport au centre de l'écran */
+  .corner-logo {
+    position: fixed !important;
+    top: 23.6% !important;
+    transform: translateY(-50%) !important;
+    height: 80px !important;
+    width: auto !important;
+    filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
+    z-index: 100;
+    align-self: auto !important;
+  }
+
+  /* Logo gauche : centré - moitié du header - marge */
+  .corner-logo-left {
+    left: calc(50% - 450px) !important;
+    right: auto !important;
+    margin: 0 !important;
+  }
+
+  /* Logo droit : centré + moitié du header + marge */
+  .corner-logo-right {
+    right: calc(50% - 450px) !important;
+    left: auto !important;
+    margin: 0 !important;
+  }
+  }
+
+  /* RESPONSIVE MOBILE */
+
+  @media (max-width: 1150px) {
+  /* Header centré */
+  .page-header-wrapper {
+  display: flex !important;
+  justify-content: center !important;
+  margin: 0.4rem auto 0.8rem !important;
+  }
+
+  /* Header prend sa taille naturelle */
+  .header {
+  width: auto !important;
+  max-width: calc(100vw - 1rem) !important;
+  margin: 0 !important;
+  flex: 0 0 auto !important;
   border-radius: 16px;
   padding: 0.7rem 0.9rem 1rem;
+  }
+
+  /* Logos en fixed, positionnés par rapport au centre de l'écran (comme tablette mais plus petits) */
+  .corner-logo {
+  display: block !important;
+  position: fixed !important;
+  top: 26.5% !important;
+  transform: translateY(-50%) !important;
+  height: 75px !important;
+  width: auto !important;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.6)) !important;
+  z-index: 100 !important;
+  align-self: auto !important;
+  }
+
+  /* Logo gauche */
+  .corner-logo-left {
+  left: 25px !important;
+  right: auto !important;
+  margin: 0 !important;
+  }
+
+  /* Logo droit */
+  .corner-logo-right {
+  right: 25px !important;
+  left: auto !important;
+  margin: 0 !important;
   }
 
   .header-top {
@@ -5230,12 +5579,23 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   flex-direction: column;
   align-items: stretch;
   margin: 0 0.6rem;
+  gap: 0.5rem;
   }
 
   .player-block {
   width: 100%;
   min-width: 0;
-  padding: 0.8rem 1rem;
+  padding: 0.5rem 0.8rem;
+  gap: 0.3rem;
+  }
+
+  .player-block strong {
+  font-size: 0.95rem;
+  }
+
+  .player-block select {
+  padding: 0.35rem 0.8rem;
+  font-size: 0.95rem;
   }
 
   /* Bloc encodage : pleine largeur et moins de padding */
@@ -5852,14 +6212,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   }
 
 
-  /* 🔥 Cacher uniquement le logo IWB sur mobile */
-  @media (max-width: 768px) {
-  img[src*="logo_iwb"],
-  .right-logo,
-  .corner-logo.right {
-  display: none !important;
-  }
-  }
+  /* Les deux logos sont maintenant visibles sur mobile */
 
   .copyright {
   position: fixed;
@@ -5902,6 +6255,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   align-items: center;
   justify-content: center;
   gap: 0.5rem;
+  width: 100%;
 
   margin: 0.35rem 0 0.2rem;
 
@@ -6253,9 +6607,9 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 
 
   .pause-floating {
-  position: fixed;
-  top: 10px;
-  right: 10px;
+  position: relative;
+  top: auto;
+  right: auto;
   background: #04140a; /* ton vert foncé */
   border: 1px solid #00995a;
   border-radius: 50%;
@@ -6267,6 +6621,8 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   justify-content: center;
   cursor: pointer;
   box-shadow: 0 0 6px rgba(0, 179, 107, 0.40);
+  flex-shrink: 0;
+  margin-right: 0.5rem;
   }
 
   .pause-floating svg {

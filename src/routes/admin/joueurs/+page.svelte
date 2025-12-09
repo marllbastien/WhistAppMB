@@ -14,6 +14,7 @@
     email: string | null;
     phone?: string | null;
     isWhisteux?: boolean;
+    noAffilie?: string | null;
     type: 'interne' | 'externe';
   }
 
@@ -26,6 +27,33 @@
   // Filtres
   let searchQuery = '';
   let filterWhisteux: 'all' | 'yes' | 'no' = 'all';
+  let filterNoAffilie = '';
+
+  // Tri
+  type SortColumn = 'id' | 'alias' | 'nom' | 'prenom' | 'email' | 'noAffilie' | 'isWhisteux' | 'phone';
+  let sortColumn: SortColumn = 'alias';
+  let sortDirection: 'asc' | 'desc' = 'asc';
+
+  function toggleSort(column: SortColumn) {
+    if (sortColumn === column) {
+      sortDirection = sortDirection === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortColumn = column;
+      sortDirection = 'asc';
+    }
+  }
+
+  // Réactif: recalculé à chaque changement de sortColumn ou sortDirection
+  $: sortIcons = {
+    id: sortColumn === 'id' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    alias: sortColumn === 'alias' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    nom: sortColumn === 'nom' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    prenom: sortColumn === 'prenom' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    email: sortColumn === 'email' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    noAffilie: sortColumn === 'noAffilie' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    isWhisteux: sortColumn === 'isWhisteux' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    phone: sortColumn === 'phone' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+  };
 
   // Édition
   let editingJoueur: Joueur | null = null;
@@ -50,6 +78,115 @@
   let creating = false;
   let createMessage = '';
 
+  // Conversion joueur externe → interne
+  let showConvertModal = false;
+  let convertingJoueur: Joueur | null = null;
+  let convertForm = {
+    noAffilie: '',
+    nom: '',
+    prenom: '',
+    alias: '',
+    email: '',
+    phone: '',
+    club: '',
+    dateDebut: ''
+  };
+  let converting = false;
+  let convertMessage = '';
+
+  async function openConvertModal(joueur: Joueur) {
+    convertingJoueur = joueur;
+    convertMessage = '';
+    converting = false;
+
+    // Charger les infos suggérées depuis l'API
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/joueurs/convert/${joueur.id}/info`);
+      if (res.ok) {
+        const data = await res.json();
+        convertForm = {
+          noAffilie: data.suggestedNoAffilie ?? '',
+          nom: data.joueur.nom ?? '',
+          prenom: data.joueur.prenom ?? '',
+          alias: data.joueur.alias ?? '',
+          email: data.joueur.email ?? '',
+          phone: data.joueur.phone ?? '',
+          club: 'Les Amis Réunis',
+          dateDebut: new Date().toISOString().split('T')[0] // Format YYYY-MM-DD
+        };
+      } else {
+        convertForm = {
+          noAffilie: '',
+          nom: joueur.nom ?? '',
+          prenom: joueur.prenom ?? '',
+          alias: joueur.alias ?? '',
+          email: joueur.email ?? '',
+          phone: joueur.phone ?? '',
+          club: 'Les Amis Réunis',
+          dateDebut: new Date().toISOString().split('T')[0]
+        };
+      }
+    } catch {
+      convertForm = {
+        noAffilie: '',
+        nom: joueur.nom ?? '',
+        prenom: joueur.prenom ?? '',
+        alias: joueur.alias ?? '',
+        email: joueur.email ?? '',
+        phone: joueur.phone ?? '',
+        club: 'Les Amis Réunis',
+        dateDebut: new Date().toISOString().split('T')[0]
+      };
+    }
+
+    showConvertModal = true;
+  }
+
+  function closeConvertModal() {
+    showConvertModal = false;
+    convertingJoueur = null;
+    convertMessage = '';
+  }
+
+  async function convertJoueur() {
+    if (!convertingJoueur) return;
+
+    converting = true;
+    convertMessage = '';
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/joueurs/convert/${convertingJoueur.id}`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          noAffilie: convertForm.noAffilie || null,
+          nom: convertForm.nom,
+          prenom: convertForm.prenom,
+          alias: convertForm.alias || null,
+          email: convertForm.email || null,
+          phone: convertForm.phone || null,
+          dateDebut: convertForm.dateDebut ? new Date(convertForm.dateDebut) : null
+        })
+      });
+
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err || 'Erreur lors de la conversion');
+      }
+
+      const result = await res.json();
+      convertMessage = `✅ ${result.message}`;
+      await loadJoueurs();
+      activeTab = 'internes'; // Basculer vers les internes
+      setTimeout(closeConvertModal, 2000);
+    } catch (err: any) {
+      console.error(err);
+      convertMessage = `❌ ${err.message || 'Erreur lors de la conversion'}`;
+    } finally {
+      converting = false;
+    }
+  }
+
   $: filteredJoueurs = (activeTab === 'internes' ? joueursInternes : joueursExternes)
     .filter((j) => {
       // Recherche texte
@@ -69,7 +206,56 @@
         if (filterWhisteux === 'no' && j.isWhisteux) return false;
       }
 
+      // Filtre N° Affilié (uniquement pour les internes)
+      if (activeTab === 'internes' && filterNoAffilie) {
+        const noAff = j.noAffilie?.toLowerCase() ?? '';
+        if (!noAff.includes(filterNoAffilie.toLowerCase())) return false;
+      }
+
       return true;
+    })
+    .sort((a, b) => {
+      let aVal: string | number | boolean = '';
+      let bVal: string | number | boolean = '';
+
+      switch (sortColumn) {
+        case 'id':
+          aVal = a.id;
+          bVal = b.id;
+          break;
+        case 'alias':
+          aVal = a.alias.toLowerCase();
+          bVal = b.alias.toLowerCase();
+          break;
+        case 'nom':
+          aVal = a.nom.toLowerCase();
+          bVal = b.nom.toLowerCase();
+          break;
+        case 'prenom':
+          aVal = a.prenom.toLowerCase();
+          bVal = b.prenom.toLowerCase();
+          break;
+        case 'email':
+          aVal = (a.email ?? '').toLowerCase();
+          bVal = (b.email ?? '').toLowerCase();
+          break;
+        case 'noAffilie':
+          aVal = (a.noAffilie ?? '').toLowerCase();
+          bVal = (b.noAffilie ?? '').toLowerCase();
+          break;
+        case 'isWhisteux':
+          aVal = a.isWhisteux ? 1 : 0;
+          bVal = b.isWhisteux ? 1 : 0;
+          break;
+        case 'phone':
+          aVal = (a.phone ?? '').toLowerCase();
+          bVal = (b.phone ?? '').toLowerCase();
+          break;
+      }
+
+      if (aVal < bVal) return sortDirection === 'asc' ? -1 : 1;
+      if (aVal > bVal) return sortDirection === 'asc' ? 1 : -1;
+      return 0;
     });
 
   onMount(() => {
@@ -279,6 +465,12 @@
       />
 
       {#if activeTab === 'internes'}
+        <input
+          type="text"
+          class="filter-input"
+          placeholder="N° Affilié..."
+          bind:value={filterNoAffilie}
+        />
         <select class="filter-select" bind:value={filterWhisteux}>
           <option value="all">Tous</option>
           <option value="yes">Whisteux uniquement</option>
@@ -301,57 +493,124 @@
     {:else if filteredJoueurs.length === 0}
       <p>Aucun joueur trouvé.</p>
     {:else}
-      <table class="joueurs-table">
-        <thead>
-          <tr>
-            <th>ID</th>
-            <th>Alias</th>
-            <th>Nom</th>
-            <th>Prénom</th>
-            <th>Email</th>
-            {#if activeTab === 'internes'}
-              <th>Whisteux</th>
-            {:else}
-              <th>Téléphone</th>
-            {/if}
-            <th>Actions</th>
-          </tr>
-        </thead>
-        <tbody>
-          {#each filteredJoueurs as joueur}
+      <!-- Vue desktop: tableau -->
+      <div class="desktop-view">
+        <table class="joueurs-table">
+          <thead>
             <tr>
-              <td>{joueur.id}</td>
-              <td class="alias-cell">{joueur.alias}</td>
-              <td>{joueur.nom}</td>
-              <td>{joueur.prenom}</td>
-              <td>{joueur.email ?? '-'}</td>
+              <th class="sortable" on:click={() => toggleSort('id')}>ID <span class="sort-icon">{sortIcons.id}</span></th>
+              <th class="sortable" on:click={() => toggleSort('alias')}>Alias <span class="sort-icon">{sortIcons.alias}</span></th>
+              <th class="sortable" on:click={() => toggleSort('nom')}>Nom <span class="sort-icon">{sortIcons.nom}</span></th>
+              <th class="sortable" on:click={() => toggleSort('prenom')}>Prénom <span class="sort-icon">{sortIcons.prenom}</span></th>
+              <th class="sortable" on:click={() => toggleSort('email')}>Email <span class="sort-icon">{sortIcons.email}</span></th>
               {#if activeTab === 'internes'}
-                <td class="center">
-                  {#if joueur.isWhisteux}
-                    <span class="badge-yes">✓</span>
-                  {:else}
-                    <span class="badge-no">✗</span>
+                <th class="sortable" on:click={() => toggleSort('noAffilie')}>N° Affilié <span class="sort-icon">{sortIcons.noAffilie}</span></th>
+                <th class="sortable" on:click={() => toggleSort('isWhisteux')}>Whisteux <span class="sort-icon">{sortIcons.isWhisteux}</span></th>
+              {:else}
+                <th class="sortable" on:click={() => toggleSort('phone')}>Téléphone <span class="sort-icon">{sortIcons.phone}</span></th>
+              {/if}
+              <th>Actions</th>
+            </tr>
+          </thead>
+          <tbody>
+            {#each filteredJoueurs as joueur}
+              <tr>
+                <td>{joueur.id}</td>
+                <td class="alias-cell">{joueur.alias}</td>
+                <td>{joueur.nom}</td>
+                <td>{joueur.prenom}</td>
+                <td>{joueur.email ?? '-'}</td>
+                {#if activeTab === 'internes'}
+                  <td>{joueur.noAffilie ?? '-'}</td>
+                  <td class="center">
+                    {#if joueur.isWhisteux}
+                      <span class="badge-yes">✓</span>
+                    {:else}
+                      <span class="badge-no">✗</span>
+                    {/if}
+                  </td>
+                {:else}
+                  <td>{joueur.phone ?? '-'}</td>
+                {/if}
+                <td class="actions-cell">
+                  <button class="btn-edit" on:click={() => openEdit(joueur)} title="Modifier">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                  </button>
+                  {#if activeTab === 'externes'}
+                    <button class="btn-convert" on:click={() => openConvertModal(joueur)} title="Convertir en joueur interne">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </button>
                   {/if}
                 </td>
-              {:else}
-                <td>{joueur.phone ?? '-'}</td>
-              {/if}
-              <td>
-                <button class="btn-edit" on:click={() => openEdit(joueur)}>
-                  Modifier
+              </tr>
+            {/each}
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Vue mobile: cartes -->
+      <div class="mobile-view">
+        <div class="mobile-cards">
+          {#each filteredJoueurs as joueur}
+            <div class="joueur-card">
+              <div class="card-header">
+                <span class="card-alias">{joueur.alias}</span>
+                <span class="card-id">#{joueur.id}</span>
+              </div>
+              <div class="card-body">
+                <div class="card-name">{joueur.prenom} {joueur.nom}</div>
+                {#if joueur.email}
+                  <div class="card-info">
+                    <span class="card-label">📧</span>
+                    <span class="card-value">{joueur.email}</span>
+                  </div>
+                {/if}
+                {#if activeTab === 'internes'}
+                  {#if joueur.noAffilie}
+                    <div class="card-info">
+                      <span class="card-label">N° Affilié:</span>
+                      <span class="card-value">{joueur.noAffilie}</span>
+                    </div>
+                  {/if}
+                  <div class="card-info">
+                    <span class="card-label">Whisteux:</span>
+                    {#if joueur.isWhisteux}
+                      <span class="badge-yes">✓ Oui</span>
+                    {:else}
+                      <span class="badge-no">✗ Non</span>
+                    {/if}
+                  </div>
+                {:else if joueur.phone}
+                  <div class="card-info">
+                    <span class="card-label">📱</span>
+                    <span class="card-value">{joueur.phone}</span>
+                  </div>
+                {/if}
+              </div>
+              <div class="card-actions">
+                <button class="btn-edit" on:click={() => openEdit(joueur)} title="Modifier">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                  <span>Modifier</span>
                 </button>
-              </td>
-            </tr>
+                {#if activeTab === 'externes'}
+                  <button class="btn-convert" on:click={() => openConvertModal(joueur)} title="Convertir en joueur interne">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    <span>Affilier</span>
+                  </button>
+                {/if}
+              </div>
+            </div>
           {/each}
-        </tbody>
-      </table>
+        </div>
+      </div>
     {/if}
   </div>
 
   <!-- Modal édition -->
   {#if editingJoueur}
     <div class="modal-backdrop" on:click={closeEdit} role="presentation">
-      <div class="modal" on:click|stopPropagation role="dialog">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
+      <div class="modal" on:click|stopPropagation role="dialog" tabindex="-1">
         <h2>Modifier le joueur</h2>
         <p class="modal-subtitle">{editingJoueur.alias}</p>
 
@@ -421,7 +680,8 @@
   <!-- Modal nouveau joueur -->
   {#if showNewForm}
     <div class="modal-backdrop" on:click={closeNewForm} role="presentation">
-      <div class="modal" on:click|stopPropagation role="dialog">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
+      <div class="modal" on:click|stopPropagation role="dialog" tabindex="-1">
         <h2>Nouveau joueur externe</h2>
 
         <div class="form-row">
@@ -458,6 +718,61 @@
       </div>
     </div>
   {/if}
+
+  <!-- Modal conversion joueur externe vers interne -->
+  {#if showConvertModal && convertingJoueur}
+    <div class="modal-backdrop" on:click={closeConvertModal} role="presentation">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
+      <div class="modal modal-convert" on:click|stopPropagation role="dialog" tabindex="-1">
+        <h2>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+          Affilier le joueur
+        </h2>
+        <p class="modal-subtitle">Convertir <strong>{convertingJoueur.alias}</strong> en joueur interne affilié</p>
+
+        <div class="convert-info">
+          <p>Ce joueur externe va devenir un membre affilié du club. Veuillez compléter les informations d'affiliation.</p>
+        </div>
+
+        <div class="form-row">
+          <div class="form-group">
+            <label for="convert-noAffilie">N° Affiliation *</label>
+            <input id="convert-noAffilie" type="text" bind:value={convertForm.noAffilie} placeholder="Ex: 12345" />
+            <span class="hint">Prochain n° suggéré: {convertForm.noAffilie}</span>
+          </div>
+          <div class="form-group">
+            <label for="convert-club">Club</label>
+            <input id="convert-club" type="text" bind:value={convertForm.club} placeholder="Ex: Les Amis Réunis" />
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="convert-dateDebut">Date début affiliation</label>
+          <input id="convert-dateDebut" type="date" bind:value={convertForm.dateDebut} />
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="convert-email">Email</label>
+            <input id="convert-email" type="email" bind:value={convertForm.email} placeholder="email@exemple.com" />
+          </div>
+          <div class="form-group">
+            <label for="convert-phone">Téléphone</label>
+            <input id="convert-phone" type="text" bind:value={convertForm.phone} placeholder="Ex: 0470 12 34 56" />
+          </div>
+        </div>
+
+        {#if convertMessage}
+          <p class={convertMessage.includes('✅') ? 'success' : 'error'}>{convertMessage}</p>
+        {/if}
+
+        <div class="modal-actions">
+          <button class="btn-cancel" on:click={closeConvertModal}>Annuler</button>
+          <button class="btn-convert-confirm" on:click={convertJoueur} disabled={converting}>
+            {converting ? 'Conversion...' : 'Affilier le joueur'}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
 </div>
 
 <footer class="copyright">
@@ -486,6 +801,8 @@
     margin: 2rem auto;
     padding: 1rem;
     color: #f9fafb;
+    box-sizing: border-box;
+    overflow-x: hidden;
   }
 
   h1 {
@@ -565,6 +882,15 @@
     color: #f9fafb;
   }
 
+  .filter-input {
+    width: 120px;
+    padding: 0.5rem 1rem;
+    border-radius: 999px;
+    border: 1px solid rgba(148, 163, 184, 0.6);
+    background: #020617;
+    color: #f9fafb;
+  }
+
   .filter-select {
     padding: 0.5rem 1rem;
     border-radius: 999px;
@@ -608,6 +934,22 @@
     font-size: 0.78rem;
   }
 
+  .joueurs-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+  }
+
+  .joueurs-table th.sortable:hover {
+    background: linear-gradient(to bottom, #166534, #14532d);
+  }
+
+  .sort-icon {
+    font-size: 0.7rem;
+    opacity: 0.7;
+    margin-left: 0.3rem;
+  }
+
   .joueurs-table tbody tr:nth-child(even) {
     background: #020b06;
   }
@@ -635,6 +977,9 @@
   }
 
   .btn-edit {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
     padding: 0.3rem 0.7rem;
     border-radius: 6px;
     border: 1px solid rgba(34, 197, 94, 0.5);
@@ -644,8 +989,39 @@
     font-size: 0.8rem;
   }
 
+  .btn-edit svg {
+    flex-shrink: 0;
+  }
+
   .btn-edit:hover {
     background: rgba(34, 197, 94, 0.1);
+  }
+
+  .actions-cell {
+    display: flex;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .btn-convert {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 6px;
+    border: 1px solid rgba(59, 130, 246, 0.5);
+    background: transparent;
+    color: #60a5fa;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+
+  .btn-convert:hover {
+    background: rgba(59, 130, 246, 0.1);
+  }
+
+  .btn-convert svg {
+    flex-shrink: 0;
   }
 
   /* Modal */
@@ -711,12 +1087,6 @@
     margin-right: 0.5rem;
   }
 
-  .info {
-    font-size: 0.85rem;
-    color: #6b7280;
-    margin: 0.5rem 0;
-  }
-
   .modal-actions {
     display: flex;
     justify-content: flex-end;
@@ -765,6 +1135,67 @@
     color: #22c55e;
   }
 
+  /* Modal conversion */
+  .modal-convert h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #60a5fa;
+  }
+
+  .modal-convert h2 svg {
+    flex-shrink: 0;
+  }
+
+  .convert-info {
+    background: rgba(59, 130, 246, 0.1);
+    border: 1px solid rgba(59, 130, 246, 0.3);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .convert-info p {
+    margin: 0;
+    color: #9ca3af;
+    font-size: 0.85rem;
+  }
+
+  .form-group input[type='date'] {
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid rgba(75, 85, 99, 0.8);
+    background: #020617;
+    color: #e5e7eb;
+  }
+
+  .hint {
+    font-size: 0.75rem;
+    color: #6b7280;
+  }
+
+  .btn-convert-confirm {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    border: none;
+    background: #3b82f6;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-convert-confirm:hover {
+    filter: brightness(1.1);
+  }
+
+  .btn-convert-confirm:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
   .copyright {
     position: fixed;
     bottom: 12px;
@@ -778,5 +1209,190 @@
     border-radius: 10px;
     backdrop-filter: blur(4px);
     z-index: 9999;
+  }
+
+  /* Responsive: desktop vs mobile */
+  .desktop-view {
+    display: block;
+  }
+
+  .mobile-view {
+    display: none;
+  }
+
+  @media (max-width: 700px) {
+    .desktop-view {
+      display: none;
+    }
+
+    .mobile-view {
+      display: block;
+    }
+
+    h1 {
+      font-size: 1.2rem;
+      flex-wrap: wrap;
+    }
+
+    .tabs-row {
+      flex-direction: column;
+    }
+
+    .tab-btn {
+      width: 100%;
+      text-align: center;
+    }
+
+    .filters-row {
+      flex-direction: column;
+    }
+
+    .search-input {
+      width: 100%;
+      min-width: unset;
+      box-sizing: border-box;
+    }
+
+    .filter-input {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .filter-select {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .btn-add {
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .admin-card {
+      padding: 1rem;
+      overflow-x: hidden;
+    }
+
+    /* Cartes joueurs - version compacte */
+    .mobile-cards {
+      display: flex;
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .joueur-card {
+      background: linear-gradient(135deg, #0f172a 0%, #020617 100%);
+      border: 1px solid rgba(34, 197, 94, 0.3);
+      border-radius: 10px;
+      padding: 0.5rem 0.65rem;
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+    }
+
+    .card-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      margin-bottom: 0.25rem;
+      padding-bottom: 0.25rem;
+      border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+    }
+
+    .card-alias {
+      font-size: 0.95rem;
+      font-weight: 700;
+      color: #22c55e;
+    }
+
+    .card-id {
+      font-size: 0.7rem;
+      color: #6b7280;
+      background: rgba(75, 85, 99, 0.3);
+      padding: 0.15rem 0.4rem;
+      border-radius: 5px;
+    }
+
+    .card-body {
+      display: flex;
+      flex-direction: column;
+      gap: 0.15rem;
+    }
+
+    .card-name {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: #e5e7eb;
+    }
+
+    .card-info {
+      display: flex;
+      align-items: center;
+      gap: 0.3rem;
+      font-size: 0.8rem;
+      color: #9ca3af;
+    }
+
+    .card-label {
+      font-size: 0.75rem;
+    }
+
+    .card-value {
+      color: #d1d5db;
+      word-break: break-all;
+      font-size: 0.8rem;
+    }
+
+    .card-actions {
+      margin-top: 0.4rem;
+      display: flex;
+      justify-content: flex-end;
+      gap: 0.5rem;
+    }
+
+    .card-actions .btn-edit,
+    .card-actions .btn-convert {
+      padding: 0.3rem 0.8rem;
+      font-size: 0.75rem;
+    }
+
+    /* Modal responsive */
+    .modal {
+      max-width: 95%;
+      padding: 1rem;
+    }
+
+    .form-row {
+      flex-direction: column;
+      gap: 0.5rem;
+    }
+
+    .modal-actions {
+      flex-wrap: wrap;
+      gap: 0.5rem;
+    }
+
+    .modal-actions button {
+      flex: 1;
+      min-width: 80px;
+    }
+  }
+
+  @media (max-width: 400px) {
+    .admin-page {
+      margin: 1rem auto;
+      padding: 0.5rem;
+    }
+
+    .admin-card {
+      padding: 0.75rem;
+      border-radius: 12px;
+    }
+
+    .joueur-card {
+      padding: 0.6rem;
+    }
+
+    .card-alias {
+      font-size: 1rem;
+    }
   }
 </style>
