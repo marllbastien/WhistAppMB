@@ -37,20 +37,23 @@
   // Modal
   let showModal = false;
   let editMode = false;
-  let currentAnnonce: Annonce = getEmptyAnnonce();
-
-  const annonceTypes: Record<string, string> = {
-    'STANDARD': 'Standard',
-    'SOLO': 'Solo',
-    'MISERE': 'Misère',
-    'ABONDANCE': 'Abondance',
-    'GRANDEMISERE': 'Grande Misère',
-    'PETITCHELEM': 'Petit Chelem',
-    'GRANDCHELEM': 'Grand Chelem'
+  let currentAnnonce: Annonce = {
+    code: '',
+    label: '',
+    templateResult: 0,
+    type: '',
+    modeJeu: '',
+    requirePartner: false,
+    requirePlis: true,
+    nbPlayers: 1,
+    requireArbitre: false,
+    isActive: true,
+    sortOrder: 0
   };
 
-  // Liste des types uniques pour le dropdown
-  $: uniqueTypes = [...new Set(annonces.map(a => a.type))].sort();
+  // Listes dynamiques extraites des données existantes
+  $: uniqueTypes = [...new Set(annonces.map(a => a.type))].filter(t => t).sort();
+  $: uniqueModeJeu = [...new Set(annonces.map(a => a.modeJeu))].filter(m => m).sort();
 
   // Annonces filtrées et triées
   $: filteredAnnonces = annonces
@@ -98,27 +101,7 @@
     sortAsc = true;
   }
 
-  const modeJeuOptions: Record<string, string> = {
-    'NORMAL': 'Normal',
-    'INVERSE': 'Inversé',
-    'SANSATOUT': 'Sans atout'
-  };
-
-  function getEmptyAnnonce(): Annonce {
-    return {
-      code: '',
-      label: '',
-      templateResult: 0,
-      type: 'STANDARD',
-      modeJeu: 'NORMAL',
-      requirePartner: false,
-      requirePlis: true,
-      nbPlayers: 1,
-      requireArbitre: false,
-      isActive: true,
-      sortOrder: 0
-    };
-  }
+  // Les modes de jeu sont chargés dynamiquement depuis les données
 
   async function loadAnnonces() {
     loading = true;
@@ -139,8 +122,19 @@
 
   function openCreate() {
     editMode = false;
-    currentAnnonce = getEmptyAnnonce();
-    currentAnnonce.sortOrder = annonces.length + 1;
+    currentAnnonce = {
+      code: '',
+      label: '',
+      templateResult: 0,
+      type: uniqueTypes[0] || '',
+      modeJeu: uniqueModeJeu[0] || '',
+      requirePartner: false,
+      requirePlis: true,
+      nbPlayers: 1,
+      requireArbitre: false,
+      isActive: true,
+      sortOrder: annonces.length > 0 ? Math.max(...annonces.map(a => a.sortOrder)) + 10 : 10
+    };
     showModal = true;
   }
 
@@ -341,7 +335,7 @@
         <select id="filterType" bind:value={filterType}>
           <option value="">Tous</option>
           {#each uniqueTypes as t}
-            <option value={t}>{annonceTypes[t] || t}</option>
+            <option value={t}>{t}</option>
           {/each}
         </select>
       </div>
@@ -438,7 +432,7 @@
               </td>
               <td><code class="code-badge">{annonce.code}</code></td>
               <td class="label-cell">{annonce.label}</td>
-              <td><span class="type-badge" data-type={annonce.type}>{annonceTypes[annonce.type] || annonce.type}</span></td>
+              <td><span class="type-badge" data-type={annonce.type}>{annonce.type}</span></td>
               <td class="center-cell">{annonce.nbPlayers}</td>
               <td class="center-cell">{annonce.requirePartner ? '✓' : '-'}</td>
               <td class="center-cell">{annonce.requirePlis ? '✓' : '-'}</td>
@@ -496,16 +490,16 @@
             <div class="form-group">
               <label for="type">Type</label>
               <select id="type" bind:value={currentAnnonce.type}>
-                {#each Object.entries(annonceTypes) as [value, label]}
-                  <option value={value}>{label}</option>
+                {#each uniqueTypes as t}
+                  <option value={t}>{t}</option>
                 {/each}
               </select>
             </div>
             <div class="form-group">
               <label for="modeJeu">Mode de jeu</label>
               <select id="modeJeu" bind:value={currentAnnonce.modeJeu}>
-                {#each Object.entries(modeJeuOptions) as [value, label]}
-                  <option value={value}>{label}</option>
+                {#each uniqueModeJeu as m}
+                  <option value={m}>{m}</option>
                 {/each}
               </select>
             </div>
@@ -975,12 +969,13 @@
   .modal-overlay {
     position: fixed;
     inset: 0;
-    background: rgba(0, 0, 0, 0.8);
+    background: rgba(0, 0, 0, 0.85);
     display: flex;
     align-items: center;
     justify-content: center;
     padding: 1rem;
     z-index: 100;
+    overflow: hidden;
   }
 
   .modal {
@@ -988,10 +983,25 @@
     border: 1px solid rgba(34, 197, 94, 0.3);
     border-radius: 16px;
     padding: 1.5rem;
-    max-width: 600px;
+    max-width: 550px;
     width: 100%;
-    max-height: 90vh;
+    max-height: 85vh;
     overflow-y: auto;
+    scrollbar-width: thin;
+    scrollbar-color: rgba(34, 197, 94, 0.4) transparent;
+  }
+
+  .modal::-webkit-scrollbar {
+    width: 6px;
+  }
+
+  .modal::-webkit-scrollbar-track {
+    background: transparent;
+  }
+
+  .modal::-webkit-scrollbar-thumb {
+    background: rgba(34, 197, 94, 0.4);
+    border-radius: 3px;
   }
 
   .modal h2 {
@@ -1000,14 +1010,19 @@
   }
 
   .form-group {
-    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .form-row + .form-group {
+    margin-bottom: 0.75rem;
   }
 
   .form-group label {
-    display: block;
     color: #94a3b8;
     font-size: 0.85rem;
     margin-bottom: 0.3rem;
+    white-space: nowrap;
   }
 
   .form-group input,
@@ -1018,6 +1033,7 @@
     border: 1px solid rgba(34, 197, 94, 0.3);
     padding: 0.6rem 0.8rem;
     border-radius: 8px;
+    box-sizing: border-box;
   }
 
   .form-group input:focus,
@@ -1035,13 +1051,17 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
+    margin-bottom: 0.75rem;
   }
 
   .checkboxes-row {
-    display: flex;
-    flex-wrap: wrap;
-    gap: 1rem;
+    display: grid;
+    grid-template-columns: repeat(2, 1fr);
+    gap: 0.75rem;
     margin: 1rem 0;
+    padding: 0.75rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
   }
 
   .checkbox-label {

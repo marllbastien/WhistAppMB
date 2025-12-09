@@ -1,4 +1,6 @@
 <script lang="ts">
+  import JetonPoker from '$lib/components/JetonPoker.svelte';
+  
   const currentYear = new Date().getFullYear();
 </script>
 
@@ -36,36 +38,11 @@
     <!-- Types de jetons -->
     <a href="/admin/config/jetons" class="config-card">
       <span class="card-icon jeton-icon">
-        <svg viewBox="0 0 100 100" xmlns="http://www.w3.org/2000/svg">
-          <!-- Forme principale du jeton -->
-          <ellipse cx="50" cy="50" rx="45" ry="45" fill="#dc2626" stroke="#991b1b" stroke-width="3"/>
-          <!-- Reflet lumineux -->
-          <ellipse cx="50" cy="40" rx="35" ry="25" fill="url(#shineRed)" opacity="0.4"/>
-          <!-- Cercle intérieur -->
-          <circle cx="50" cy="50" r="32" fill="none" stroke="#fecaca" stroke-width="2" opacity="0.6"/>
-          <!-- Motif de rayures du bord -->
-          <g stroke="#fecaca" stroke-width="4" opacity="0.8">
-            <line x1="50" y1="5" x2="50" y2="12"/>
-            <line x1="50" y1="88" x2="50" y2="95"/>
-            <line x1="5" y1="50" x2="12" y2="50"/>
-            <line x1="88" y1="50" x2="95" y2="50"/>
-            <line x1="18" y1="18" x2="23" y2="23"/>
-            <line x1="77" y1="77" x2="82" y2="82"/>
-            <line x1="82" y1="18" x2="77" y2="23"/>
-            <line x1="23" y1="77" x2="18" y2="82"/>
-          </g>
-          <!-- Dégradé pour le reflet -->
-          <defs>
-            <radialGradient id="shineRed" cx="50%" cy="30%" r="50%">
-              <stop offset="0%" stop-color="white"/>
-              <stop offset="100%" stop-color="white" stop-opacity="0"/>
-            </radialGradient>
-          </defs>
-        </svg>
+        <JetonPoker color="rouge" size={40} />
       </span>
       <div class="card-content">
         <h3>Types de jetons</h3>
-        <p>Gérer les types de pénalités (Jaune, Orange, Rouge...)</p>
+        <p>Gérer les types de pénalités (Rouge, Bleu...)</p>
       </div>
       <span class="arrow">→</span>
     </a>
@@ -81,7 +58,7 @@
         </svg>
       </span>
       <div class="card-content">
-        <h3>Grille de scoring</h3>
+        <h3>Grille de résultats</h3>
         <p>Gérer les valeurs de points par défaut</p>
       </div>
       <span class="arrow">→</span>

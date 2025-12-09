@@ -1086,7 +1086,7 @@ function getChangeClass(after: number, before: number) {
   <!-- Donnes de la manche -->
 <div class="card">
   <div class="card-header-row">
-    <h2>Donnes de la manche</h2>
+    <h2>Donnes de la table</h2>
 
     <!-- 🔥 Nouveau bouton d’ajout -->
     <button type="button" on:click={startAddDonne}>

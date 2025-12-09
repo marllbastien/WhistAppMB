@@ -17,8 +17,8 @@
   const adminMenuItems = [
     {
       id: 'manches',
-      title: 'Gestion des manches',
-      description: 'Consulter, modifier et supprimer les manches de jeu',
+      title: 'Gestion des tables',
+      description: 'Consulter, modifier et supprimer les tables de jeu',
       icon: '♤',
       action: () => { viewMode = 'manches'; }
     },
@@ -649,7 +649,7 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
     <!-- Vue Gestion des manches -->
     <div class="admin-card">
       <div class="list-header">
-        <h2>Liste des manches</h2>
+        <h2>Liste des tables</h2>
         <div class="header-actions">
           {#if !isLoading && !loadError && manches.length > 0}
             <span class="result-count">{filteredSortedManches.length} / {manches.length} manches</span>

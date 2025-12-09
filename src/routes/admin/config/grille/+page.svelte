@@ -22,42 +22,58 @@
   let successMessage = '';
 
   // Filters
-  let filterKind: string | '' = '';
-  let filterNbJoueurs: number | '' = '';
+  let filterKind: string = '';
+  let filterNbJoueurs: string = '';
+  let filterEtat: string = '';
+  let filterCode: string = '';
+  let filterAnnonce: string = '';
+
+  // Sorting
+  type SortKey = 'code' | 'annonceLabel' | 'kind' | 'nbJoueursDedans' | 'plisFaits' | 'etat' | 'resultatInd' | 'resultatJeu';
+  let sortKey: SortKey | '' = '';
+  let sortAsc = true;
+
+  // Dynamic filter options derived from data
+  $: kindValues = [...new Set(grille.map(e => e.kind))].filter(Boolean).sort();
+  $: etatValues = [...new Set(grille.map(e => e.etat).filter((e): e is string => e !== null))].sort();
+  $: nbJoueursValues = [...new Set(grille.map(e => e.nbJoueursDedans))].sort((a, b) => a - b);
+
+  // Labels for display
+  const kindLabels: Record<string, string> = {
+    'plis': 'Par plis',
+    'etat': 'Par état'
+  };
+
+  const etatLabels: Record<string, string> = {
+    'Réussi': 'Réussi',
+    'Raté': 'Raté',
+    'RéussiRaté': 'Réussi/Raté',
+    'Capot': 'Capot'
+  };
 
   // Modal
   let showModal = false;
   let editMode = false;
   let currentEntry: Partial<GrilleResultat> & { code: string; kind: string; nbJoueursDedans: number; resultatInd: number; resultatJeu: number } = getEmptyEntry();
 
-  const kindOptions: Record<string, string> = {
-    'SOLO': 'Preneur seul',
-    'DUO': 'Preneur + 1 partenaire',
-    'TRIO': 'Preneur + 2 partenaires'
-  };
-
-  const etatOptions: Record<string, string> = {
-    'REUSSI': 'Réussi',
-    'ECHOUE': 'Échoué'
-  };
-
   function getEmptyEntry() {
     return {
       id: 0,
       code: '',
       annonceLabel: '',
-      kind: 'SOLO',
+      kind: 'plis',
       nbJoueursDedans: 1,
       plisFaits: 0,
-      etat: 'REUSSI',
+      etat: 'Réussi',
       resultatInd: 0,
       resultatJeu: 0
     };
   }
 
   function generateCode(entry: typeof currentEntry): string {
-    const etatStr = entry.etat === 'REUSSI' ? 'R' : 'E';
-    return `K${entry.kind}_J${entry.nbJoueursDedans}_P${entry.plisFaits}_${etatStr}`;
+    const kindPrefix = entry.kind === 'plis' ? 'P' : 'E';
+    const etatSuffix = entry.etat ? entry.etat.charAt(0).toUpperCase() : '';
+    return `${kindPrefix}${entry.nbJoueursDedans}_${entry.plisFaits ?? 0}${etatSuffix}`;
   }
 
   async function loadGrille() {
@@ -141,11 +157,44 @@
     }
   }
 
-  $: filteredGrille = grille.filter(entry => {
-    if (filterKind !== '' && entry.kind !== filterKind) return false;
-    if (filterNbJoueurs !== '' && entry.nbJoueursDedans !== filterNbJoueurs) return false;
-    return true;
-  });
+  // Sorting function
+  function toggleSort(key: SortKey) {
+    if (sortKey === key) {
+      sortAsc = !sortAsc;
+    } else {
+      sortKey = key;
+      sortAsc = true;
+    }
+  }
+
+  function getSortIcon(key: SortKey): string {
+    if (sortKey !== key) return '↕';
+    return sortAsc ? '↑' : '↓';
+  }
+
+  $: filteredGrille = grille
+    .filter(entry => {
+      if (filterKind !== '' && entry.kind !== filterKind) return false;
+      if (filterNbJoueurs !== '' && entry.nbJoueursDedans !== parseInt(filterNbJoueurs)) return false;
+      if (filterEtat !== '' && entry.etat !== filterEtat) return false;
+      if (filterCode !== '' && !entry.code.toLowerCase().includes(filterCode.toLowerCase())) return false;
+      if (filterAnnonce !== '' && !entry.annonceLabel.toLowerCase().includes(filterAnnonce.toLowerCase())) return false;
+      return true;
+    })
+    .sort((a, b) => {
+      if (!sortKey) return 0;
+      const aVal = a[sortKey];
+      const bVal = b[sortKey];
+      if (aVal === null || aVal === undefined) return 1;
+      if (bVal === null || bVal === undefined) return -1;
+      let cmp = 0;
+      if (typeof aVal === 'number' && typeof bVal === 'number') {
+        cmp = aVal - bVal;
+      } else {
+        cmp = String(aVal).localeCompare(String(bVal));
+      }
+      return sortAsc ? cmp : -cmp;
+    });
 
   onMount(loadGrille);
 </script>
@@ -157,7 +206,16 @@
 <div class="admin-container">
   <header class="admin-header">
     <a href="/admin/config" class="back-btn">← Retour</a>
-    <h1>📊 Grille de résultats</h1>
+    <h1>
+      <svg class="title-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+        <rect x="3" y="3" width="18" height="18" rx="2"/>
+        <path d="M3 9h18"/>
+        <path d="M3 15h18"/>
+        <path d="M9 3v18"/>
+        <path d="M15 3v18"/>
+      </svg>
+      Grille de résultats
+    </h1>
   </header>
 
   {#if error}
@@ -170,24 +228,41 @@
 
   <div class="actions-bar">
     <div class="filters">
+      <input 
+        type="text" 
+        placeholder="Rechercher code..." 
+        bind:value={filterCode}
+        class="filter-input"
+      />
+      <input 
+        type="text" 
+        placeholder="Rechercher annonce..." 
+        bind:value={filterAnnonce}
+        class="filter-input"
+      />
       <select bind:value={filterKind}>
         <option value="">Tous les types</option>
-        {#each Object.entries(kindOptions) as [val, lbl]}
-          <option value={val}>{lbl}</option>
+        {#each kindValues as val}
+          <option value={val}>{kindLabels[val] || val}</option>
         {/each}
       </select>
       <select bind:value={filterNbJoueurs}>
         <option value="">Tous nb joueurs</option>
-        <option value={1}>1 joueur</option>
-        <option value={2}>2 joueurs</option>
-        <option value={3}>3 joueurs</option>
-        <option value={4}>4 joueurs</option>
+        {#each nbJoueursValues as val}
+          <option value={val}>{val} joueur{val > 1 ? 's' : ''}</option>
+        {/each}
+      </select>
+      <select bind:value={filterEtat}>
+        <option value="">Tous états</option>
+        {#each etatValues as val}
+          <option value={val}>{etatLabels[val] || val}</option>
+        {/each}
       </select>
     </div>
     <button class="btn-create" on:click={openCreate}>+ Nouvelle entrée</button>
   </div>
 
-  <p class="hint">Barème de points selon le nombre de plis faits et l'état (réussi/échoué).</p>
+  <p class="hint">Barème de points selon le nombre de plis faits et l'état (réussi/raté). Cliquez sur les en-têtes pour trier.</p>
 
   {#if loading}
     <div class="loading">Chargement...</div>
@@ -198,33 +273,65 @@
       <table class="grille-table">
         <thead>
           <tr>
-            <th>Code</th>
-            <th>Type</th>
-            <th>Joueurs dedans</th>
-            <th>Plis faits</th>
-            <th>État</th>
-            <th class="points-col">Points Ind.</th>
-            <th class="points-col">Points Jeu</th>
+            <th class="sortable" on:click={() => toggleSort('code')}>
+              Code <span class="sort-icon">{getSortIcon('code')}</span>
+            </th>
+            <th class="sortable" on:click={() => toggleSort('annonceLabel')}>
+              Annonce <span class="sort-icon">{getSortIcon('annonceLabel')}</span>
+            </th>
+            <th class="sortable" on:click={() => toggleSort('kind')}>
+              Type <span class="sort-icon">{getSortIcon('kind')}</span>
+            </th>
+            <th class="sortable" on:click={() => toggleSort('nbJoueursDedans')}>
+              Joueurs <span class="sort-icon">{getSortIcon('nbJoueursDedans')}</span>
+            </th>
+            <th class="sortable" on:click={() => toggleSort('plisFaits')}>
+              Plis <span class="sort-icon">{getSortIcon('plisFaits')}</span>
+            </th>
+            <th class="sortable" on:click={() => toggleSort('etat')}>
+              État <span class="sort-icon">{getSortIcon('etat')}</span>
+            </th>
+            <th class="points-col sortable" on:click={() => toggleSort('resultatInd')}>
+              Pts Ind. <span class="sort-icon">{getSortIcon('resultatInd')}</span>
+            </th>
+            <th class="points-col sortable" on:click={() => toggleSort('resultatJeu')}>
+              Pts Jeu <span class="sort-icon">{getSortIcon('resultatJeu')}</span>
+            </th>
             <th>Actions</th>
           </tr>
         </thead>
         <tbody>
           {#each filteredGrille as entry}
-            <tr class:success={entry.etat === 'REUSSI'} class:failure={entry.etat === 'ECHOUE'}>
+            <tr class:success={entry.etat === 'Réussi' || entry.etat === 'RéussiRaté'} class:failure={entry.etat === 'Raté' || entry.etat === 'Capot'}>
               <td><code>{entry.code}</code></td>
-              <td class="type-cell">{kindOptions[entry.kind] || entry.kind}</td>
+              <td class="type-cell">{entry.annonceLabel || '-'}</td>
+              <td>{kindLabels[entry.kind] || entry.kind}</td>
               <td>{entry.nbJoueursDedans}</td>
               <td class="plis-cell">{entry.plisFaits ?? '-'}</td>
               <td>
-                <span class="etat-badge" class:reussi={entry.etat === 'REUSSI'} class:echoue={entry.etat === 'ECHOUE'}>
-                  {entry.etat === 'REUSSI' ? '✓ Réussi' : entry.etat === 'ECHOUE' ? '✗ Échoué' : '-'}
+                <span class="etat-badge" 
+                      class:reussi={entry.etat === 'Réussi'} 
+                      class:echoue={entry.etat === 'Raté'}
+                      class:mixte={entry.etat === 'RéussiRaté'}
+                      class:capot={entry.etat === 'Capot'}>
+                  {etatLabels[entry.etat ?? ''] || entry.etat || '-'}
                 </span>
               </td>
               <td class="points-cell">{entry.resultatInd > 0 ? '+' : ''}{entry.resultatInd}</td>
               <td class="points-cell">{entry.resultatJeu > 0 ? '+' : ''}{entry.resultatJeu}</td>
               <td class="actions-cell">
-                <button class="btn-icon" on:click={() => openEdit(entry)} title="Modifier">✏️</button>
-                <button class="btn-icon delete" on:click={() => deleteEntry(entry.id)} title="Supprimer">🗑️</button>
+                <button class="btn-icon edit" on:click={() => openEdit(entry)} title="Modifier">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                    <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+                  </svg>
+                </button>
+                <button class="btn-icon delete" on:click={() => deleteEntry(entry.id)} title="Supprimer">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                    <polyline points="3 6 5 6 21 6"/>
+                    <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+                  </svg>
+                </button>
               </td>
             </tr>
           {/each}
@@ -236,8 +343,10 @@
 
   <!-- Modal -->
   {#if showModal}
-    <div class="modal-overlay" on:click={() => showModal = false} on:keydown={(e) => e.key === 'Escape' && (showModal = false)} role="button" tabindex="0">
-      <div class="modal" on:click|stopPropagation role="dialog" aria-modal="true">
+    <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_noninteractive_element_interactions -->
+    <div class="modal-overlay" on:click={() => showModal = false} role="presentation">
+      <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+      <div class="modal" on:click|stopPropagation>
         <h2>{editMode ? 'Modifier l\'entrée' : 'Nouvelle entrée'}</h2>
         <form on:submit|preventDefault={saveEntry}>
           {#if editMode}
@@ -246,19 +355,26 @@
               <input id="code" type="text" value={currentEntry.code} disabled />
             </div>
           {/if}
+
+          <div class="form-group">
+            <label for="annonceLabel">Libellé de l'annonce</label>
+            <input id="annonceLabel" type="text" bind:value={currentEntry.annonceLabel} placeholder="Ex: Emballage 9 plis" />
+          </div>
           
           <div class="form-row">
             <div class="form-group">
               <label for="kind">Type de contrat</label>
               <select id="kind" bind:value={currentEntry.kind}>
-                {#each Object.entries(kindOptions) as [val, lbl]}
-                  <option value={val}>{lbl}</option>
-                {/each}
+                <option value="plis">Par plis</option>
+                <option value="etat">Par état</option>
               </select>
             </div>
             <div class="form-group">
               <label for="nbJoueurs">Nb joueurs dedans</label>
-              <input id="nbJoueurs" type="number" bind:value={currentEntry.nbJoueursDedans} min="1" max="4" />
+              <select id="nbJoueurs" bind:value={currentEntry.nbJoueursDedans}>
+                <option value={1}>1 joueur</option>
+                <option value={2}>2 joueurs</option>
+              </select>
             </div>
           </div>
 
@@ -270,9 +386,11 @@
             <div class="form-group">
               <label for="etat">État</label>
               <select id="etat" bind:value={currentEntry.etat}>
-                {#each Object.entries(etatOptions) as [val, lbl]}
-                  <option value={val}>{lbl}</option>
-                {/each}
+                <option value="">- Aucun -</option>
+                <option value="Réussi">Réussi</option>
+                <option value="Raté">Raté</option>
+                <option value="RéussiRaté">Réussi/Raté</option>
+                <option value="Capot">Capot</option>
               </select>
             </div>
           </div>
@@ -346,6 +464,15 @@
     font-size: 1.5rem;
     color: #22c55e;
     margin: 0;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .title-icon {
+    width: 28px;
+    height: 28px;
+    stroke: #22c55e;
   }
 
   .error-message {
@@ -378,14 +505,25 @@
   .filters {
     display: flex;
     gap: 0.5rem;
+    flex-wrap: wrap;
   }
 
-  .filters select {
+  .filters select,
+  .filter-input {
     background: #0f172a;
     color: #e2e8f0;
     border: 1px solid rgba(34, 197, 94, 0.3);
     padding: 0.5rem;
     border-radius: 8px;
+    font-size: 0.85rem;
+  }
+
+  .filter-input {
+    width: 140px;
+  }
+
+  .filter-input::placeholder {
+    color: #64748b;
   }
 
   .hint {
@@ -432,6 +570,22 @@
     color: #22c55e;
     font-weight: 500;
     font-size: 0.75rem;
+  }
+
+  .grille-table th.sortable {
+    cursor: pointer;
+    user-select: none;
+    transition: background 0.2s;
+  }
+
+  .grille-table th.sortable:hover {
+    background: rgba(34, 197, 94, 0.2);
+  }
+
+  .sort-icon {
+    opacity: 0.5;
+    font-size: 0.7rem;
+    margin-left: 0.25rem;
   }
 
   .grille-table tbody tr:hover {
@@ -493,6 +647,16 @@
     color: #fca5a5;
   }
 
+  .etat-badge.mixte {
+    background: rgba(251, 191, 36, 0.2);
+    color: #fbbf24;
+  }
+
+  .etat-badge.capot {
+    background: rgba(139, 92, 246, 0.2);
+    color: #a78bfa;
+  }
+
   .points-col {
     min-width: 80px;
   }
@@ -524,14 +688,35 @@
     background: transparent;
     border: none;
     cursor: pointer;
-    font-size: 0.9rem;
-    padding: 0.25rem;
+    padding: 0.35rem;
     opacity: 0.7;
-    transition: opacity 0.2s;
+    transition: opacity 0.2s, color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .btn-icon:hover {
+  .btn-icon svg {
+    width: 16px;
+    height: 16px;
+  }
+
+  .btn-icon.edit {
+    color: #60a5fa;
+  }
+
+  .btn-icon.edit:hover {
     opacity: 1;
+    color: #93c5fd;
+  }
+
+  .btn-icon.delete {
+    color: #f87171;
+  }
+
+  .btn-icon.delete:hover {
+    opacity: 1;
+    color: #fca5a5;
   }
 
   .table-info {
@@ -578,14 +763,19 @@
   }
 
   .form-group {
-    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .form-row + .form-group {
+    margin-bottom: 0.75rem;
   }
 
   .form-group label {
-    display: block;
     color: #94a3b8;
     font-size: 0.85rem;
     margin-bottom: 0.3rem;
+    white-space: nowrap;
   }
 
   .form-group input,
@@ -596,6 +786,7 @@
     border: 1px solid rgba(34, 197, 94, 0.3);
     padding: 0.6rem 0.8rem;
     border-radius: 8px;
+    box-sizing: border-box;
   }
 
   .form-group input:focus,
@@ -613,6 +804,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
+    margin-bottom: 0.75rem;
   }
 
   .points-section {

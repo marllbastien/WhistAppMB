@@ -1,5 +1,6 @@
 <script lang="ts">
   import { onMount } from 'svelte';
+  import JetonPoker from '$lib/components/JetonPoker.svelte';
 
   const API_BASE_URL = import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
   const currentYear = new Date().getFullYear();
@@ -17,6 +18,14 @@
   let loading = true;
   let error = '';
   let successMessage = '';
+
+  // Fonction pour mapper la couleur hex vers le type JetonPoker
+  function getJetonColor(code: string): 'rouge' | 'bleu' | 'noir' {
+    const lowerCode = code.toLowerCase();
+    if (lowerCode.includes('bleu') || lowerCode === 'b') return 'bleu';
+    if (lowerCode.includes('noir') || lowerCode === 'n') return 'noir';
+    return 'rouge'; // Par défaut rouge
+  }
 
   // Modal
   let showModal = false;
@@ -122,7 +131,7 @@
 <div class="admin-container">
   <header class="admin-header">
     <a href="/admin/config" class="back-btn">← Retour</a>
-    <h1>🎰 Types de jetons</h1>
+    <h1><JetonPoker color="rouge" size={28} /> Types de jetons</h1>
   </header>
 
   {#if error}
@@ -146,8 +155,8 @@
     <div class="jetons-list">
       {#each jetons as jeton}
         <div class="jeton-card" class:inactive={!jeton.isActive}>
-          <div class="jeton-visual" style="background-color: {jeton.color}">
-            <span>{jeton.code.charAt(0)}</span>
+          <div class="jeton-visual">
+            <JetonPoker color={getJetonColor(jeton.code)} size={48} />
           </div>
           <div class="jeton-info">
             <h3>{jeton.label}</h3>
@@ -161,8 +170,18 @@
             </div>
           </div>
           <div class="jeton-actions">
-            <button class="btn-edit" on:click={() => openEdit(jeton)}>✏️</button>
-            <button class="btn-delete" on:click={() => deleteJeton(jeton.code)}>🗑️</button>
+            <button class="btn-icon edit" on:click={() => openEdit(jeton)} title="Modifier">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/>
+                <path d="M18.5 2.5a2.121 2.121 0 0 1 3 3L12 15l-4 1 1-4 9.5-9.5z"/>
+              </svg>
+            </button>
+            <button class="btn-icon delete" on:click={() => deleteJeton(jeton.code)} title="Supprimer">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+                <polyline points="3 6 5 6 21 6"/>
+                <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/>
+              </svg>
+            </button>
           </div>
         </div>
       {/each}
@@ -339,15 +358,10 @@
   .jeton-visual {
     width: 60px;
     height: 60px;
-    border-radius: 50%;
     display: flex;
     align-items: center;
     justify-content: center;
-    font-size: 1.5rem;
-    font-weight: bold;
-    color: white;
-    text-shadow: 0 1px 2px rgba(0,0,0,0.5);
-    box-shadow: inset 0 -3px 6px rgba(0,0,0,0.3), 0 2px 4px rgba(0,0,0,0.3);
+    flex-shrink: 0;
   }
 
   .jeton-info {
@@ -398,25 +412,39 @@
     gap: 0.5rem;
   }
 
-  .btn-edit, .btn-delete {
+  .btn-icon {
     background: transparent;
-    border: 1px solid rgba(34, 197, 94, 0.3);
-    padding: 0.5rem;
-    border-radius: 8px;
+    border: none;
     cursor: pointer;
-    font-size: 1rem;
+    padding: 0.35rem;
+    opacity: 0.7;
+    transition: opacity 0.2s, color 0.2s;
+    display: flex;
+    align-items: center;
+    justify-content: center;
   }
 
-  .btn-edit:hover {
-    background: rgba(34, 197, 94, 0.1);
+  .btn-icon svg {
+    width: 18px;
+    height: 18px;
   }
 
-  .btn-delete {
-    border-color: rgba(239, 68, 68, 0.3);
+  .btn-icon.edit {
+    color: #60a5fa;
   }
 
-  .btn-delete:hover {
-    background: rgba(239, 68, 68, 0.1);
+  .btn-icon.edit:hover {
+    opacity: 1;
+    color: #93c5fd;
+  }
+
+  .btn-icon.delete {
+    color: #f87171;
+  }
+
+  .btn-icon.delete:hover {
+    opacity: 1;
+    color: #fca5a5;
   }
 
   /* Modal */
@@ -446,14 +474,19 @@
   }
 
   .form-group {
-    margin-bottom: 1rem;
+    display: flex;
+    flex-direction: column;
+  }
+
+  .form-row + .form-group {
+    margin-bottom: 0.75rem;
   }
 
   .form-group label {
-    display: block;
     color: #94a3b8;
     font-size: 0.85rem;
     margin-bottom: 0.3rem;
+    white-space: nowrap;
   }
 
   .form-group input[type="text"],
@@ -464,6 +497,7 @@
     border: 1px solid rgba(34, 197, 94, 0.3);
     padding: 0.6rem 0.8rem;
     border-radius: 8px;
+    box-sizing: border-box;
   }
 
   .form-group input:focus {
@@ -480,6 +514,7 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
+    margin-bottom: 0.75rem;
   }
 
   .color-input-group {
