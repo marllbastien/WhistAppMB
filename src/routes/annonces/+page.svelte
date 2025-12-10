@@ -4,6 +4,7 @@
   import autoTable from 'jspdf-autotable';
   import ModeToggle from '$lib/components/ModeToggle.svelte';
   import LightModeEncoder from '$lib/components/LightModeEncoder.svelte';
+  import JetonPoker from '$lib/components/JetonPoker.svelte';
 
   // Référence au composant LightModeEncoder
   let lightEncoderRef: LightModeEncoder;
@@ -337,23 +338,26 @@ async function checkAndSyncWithServer(): Promise<{ synced: boolean; resynced: bo
 
     console.log('[SYNC] Résultat du check:', data);
 
-    if (data.isSynced) {
-      // Tout est synchronisé 👍
-      return { synced: true, resynced: false };
+    // TOUJOURS appliquer les scores du serveur si disponibles (pour les pénalités)
+    // Même si les données de donne sont synchronisées, les scores peuvent avoir changé
+    if (data.correctedHistory && data.correctedHistory.length > 0) {
+      applyCorrectedHistory(data.correctedHistory);
+
+      if (!data.isSynced) {
+        // Désynchronisation détectée dans les données de donne
+        console.warn('[SYNC] Désynchronisation détectée:', data.message);
+        saveDraftLocallyAndRemotely();
+        console.log('[SYNC] Historique resynchronisé avec le serveur');
+        return { synced: false, resynced: true };
+      } else {
+        // Données synchronisées mais scores mis à jour (pénalités)
+        console.log('[SYNC] Scores du serveur appliqués');
+        return { synced: true, resynced: false };
+      }
     }
 
-    // ⚠️ Désynchronisation détectée !
-    console.warn('[SYNC] Désynchronisation détectée:', data.message);
-
-    if (data.correctedHistory && data.correctedHistory.length > 0) {
-      // Appliquer l'historique corrigé du serveur
-      applyCorrectedHistory(data.correctedHistory);
-      
-      // Sauvegarder le draft mis à jour
-      saveDraftLocallyAndRemotely();
-
-      console.log('[SYNC] Historique resynchronisé avec le serveur');
-      return { synced: false, resynced: true };
+    if (data.isSynced) {
+      return { synced: true, resynced: false };
     }
 
     return { synced: false, resynced: false };
@@ -381,7 +385,10 @@ function applyCorrectedHistory(corrected: SyncDonneServer[]) {
       plis: j.plis,
       resultat: j.resultat,
       dames: j.dames,
-      arbitre: j.arbitre ?? false
+      arbitre: j.arbitre ?? false,
+      // Stocker les scores du serveur (inclut les pénalités déjà déduites)
+      serverScore: j.score,
+      serverCumul: j.cumul
     }))
   }));
 
@@ -800,6 +807,9 @@ $: annoncesParJoueur = (() => {
     resultat: string | null;
     dames: number | null;
     arbitre: boolean;
+    // Scores fournis par le serveur (inclut les pénalités déjà déduites)
+    serverScore?: number;
+    serverCumul?: number;
 };
 
 type DonneHistorique = {
@@ -824,6 +834,20 @@ type PenaliteInfo = {
 
 let penalites: PenaliteInfo[] = [];
 let penalitesLoading = false;
+
+// Fonction pour obtenir les pénalités d'un joueur sur une donne donnée
+function getPenalitesForPlayerOnDonne(playerName: string, donneNumber: number): PenaliteInfo[] {
+    return penalites.filter(p => p.joueurAlias === playerName && p.donneNumber === donneNumber);
+}
+
+// Convertir le code jeton en couleur pour JetonPoker (BLEU -> bleu, etc.)
+function jetonCodeToColor(code: string): 'rouge' | 'bleu' | 'noir' {
+    const lower = code.toLowerCase();
+    if (lower === 'rouge') return 'rouge';
+    if (lower === 'bleu') return 'bleu';
+    if (lower === 'noir') return 'noir';
+    return 'rouge'; // fallback
+}
 
 // Fonction pour charger les pénalités de la table
 async function loadPenalites() {
@@ -1540,6 +1564,13 @@ function getDisplayName(p: string): string {
     // --- nombre de donnes max ---
     rows = playerCount === 4 ? 16 : playerCount === 5 ? 20 : 24;
 
+    // 🔒 Sauvegarder les valeurs URL critiques AVANT le chargement du draft
+    // L'URL est la source de vérité pour les joueurs (important pour "Reprendre l'encodage")
+    const urlPlayers = [...players];
+    const urlPlayerIds = [...playerIds];
+    const urlPlayerCount = playerCount;
+    const urlRows = rows;
+
     // --- SessionId : identifiant unique côté navigateur ---
     let storedId = localStorage.getItem('whistSessionId');
     if (!storedId) {
@@ -1552,6 +1583,15 @@ function getDisplayName(p: string): string {
 
     // --- tenter de restaurer un brouillon pour cette donne ---
     loadDraft();
+
+    // 🔒 Restaurer les valeurs URL critiques APRÈS le chargement du draft
+    // Le draft peut avoir des données obsolètes (ex: mauvais nombre de joueurs)
+    if (playersParam) {
+      players = urlPlayers;
+      playerIds = urlPlayerIds;
+      playerCount = urlPlayerCount;
+      rows = urlRows;
+    }
 
     // --- restaurer les donnes en attente (file d’attente locale) ---
     loadPendingFromLocalStorage();
@@ -2495,10 +2535,25 @@ if (joueurAnnonceur) {
 }
 
         const scoresLigne: Record<string, { score: number; cumul: number }> = {};
+
+        // Vérifier si cette donne a des scores serveur (synchronisés depuis le backend)
+        // Les scores serveur incluent les pénalités déjà déduites
+        const hasServerScores = donne.joueurs.some(j => j.serverScore !== undefined && j.serverCumul !== undefined);
+
         for (const p of players) {
-            const s = scoresDonne[p] ?? 0;
-            cumul[p] += s;
-            scoresLigne[p] = { score: s, cumul: cumul[p] };
+            if (hasServerScores) {
+                // Utiliser les scores du serveur (inclut les pénalités déjà déduites)
+                const joueur = donne.joueurs.find(j => j.nom === p);
+                const serverScore = joueur?.serverScore ?? 0;
+                const serverCumul = joueur?.serverCumul ?? 0;
+                cumul[p] = serverCumul; // Mettre à jour le cumul avec la valeur serveur
+                scoresLigne[p] = { score: serverScore, cumul: serverCumul };
+            } else {
+                // Calcul local (pour les donnes pending non encore synchronisées)
+                const s = scoresDonne[p] ?? 0;
+                cumul[p] += s;
+                scoresLigne[p] = { score: s, cumul: cumul[p] };
+            }
         }
 
         lignes.push({
@@ -3218,6 +3273,107 @@ didDrawCell(data) {
         }
         });
 
+// ─────────────  PAGE 2 : PÉNALITÉS (si existantes)  ─────────────
+if (penalites.length > 0) {
+  doc.addPage();
+
+  // Fond de page vert foncé
+  doc.setFillColor(pageBg[0], pageBg[1], pageBg[2]);
+  doc.rect(0, 0, pageWidth, pageHeight, 'F');
+
+  // Bandeau noir en haut
+  doc.setFillColor(darkBg[0], darkBg[1], darkBg[2]);
+  doc.rect(0, 0, pageWidth, 70, 'F');
+
+  // Titre
+  doc.setFont('helvetica', 'bold');
+  doc.setFontSize(20);
+  doc.setTextColor(249, 176, 0);
+  doc.text('Pénalités appliquées', pageWidth / 2, 35, { align: 'center' });
+
+  // Sous-titre
+  doc.setFont('helvetica', 'normal');
+  doc.setFontSize(11);
+  doc.setTextColor(lightText[0], lightText[1], lightText[2]);
+  doc.text(
+    `Table ${tableName} – Manche ${mancheNumber}`,
+    pageWidth / 2,
+    55,
+    { align: 'center' }
+  );
+
+  // Tableau des pénalités
+  const penalitesHead = [['Donne', 'Joueur', 'Jeton', 'Points', 'Motif', 'Arbitre']];
+  const penalitesBody = penalites
+    .sort((a, b) => a.donneNumber - b.donneNumber)
+    .map(pen => [
+      String(pen.donneNumber),
+      pen.joueurAlias,
+      pen.jetonTypeCode,
+      `-${pen.valeur}`,
+      pen.motif ?? '-',
+      pen.arbitreAlias
+    ]);
+
+  autoTable(doc, {
+    head: penalitesHead,
+    body: penalitesBody,
+    startY: 90,
+    styles: {
+      fontSize: 10,
+      halign: 'center',
+      valign: 'middle',
+      cellPadding: 8,
+      fillColor: tableBase,
+      textColor: lightText,
+      lineColor: borderDark,
+      lineWidth: 0.6
+    },
+    headStyles: {
+      fillColor: headPlayer,
+      textColor: [254, 249, 195],
+      fontStyle: 'bold',
+      fontSize: 11
+    },
+    alternateRowStyles: {
+      fillColor: tableAlt
+    },
+    columnStyles: {
+      0: { cellWidth: 60 },  // Donne
+      1: { cellWidth: 100 }, // Joueur
+      2: { cellWidth: 80 },  // Jeton
+      3: { cellWidth: 70 },  // Points
+      4: { cellWidth: 'auto' }, // Motif
+      5: { cellWidth: 100 }  // Arbitre
+    },
+    margin: { left: 50, right: 50 },
+    didParseCell(data) {
+      const { section, column, cell, row } = data;
+
+      if (section === 'body') {
+        // Colonne "Points" en blanc
+        if (column.index === 3) {
+          cell.styles.textColor = [255, 255, 255];
+          cell.styles.fontStyle = 'bold';
+        }
+
+        // Colonne "Jeton" avec couleur selon le type
+        if (column.index === 2) {
+          const jetonCode = (cell.text?.[0] ?? '').toUpperCase();
+          if (jetonCode === 'BLEU') {
+            cell.styles.textColor = [59, 130, 246]; // bleu
+          } else if (jetonCode === 'ROUGE') {
+            cell.styles.textColor = [239, 68, 68]; // rouge
+          } else if (jetonCode === 'NOIR') {
+            cell.styles.textColor = [156, 163, 175]; // gris clair
+          }
+          cell.styles.fontStyle = 'bold';
+        }
+      }
+    }
+  });
+}
+
 const fileName = `Feuille_points_Table_${tableName}_Manche_${mancheNumber}.pdf`;
 
   // 1️⃣ Envoi par email (si demandé)
@@ -3623,6 +3779,7 @@ function openScoreSheet() {
 
   // Et on ouvre la feuille de points (le même mécanisme que ton bouton du haut)
   showFeuillePoints = true;
+  loadPenalites();
 }
 
 
@@ -3791,7 +3948,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
     <div class="header-buttons">
       <button on:click={() => showAnnonceOrder = true}>Ordre des annonces</button>
       <button on:click={() => { showHistorique = true; loadPenalites(); }}>Historique des donnes</button>
-      <button on:click={() => showFeuillePoints = true}>Feuille de points</button>
+      <button on:click={() => { showFeuillePoints = true; loadPenalites(); }}>Feuille de points</button>
     </div>
 
 <table class="players-table">
@@ -4066,6 +4223,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
     <td class="cell-annonce">{ligne.annonce}</td>
 
    {#each players as p}
+  {@const playerPenalites = getPenalitesForPlayerOnDonne(p, ligne.donneNumber)}
   <!-- SCORE -->
   <td
     class="cell-score"
@@ -4074,7 +4232,12 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
     {#if inactivePlayers.includes(p)}
       -
     {:else}
-      {displayScoreValue(ligne, p)}
+      <span class="score-with-penalite">
+        {displayScoreValue(ligne, p)}
+        {#each playerPenalites as pen}
+          <JetonPoker color={jetonCodeToColor(pen.jetonTypeCode)} size={14} />
+        {/each}
+      </span>
     {/if}
   </td>
 
@@ -4096,6 +4259,41 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 
 
                 </table>
+            {/if}
+
+            <!-- Tableau récapitulatif des pénalités (seulement s'il y en a) -->
+            {#if penalites.length > 0}
+              <div class="penalites-recap">
+                <h4>Pénalités appliquées</h4>
+                <table class="penalites-table">
+                  <thead>
+                    <tr>
+                      <th>Donne</th>
+                      <th>Joueur</th>
+                      <th>Jeton</th>
+                      <th>Points</th>
+                      <th>Motif</th>
+                      <th>Arbitre</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {#each penalites.sort((a, b) => a.donneNumber - b.donneNumber) as pen}
+                      <tr>
+                        <td>{pen.donneNumber}</td>
+                        <td>{pen.joueurAlias}</td>
+                        <td>
+                          <span class="jeton-cell">
+                            <JetonPoker color={jetonCodeToColor(pen.jetonTypeCode)} size={18} />
+                          </span>
+                        </td>
+                        <td class="points-negative">-{pen.valeur}</td>
+                        <td>{pen.motif ?? '-'}</td>
+                        <td>{pen.arbitreAlias}</td>
+                      </tr>
+                    {/each}
+                  </tbody>
+                </table>
+              </div>
             {/if}
 
            <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.8rem;">
@@ -5345,6 +5543,55 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   .col-annonce,
   .cell-annonce {
   min-width: 55px;
+  }
+
+  /* Styles pour l'affichage des pénalités dans la feuille de points */
+  .score-with-penalite {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  .penalites-recap {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid var(--border-soft);
+  }
+
+  .penalites-recap h4 {
+    margin: 0 0 0.8rem 0;
+    color: #fbbf24;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  .penalites-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+
+  .penalites-table th,
+  .penalites-table td {
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    border-bottom: 1px solid var(--border-soft);
+  }
+
+  .penalites-table th {
+    background: var(--bg-header);
+    color: var(--text-primary);
+    font-weight: 600;
+  }
+
+  .penalites-table .jeton-cell {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .penalites-table .points-negative {
+    color: white;
+    font-weight: 600;
   }
 
   .annonces-list {

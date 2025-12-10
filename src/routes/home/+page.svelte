@@ -28,8 +28,19 @@
   };
   let isSavingNewPlayer = false;
   let newPlayerError: string | null = null;
-  
-  
+
+  // Gestion des doublons (joueur existant trouvé)
+  type ExistingPlayerMatch = {
+    id: number;
+    alias: string;
+    nom: string;
+    prenom: string;
+    isWhisteux: boolean;
+  };
+  let existingPlayerMatches: ExistingPlayerMatch[] = [];
+  let showExistingPlayerModal = false;
+  let isSearchingExisting = false;
+
   // 🔥 Interface pour les types de compétition depuis l'API
   interface CompetitionTypeInfo {
     id: number;
@@ -60,6 +71,8 @@
   lockedBy: string | null;
   lockedAt: string | null;
   lastDonneNumber: number | null;
+  players: string[];
+  playerIds: (number | null)[];
   };
 
   // 🔐 Reprise de manche existante
@@ -684,7 +697,7 @@ async function continueToNext() {
 
         console.error('Erreur /api/manches/resume', msg);
 
-        // 🔥 On ferme la modale "reprendre ?" et on affiche une vraie modale d’erreur
+        // 🔥 On ferme la modale "reprendre ?" et on affiche une vraie modale d'erreur
         showResumeModal = false;
         existingManche = null;
 
@@ -701,6 +714,11 @@ async function continueToNext() {
         'wb_current_table_config_id',
         String(existingManche.id)
       );
+
+      // 🔥 Utiliser les joueurs de la manche existante au lieu des variables du formulaire
+      players = existingManche.players || [];
+      playerIds = existingManche.playerIds || [];
+      playerCount = existingManche.playerCount;
 
       const params = buildNavigateParams(compTypeInt, compNumberInt);
       goto(`/annonces?${params.toString()}`);
@@ -1056,7 +1074,40 @@ async function saveNewPlayer() {
     return;
   }
 
+  isSearchingExisting = true;
+
+  try {
+    // 1️⃣ D'abord, vérifier si un joueur existe déjà avec ce nom/prénom
+    const searchRes = await fetch(
+      `${API_BASE_URL}/api/joueurs/search?nom=${encodeURIComponent(newPlayer.lastName.trim())}&prenom=${encodeURIComponent(newPlayer.firstName.trim())}`
+    );
+
+    if (searchRes.ok) {
+      const matches: ExistingPlayerMatch[] = await searchRes.json();
+      if (matches.length > 0) {
+        // Joueur(s) existant(s) trouvé(s) → proposer de l'utiliser
+        existingPlayerMatches = matches;
+        showExistingPlayerModal = true;
+        isSearchingExisting = false;
+        return;
+      }
+    }
+
+    // 2️⃣ Pas de doublon → créer le joueur externe
+    await createExternalPlayer();
+  } catch (err: any) {
+    console.error(err);
+    newPlayerError =
+      err?.message ?? 'Erreur inconnue lors de la recherche du joueur.';
+  } finally {
+    isSearchingExisting = false;
+  }
+}
+
+// Créer un joueur externe (appelé si pas de doublon ou si l'utilisateur refuse d'utiliser l'existant)
+async function createExternalPlayer() {
   isSavingNewPlayer = true;
+  newPlayerError = null;
 
   try {
     const res = await fetch(`${API_BASE_URL}/api/joueurs`, {
@@ -1077,20 +1128,70 @@ async function saveNewPlayer() {
       a.alias.localeCompare(b.alias, 'fr')
     );
 
-    // 2️⃣ on l’affecte au slot qui avait demandé "Nouveau"
-    players[newPlayerTargetIndex] = created.alias;
-    playerIds[newPlayerTargetIndex] = created.id;
-    players = [...players];
-    playerIds = [...playerIds];
+    // 2️⃣ on l'affecte au slot qui avait demandé "Nouveau"
+    if (newPlayerTargetIndex !== null) {
+      players[newPlayerTargetIndex] = created.alias;
+      playerIds[newPlayerTargetIndex] = created.id;
+      players = [...players];
+      playerIds = [...playerIds];
+    }
 
     // 3️⃣ reset & close
     newPlayer = { lastName: '', firstName: '', email: '', phone: '' };
     newPlayerTargetIndex = null;
     showNewPlayerModal = false;
+    showExistingPlayerModal = false;
   } catch (err: any) {
     console.error(err);
     newPlayerError =
       err?.message ?? 'Erreur inconnue lors de la création du joueur.';
+  } finally {
+    isSavingNewPlayer = false;
+  }
+}
+
+// Utiliser un joueur existant (activer Whisteux = 1)
+async function useExistingPlayer(player: ExistingPlayerMatch) {
+  isSavingNewPlayer = true;
+  newPlayerError = null;
+
+  try {
+    const res = await fetch(`${API_BASE_URL}/api/joueurs/${player.id}/activate`, {
+      method: 'PUT'
+    });
+
+    if (!res.ok) {
+      const msg = await res.text();
+      throw new Error(msg || 'Erreur lors de l\'activation du joueur.');
+    }
+
+    const activated: ApiPlayer = await res.json();
+
+    // 1️⃣ Ajouter le joueur dans la liste s'il n'y est pas déjà
+    if (!availablePlayers.some((p) => p.id === activated.id)) {
+      availablePlayers = [...availablePlayers, activated].sort((a, b) =>
+        a.alias.localeCompare(b.alias, 'fr')
+      );
+    }
+
+    // 2️⃣ Affecter au slot
+    if (newPlayerTargetIndex !== null) {
+      players[newPlayerTargetIndex] = activated.alias;
+      playerIds[newPlayerTargetIndex] = activated.id;
+      players = [...players];
+      playerIds = [...playerIds];
+    }
+
+    // 3️⃣ Reset & close
+    newPlayer = { lastName: '', firstName: '', email: '', phone: '' };
+    newPlayerTargetIndex = null;
+    showNewPlayerModal = false;
+    showExistingPlayerModal = false;
+    existingPlayerMatches = [];
+  } catch (err: any) {
+    console.error(err);
+    newPlayerError =
+      err?.message ?? 'Erreur inconnue lors de l\'activation du joueur.';
   } finally {
     isSavingNewPlayer = false;
   }
@@ -1467,10 +1568,66 @@ async function saveNewPlayer() {
           class="primary"
           type="button"
           on:click={saveNewPlayer}
+          disabled={isSavingNewPlayer || isSearchingExisting}
+        >
+          {#if isSearchingExisting}Recherche...{:else if isSavingNewPlayer}Enregistrement...{:else}Enregistrer{/if}
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+{#if showExistingPlayerModal}
+  <div class="modal-backdrop" on:click={() => (showExistingPlayerModal = false)}>
+    <div class="modal existing-player-modal" on:click|stopPropagation>
+      <h3>Joueur existant trouvé</h3>
+
+      <p class="existing-player-info">
+        Un ou plusieurs joueurs correspondent à "<strong>{newPlayer.firstName} {newPlayer.lastName}</strong>".
+        Voulez-vous utiliser un joueur existant ?
+      </p>
+
+      {#if newPlayerError}
+        <p class="error">{newPlayerError}</p>
+      {/if}
+
+      <div class="existing-players-list">
+        {#each existingPlayerMatches as player}
+          <div class="existing-player-item">
+            <div class="player-info">
+              <span class="player-alias">{player.alias}</span>
+              <span class="player-name">({player.prenom} {player.nom})</span>
+              {#if !player.isWhisteux}
+                <span class="player-badge">Non-whisteux</span>
+              {/if}
+            </div>
+            <button
+              class="primary use-player-btn"
+              type="button"
+              on:click={() => useExistingPlayer(player)}
+              disabled={isSavingNewPlayer}
+            >
+              Utiliser
+            </button>
+          </div>
+        {/each}
+      </div>
+
+      <div class="modal-actions">
+        <button
+          class="secondary"
+          type="button"
+          on:click={() => { showExistingPlayerModal = false; existingPlayerMatches = []; }}
+        >
+          Annuler
+        </button>
+        <button
+          class="warning"
+          type="button"
+          on:click={createExternalPlayer}
           disabled={isSavingNewPlayer}
         >
-          {#if isSavingNewPlayer}Enregistrement...{/if}
-          {#if !isSavingNewPlayer}Enregistrer{/if}
+          {#if isSavingNewPlayer}Création...{:else}Créer quand même{/if}
         </button>
       </div>
     </div>
@@ -1871,6 +2028,117 @@ async function saveNewPlayer() {
   .modal * {
   font-family: 'Poppins', system-ui, -apple-system, BlinkMacSystemFont,
   'Segoe UI', sans-serif;
+  }
+
+  /* Modal joueur existant trouvé */
+  .modal.existing-player-modal {
+    max-width: 520px;
+    padding: 2rem 2.4rem;
+  }
+
+  .modal.existing-player-modal h3 {
+    font-size: 1.3rem;
+    letter-spacing: 0.08em;
+    text-transform: uppercase;
+    color: #f5c56b;
+    margin-bottom: 1rem;
+  }
+
+  .existing-player-info {
+    color: #e0e0e0;
+    font-size: 0.95rem;
+    margin-bottom: 1.2rem;
+  }
+
+  .existing-players-list {
+    display: flex;
+    flex-direction: column;
+    gap: 0.8rem;
+    margin-bottom: 1.5rem;
+  }
+
+  .existing-player-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.8rem 1rem;
+    background: rgba(255, 255, 255, 0.08);
+    border-radius: 8px;
+    border: 1px solid rgba(255, 255, 255, 0.15);
+  }
+
+  .existing-player-item .player-info {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .existing-player-item .player-alias {
+    font-weight: 600;
+    color: #22c55e;
+  }
+
+  .existing-player-item .player-name {
+    color: #9ca3af;
+    font-size: 0.9rem;
+  }
+
+  .existing-player-item .player-badge {
+    background: #f59e0b;
+    color: #1a1a1a;
+    font-size: 0.7rem;
+    font-weight: 600;
+    padding: 0.2rem 0.5rem;
+    border-radius: 4px;
+    text-transform: uppercase;
+  }
+
+  .existing-player-item .use-player-btn {
+    padding: 0.4rem 1rem;
+    font-size: 0.85rem;
+    min-width: 80px;
+  }
+
+  .existing-player-modal .modal-actions {
+    margin-top: 1.2rem;
+    flex-direction: row;
+    justify-content: center;
+    gap: 1rem;
+  }
+
+  .existing-player-modal .modal-actions button {
+    max-width: 180px;
+  }
+
+  .existing-player-modal .modal-actions button.warning {
+    background: #f59e0b;
+    color: #1a1a1a;
+  }
+
+  .existing-player-modal .modal-actions button.warning:hover {
+    background: #d97706;
+  }
+
+  @media (max-width: 480px) {
+    .existing-player-item {
+      flex-direction: column;
+      align-items: stretch;
+      gap: 0.6rem;
+    }
+
+    .existing-player-item .use-player-btn {
+      width: 100%;
+    }
+
+    .existing-player-modal .modal-actions {
+      flex-direction: column;
+      align-items: stretch;
+    }
+
+    .existing-player-modal .modal-actions button {
+      max-width: 100%;
+    }
   }
 
   /* Footer global */

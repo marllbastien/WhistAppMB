@@ -3,6 +3,7 @@
   import { page } from '$app/stores';
   import jsPDF from 'jspdf';
   import autoTable from 'jspdf-autotable';
+  import JetonPoker from '$lib/components/JetonPoker.svelte';
 
 
   let editDonneSection: HTMLDivElement | null = null;
@@ -109,6 +110,37 @@
   let feuilleLoading = false;
   let feuilleError = '';
 
+  // Pénalités
+  interface PenaliteInfo {
+    id: number;
+    donneNumber: number;
+    joueurId: number;
+    joueurAlias: string;
+    jetonTypeCode: string;
+    jetonColor: string;
+    valeur: number;
+    motif: string | null;
+    arbitreAlias: string;
+  }
+  let penalites: PenaliteInfo[] = [];
+
+  // Fonctions pour les pénalités
+  function getPenalitesForDonne(donneNumber: number): PenaliteInfo[] {
+    return penalites.filter(p => p.donneNumber === donneNumber);
+  }
+
+  function getPenalitesForPlayerOnDonne(playerAlias: string, donneNumber: number): PenaliteInfo[] {
+    return penalites.filter(p => p.joueurAlias === playerAlias && p.donneNumber === donneNumber);
+  }
+
+  function jetonCodeToColor(code: string): 'rouge' | 'bleu' | 'noir' {
+    const lower = code.toLowerCase();
+    if (lower === 'rouge') return 'rouge';
+    if (lower === 'bleu') return 'bleu';
+    if (lower === 'noir') return 'noir';
+    return 'rouge';
+  }
+
   let exportingPdf = false;
   let exportPdfError = '';
 
@@ -200,6 +232,7 @@ $: if (detail?.finalScores) {
     loadDetail();
     loadConfig();
     loadCompetitionTypes();
+    loadPenalites();
     });
 
     async function loadDetail() {
@@ -218,6 +251,18 @@ $: if (detail?.finalScores) {
     } finally {
     isLoading = false;
     }
+    }
+
+    async function loadPenalites() {
+      try {
+        const res = await fetch(`${API_BASE_URL}/api/tables/${tableConfigId}/penalites`);
+        if (res.ok) {
+          penalites = await res.json();
+        }
+      } catch (err) {
+        console.warn('Impossible de charger les pénalités', err);
+        penalites = [];
+      }
     }
 
     function getEtatsForAnnonce(code: string | null): string[] {
@@ -553,6 +598,9 @@ async function openFeuillePoints() {
   feuilleError = '';
   feuillePlayers = [];
   feuillePoints = [];
+
+  // Charger les pénalités
+  await loadPenalites();
 
   try {
     // 👉 API admin à créer (voir plus bas, partie C#)
@@ -1155,6 +1203,7 @@ function getChangeClass(after: number, before: number) {
         <th>Résultat</th>
         <th>Dames</th>
         <th>Arbitre</th>
+        <th>Jetons</th>
         <th>Action</th>
       </tr>
     </thead>
@@ -1186,6 +1235,15 @@ function getChangeClass(after: number, before: number) {
           {#if getAnnonceRow(d).arbitre}
             ✓
           {/if}
+        </td>
+
+        <!-- Jetons (pénalités) -->
+        <td class="jetons-cell">
+          {#each getPenalitesForDonne(d.donneNumber) as pen}
+            <span class="jeton-item" title="{pen.joueurAlias}: -{pen.valeur} pts">
+              <JetonPoker color={jetonCodeToColor(pen.jetonTypeCode)} size={18} />
+            </span>
+          {/each}
         </td>
 
         <!-- Action -->
@@ -1475,8 +1533,14 @@ function getChangeClass(after: number, before: number) {
                 <td class="cell-annonce">{ligne.annonce}</td>
 
                 {#each feuillePlayers as p}
+                  {@const playerPenalites = getPenalitesForPlayerOnDonne(p, ligne.donneNumber)}
                   <td class="cell-score">
-                    {ligne.scores[p]?.score ?? 0}
+                    <span class="score-with-penalite">
+                      {ligne.scores[p]?.score ?? 0}
+                      {#each playerPenalites as pen}
+                        <JetonPoker color={jetonCodeToColor(pen.jetonTypeCode)} size={14} />
+                      {/each}
+                    </span>
                   </td>
                   <td
                     class="cell-cumul"
@@ -1489,6 +1553,41 @@ function getChangeClass(after: number, before: number) {
             {/each}
           </tbody>
         </table>
+
+        <!-- Tableau récapitulatif des pénalités -->
+        {#if penalites.length > 0}
+          <div class="penalites-recap">
+            <h4>Pénalités appliquées</h4>
+            <table class="penalites-table">
+              <thead>
+                <tr>
+                  <th>Donne</th>
+                  <th>Joueur</th>
+                  <th>Jeton</th>
+                  <th>Points</th>
+                  <th>Motif</th>
+                  <th>Arbitre</th>
+                </tr>
+              </thead>
+              <tbody>
+                {#each penalites.sort((a, b) => a.donneNumber - b.donneNumber) as pen}
+                  <tr>
+                    <td>{pen.donneNumber}</td>
+                    <td>{pen.joueurAlias}</td>
+                    <td>
+                      <span class="jeton-cell">
+                        <JetonPoker color={jetonCodeToColor(pen.jetonTypeCode)} size={18} />
+                      </span>
+                    </td>
+                    <td class="points-negative">-{pen.valeur}</td>
+                    <td>{pen.motif ?? '-'}</td>
+                    <td>{pen.arbitreAlias}</td>
+                  </tr>
+                {/each}
+              </tbody>
+            </table>
+          </div>
+        {/if}
       {/if}
 
       <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.8rem;">
@@ -2285,6 +2384,69 @@ function getChangeClass(after: number, before: number) {
   .success {
     color: #22c55e;
     margin: 0.5rem 0;
+  }
+
+  /* Jetons dans le tableau des donnes */
+  .jetons-cell {
+    display: flex;
+    gap: 3px;
+    justify-content: center;
+    align-items: center;
+  }
+
+  .jeton-item {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  /* Score avec pénalité */
+  .score-with-penalite {
+    display: inline-flex;
+    align-items: center;
+    gap: 3px;
+  }
+
+  /* Tableau récapitulatif des pénalités */
+  .penalites-recap {
+    margin-top: 1.5rem;
+    padding-top: 1rem;
+    border-top: 1px solid rgba(55, 65, 81, 0.6);
+  }
+
+  .penalites-recap h4 {
+    margin: 0 0 0.8rem 0;
+    color: #fbbf24;
+    font-size: 0.95rem;
+    font-weight: 600;
+  }
+
+  .penalites-table {
+    width: 100%;
+    border-collapse: collapse;
+    font-size: 0.85rem;
+  }
+
+  .penalites-table th,
+  .penalites-table td {
+    padding: 0.4rem 0.6rem;
+    text-align: left;
+    border-bottom: 1px solid rgba(55, 65, 81, 0.6);
+  }
+
+  .penalites-table th {
+    background: #0b2814;
+    color: #e5e7eb;
+    font-weight: 600;
+  }
+
+  .penalites-table .jeton-cell {
+    display: inline-flex;
+    align-items: center;
+  }
+
+  .penalites-table .points-negative {
+    color: white;
+    font-weight: 600;
   }
 
 

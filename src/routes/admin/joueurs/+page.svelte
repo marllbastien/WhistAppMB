@@ -15,6 +15,9 @@
     phone?: string | null;
     isWhisteux?: boolean;
     noAffilie?: string | null;
+    isProvisional?: boolean;
+    bk?: string | null;
+    isActif?: boolean;
     type: 'interne' | 'externe';
   }
 
@@ -28,9 +31,10 @@
   let searchQuery = '';
   let filterWhisteux: 'all' | 'yes' | 'no' = 'all';
   let filterNoAffilie = '';
+  let filterProvisional: 'all' | 'yes' | 'no' = 'no'; // Par défaut: masquer les provisoires
 
   // Tri
-  type SortColumn = 'id' | 'alias' | 'nom' | 'prenom' | 'email' | 'noAffilie' | 'isWhisteux' | 'phone';
+  type SortColumn = 'id' | 'alias' | 'nom' | 'prenom' | 'email' | 'noAffilie' | 'isWhisteux' | 'phone' | 'bk' | 'isProvisional';
   let sortColumn: SortColumn = 'alias';
   let sortDirection: 'asc' | 'desc' = 'asc';
 
@@ -53,6 +57,8 @@
     noAffilie: sortColumn === 'noAffilie' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
     isWhisteux: sortColumn === 'isWhisteux' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
     phone: sortColumn === 'phone' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    bk: sortColumn === 'bk' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
+    isProvisional: sortColumn === 'isProvisional' ? (sortDirection === 'asc' ? '▲' : '▼') : '',
   };
 
   // Édition
@@ -62,7 +68,12 @@
     prenom: '',
     email: '',
     phone: '',
-    isWhisteux: false
+    alias: '',
+    bk: '',
+    noAffilie: '',
+    isWhisteux: false,
+    isProvisional: false,
+    isActif: true
   };
   let saving = false;
   let saveMessage = '';
@@ -81,15 +92,33 @@
   // Conversion joueur externe → interne
   let showConvertModal = false;
   let convertingJoueur: Joueur | null = null;
+
+  // Fusion joueur externe avec joueur interne
+  let showMergeModal = false;
+  let mergingJoueur: Joueur | null = null;
+  let mergeTargetSearch = '';
+  let mergeTargetId: number | null = null;
+  let merging = false;
+  let mergeMessage = '';
   let convertForm = {
     noAffilie: '',
+    bk: '',
     nom: '',
     prenom: '',
     alias: '',
     email: '',
     phone: '',
     club: '',
-    dateDebut: ''
+    dateDebut: '',
+    titre: '',
+    sexe: '',
+    dateNaissance: '',
+    facebookGroup: false,
+    membre: true,
+    whisteux: true,
+    actif: true,
+    carte2025: false,
+    carte2025Delivree: ''
   };
   let converting = false;
   let convertMessage = '';
@@ -106,36 +135,66 @@
         const data = await res.json();
         convertForm = {
           noAffilie: data.suggestedNoAffilie ?? '',
+          bk: data.suggestedBk ?? '',
           nom: data.joueur.nom ?? '',
           prenom: data.joueur.prenom ?? '',
           alias: data.joueur.alias ?? '',
           email: data.joueur.email ?? '',
           phone: data.joueur.phone ?? '',
           club: 'Les Amis Réunis',
-          dateDebut: new Date().toISOString().split('T')[0] // Format YYYY-MM-DD
+          dateDebut: new Date().toISOString().split('T')[0], // Format YYYY-MM-DD
+          titre: data.joueur.titre ?? '',
+          sexe: data.joueur.sexe ?? '',
+          dateNaissance: data.joueur.dateNaissance ? data.joueur.dateNaissance.split('T')[0] : '',
+          facebookGroup: data.joueur.facebookGroup ?? false,
+          membre: data.joueur.membre ?? true,
+          whisteux: data.joueur.whisteux ?? true,
+          actif: data.joueur.actif ?? true,
+          carte2025: data.joueur.carte2025 ?? false,
+          carte2025Delivree: data.joueur.carte2025Delivree ? data.joueur.carte2025Delivree.split('T')[0] : ''
         };
       } else {
         convertForm = {
           noAffilie: '',
+          bk: '',
           nom: joueur.nom ?? '',
           prenom: joueur.prenom ?? '',
           alias: joueur.alias ?? '',
           email: joueur.email ?? '',
           phone: joueur.phone ?? '',
           club: 'Les Amis Réunis',
-          dateDebut: new Date().toISOString().split('T')[0]
+          dateDebut: new Date().toISOString().split('T')[0],
+          titre: '',
+          sexe: '',
+          dateNaissance: '',
+          facebookGroup: false,
+          membre: true,
+          whisteux: true,
+          actif: true,
+          carte2025: false,
+          carte2025Delivree: ''
         };
       }
     } catch {
       convertForm = {
         noAffilie: '',
+        bk: '',
         nom: joueur.nom ?? '',
         prenom: joueur.prenom ?? '',
         alias: joueur.alias ?? '',
         email: joueur.email ?? '',
         phone: joueur.phone ?? '',
         club: 'Les Amis Réunis',
-        dateDebut: new Date().toISOString().split('T')[0]
+        dateDebut: new Date().toISOString().split('T')[0],
+        titre: '',
+        sexe: '',
+        dateNaissance: '',
+        facebookGroup: false,
+        membre: true,
+        whisteux: true,
+        actif: true,
+        carte2025: false,
+        carte2025Delivree: ''
       };
     }
 
@@ -160,12 +219,22 @@
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           noAffilie: convertForm.noAffilie || null,
+          bk: convertForm.bk || null,
           nom: convertForm.nom,
           prenom: convertForm.prenom,
           alias: convertForm.alias || null,
           email: convertForm.email || null,
           phone: convertForm.phone || null,
-          dateDebut: convertForm.dateDebut ? new Date(convertForm.dateDebut) : null
+          dateDebut: convertForm.dateDebut ? new Date(convertForm.dateDebut) : null,
+          titre: convertForm.titre || null,
+          sexe: convertForm.sexe || null,
+          dateNaissance: convertForm.dateNaissance ? new Date(convertForm.dateNaissance) : null,
+          facebookGroup: convertForm.facebookGroup,
+          membre: convertForm.membre,
+          whisteux: convertForm.whisteux,
+          actif: convertForm.actif,
+          carte2025: convertForm.carte2025,
+          carte2025Delivree: convertForm.carte2025Delivree ? new Date(convertForm.carte2025Delivree) : null
         })
       });
 
@@ -187,6 +256,81 @@
     }
   }
 
+  // Fonctions pour la fusion
+  function openMergeModal(joueur: Joueur) {
+    mergingJoueur = joueur;
+    mergeTargetSearch = '';
+    mergeTargetId = null;
+    mergeMessage = '';
+    merging = false;
+    showMergeModal = true;
+  }
+
+  function closeMergeModal() {
+    showMergeModal = false;
+    mergingJoueur = null;
+    mergeTargetId = null;
+    mergeMessage = '';
+  }
+
+  // Liste filtrée des joueurs internes pour la sélection de fusion
+  $: mergeTargetOptions = joueursInternes.filter((j) => {
+    if (!mergeTargetSearch) return true;
+    const q = mergeTargetSearch.toLowerCase();
+    return (
+      j.alias.toLowerCase().includes(q) ||
+      j.nom.toLowerCase().includes(q) ||
+      j.prenom.toLowerCase().includes(q)
+    );
+  });
+
+  async function mergeJoueurs() {
+    if (!mergingJoueur || !mergeTargetId) {
+      mergeMessage = 'Veuillez sélectionner un joueur cible.';
+      return;
+    }
+
+    const targetJoueur = joueursInternes.find((j) => j.id === mergeTargetId);
+    if (!confirm(
+      `Fusionner "${mergingJoueur.alias}" (ID=${mergingJoueur.id}) vers "${targetJoueur?.alias}" (ID=${mergeTargetId}) ?\n\n` +
+      `⚠️ Cette action est irréversible :\n` +
+      `- Toutes les données de score seront transférées\n` +
+      `- Le joueur "${mergingJoueur.alias}" sera supprimé`
+    )) {
+      return;
+    }
+
+    merging = true;
+    mergeMessage = '';
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/joueurs/merge`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sourceJoueurId: mergingJoueur.id,
+          targetJoueurId: mergeTargetId
+        })
+      });
+
+      const result = await res.json();
+
+      if (!res.ok) {
+        throw new Error(result.message || 'Erreur lors de la fusion');
+      }
+
+      mergeMessage = `✅ ${result.message}\n` +
+        `(Scores: ${result.scoresDonneUpdated}, Partenaires: ${result.partenaireUpdated}, Tables: ${result.tableConfigUpdated})`;
+      await loadJoueurs();
+      setTimeout(closeMergeModal, 3000);
+    } catch (err: any) {
+      console.error(err);
+      mergeMessage = `❌ ${err.message || 'Erreur lors de la fusion'}`;
+    } finally {
+      merging = false;
+    }
+  }
+
   $: filteredJoueurs = (activeTab === 'internes' ? joueursInternes : joueursExternes)
     .filter((j) => {
       // Recherche texte
@@ -196,7 +340,8 @@
           j.alias.toLowerCase().includes(q) ||
           j.nom.toLowerCase().includes(q) ||
           j.prenom.toLowerCase().includes(q) ||
-          (j.email?.toLowerCase().includes(q) ?? false);
+          (j.email?.toLowerCase().includes(q) ?? false) ||
+          (j.bk?.toLowerCase().includes(q) ?? false);
         if (!match) return false;
       }
 
@@ -204,6 +349,12 @@
       if (activeTab === 'internes' && filterWhisteux !== 'all') {
         if (filterWhisteux === 'yes' && !j.isWhisteux) return false;
         if (filterWhisteux === 'no' && j.isWhisteux) return false;
+      }
+
+      // Filtre provisoire (uniquement pour les internes)
+      if (activeTab === 'internes' && filterProvisional !== 'all') {
+        if (filterProvisional === 'yes' && !j.isProvisional) return false;
+        if (filterProvisional === 'no' && j.isProvisional) return false;
       }
 
       // Filtre N° Affilié (uniquement pour les internes)
@@ -240,8 +391,9 @@
           bVal = (b.email ?? '').toLowerCase();
           break;
         case 'noAffilie':
-          aVal = (a.noAffilie ?? '').toLowerCase();
-          bVal = (b.noAffilie ?? '').toLowerCase();
+          // Tri numérique pour N° Affilié
+          aVal = parseInt(a.noAffilie ?? '0', 10) || 0;
+          bVal = parseInt(b.noAffilie ?? '0', 10) || 0;
           break;
         case 'isWhisteux':
           aVal = a.isWhisteux ? 1 : 0;
@@ -250,6 +402,14 @@
         case 'phone':
           aVal = (a.phone ?? '').toLowerCase();
           bVal = (b.phone ?? '').toLowerCase();
+          break;
+        case 'bk':
+          aVal = (a.bk ?? '').toLowerCase();
+          bVal = (b.bk ?? '').toLowerCase();
+          break;
+        case 'isProvisional':
+          aVal = a.isProvisional ? 1 : 0;
+          bVal = b.isProvisional ? 1 : 0;
           break;
       }
 
@@ -299,7 +459,12 @@
       prenom: joueur.prenom,
       email: joueur.email ?? '',
       phone: joueur.phone ?? '',
-      isWhisteux: joueur.isWhisteux ?? false
+      alias: joueur.alias ?? '',
+      bk: joueur.bk ?? '',
+      noAffilie: joueur.noAffilie ?? '',
+      isWhisteux: joueur.isWhisteux ?? false,
+      isProvisional: joueur.isProvisional ?? false,
+      isActif: joueur.isActif ?? true
     };
     saveMessage = '';
   }
@@ -327,7 +492,12 @@
               nom: editForm.nom,
               prenom: editForm.prenom,
               email: editForm.email || null,
-              isWhisteux: editForm.isWhisteux
+              alias: editForm.alias || null,
+              bk: editForm.bk || null,
+              noAffilie: editForm.noAffilie || null,
+              isWhisteux: editForm.isWhisteux,
+              isProvisional: editForm.isProvisional,
+              isActif: editForm.isActif
             }
           : {
               nom: editForm.nom,
@@ -471,6 +641,11 @@
           placeholder="N° Affilié..."
           bind:value={filterNoAffilie}
         />
+        <select class="filter-select" bind:value={filterProvisional} title="Filtrer par statut provisoire">
+          <option value="no">Affiliés uniquement</option>
+          <option value="all">Tous</option>
+          <option value="yes">Provisoires uniquement</option>
+        </select>
         <select class="filter-select" bind:value={filterWhisteux}>
           <option value="all">Tous</option>
           <option value="yes">Whisteux uniquement</option>
@@ -504,7 +679,9 @@
               <th class="sortable" on:click={() => toggleSort('prenom')}>Prénom <span class="sort-icon">{sortIcons.prenom}</span></th>
               <th class="sortable" on:click={() => toggleSort('email')}>Email <span class="sort-icon">{sortIcons.email}</span></th>
               {#if activeTab === 'internes'}
+                <th class="sortable" on:click={() => toggleSort('bk')}>Bk <span class="sort-icon">{sortIcons.bk}</span></th>
                 <th class="sortable" on:click={() => toggleSort('noAffilie')}>N° Affilié <span class="sort-icon">{sortIcons.noAffilie}</span></th>
+                <th class="sortable" on:click={() => toggleSort('isProvisional')}>Prov. <span class="sort-icon">{sortIcons.isProvisional}</span></th>
                 <th class="sortable" on:click={() => toggleSort('isWhisteux')}>Whisteux <span class="sort-icon">{sortIcons.isWhisteux}</span></th>
               {:else}
                 <th class="sortable" on:click={() => toggleSort('phone')}>Téléphone <span class="sort-icon">{sortIcons.phone}</span></th>
@@ -514,14 +691,22 @@
           </thead>
           <tbody>
             {#each filteredJoueurs as joueur}
-              <tr>
+              <tr class:provisional-row={joueur.isProvisional}>
                 <td>{joueur.id}</td>
                 <td class="alias-cell">{joueur.alias}</td>
                 <td>{joueur.nom}</td>
                 <td>{joueur.prenom}</td>
                 <td>{joueur.email ?? '-'}</td>
                 {#if activeTab === 'internes'}
+                  <td class="bk-cell">{joueur.bk ?? '-'}</td>
                   <td>{joueur.noAffilie ?? '-'}</td>
+                  <td class="center">
+                    {#if joueur.isProvisional}
+                      <span class="badge-provisional" title="Joueur provisoire">⏳</span>
+                    {:else}
+                      <span class="badge-affiliated" title="Joueur affilié">✓</span>
+                    {/if}
+                  </td>
                   <td class="center">
                     {#if joueur.isWhisteux}
                       <span class="badge-yes">✓</span>
@@ -536,9 +721,14 @@
                   <button class="btn-edit" on:click={() => openEdit(joueur)} title="Modifier">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                   </button>
-                  {#if activeTab === 'externes'}
-                    <button class="btn-convert" on:click={() => openConvertModal(joueur)} title="Convertir en joueur interne">
+                  {#if activeTab === 'externes' || joueur.isProvisional}
+                    <button class="btn-convert" on:click={() => openConvertModal(joueur)} title="Convertir en joueur affilié">
                       <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </button>
+                  {/if}
+                  {#if activeTab === 'externes'}
+                    <button class="btn-merge" on:click={() => openMergeModal(joueur)} title="Fusionner avec un joueur interne">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
                     </button>
                   {/if}
                 </td>
@@ -552,10 +742,15 @@
       <div class="mobile-view">
         <div class="mobile-cards">
           {#each filteredJoueurs as joueur}
-            <div class="joueur-card">
+            <div class="joueur-card" class:provisional-card={joueur.isProvisional}>
               <div class="card-header">
                 <span class="card-alias">{joueur.alias}</span>
-                <span class="card-id">#{joueur.id}</span>
+                <div class="card-header-right">
+                  {#if joueur.isProvisional}
+                    <span class="badge-provisional" title="Provisoire">⏳</span>
+                  {/if}
+                  <span class="card-id">#{joueur.id}</span>
+                </div>
               </div>
               <div class="card-body">
                 <div class="card-name">{joueur.prenom} {joueur.nom}</div>
@@ -566,6 +761,12 @@
                   </div>
                 {/if}
                 {#if activeTab === 'internes'}
+                  {#if joueur.bk}
+                    <div class="card-info">
+                      <span class="card-label">Bk:</span>
+                      <span class="card-value bk-value">{joueur.bk}</span>
+                    </div>
+                  {/if}
                   {#if joueur.noAffilie}
                     <div class="card-info">
                       <span class="card-label">N° Affilié:</span>
@@ -592,10 +793,16 @@
                   <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                   <span>Modifier</span>
                 </button>
-                {#if activeTab === 'externes'}
-                  <button class="btn-convert" on:click={() => openConvertModal(joueur)} title="Convertir en joueur interne">
+                {#if activeTab === 'externes' || joueur.isProvisional}
+                  <button class="btn-convert" on:click={() => openConvertModal(joueur)} title="Convertir en joueur affilié">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
                     <span>Affilier</span>
+                  </button>
+                {/if}
+                {#if activeTab === 'externes'}
+                  <button class="btn-merge" on:click={() => openMergeModal(joueur)} title="Fusionner">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+                    <span>Fusionner</span>
                   </button>
                 {/if}
               </div>
@@ -617,6 +824,16 @@
         {#if editingJoueur.type === 'interne'}
           <div class="form-row">
             <div class="form-group">
+              <label for="edit-alias">Alias</label>
+              <input id="edit-alias" type="text" bind:value={editForm.alias} />
+            </div>
+            <div class="form-group">
+              <label for="edit-bk">Code Bk</label>
+              <input id="edit-bk" type="text" bind:value={editForm.bk} />
+            </div>
+          </div>
+          <div class="form-row">
+            <div class="form-group">
               <label for="edit-nom">Nom</label>
               <input id="edit-nom" type="text" bind:value={editForm.nom} />
             </div>
@@ -625,14 +842,28 @@
               <input id="edit-prenom" type="text" bind:value={editForm.prenom} />
             </div>
           </div>
-          <div class="form-group">
-            <label for="edit-email">Email</label>
-            <input id="edit-email" type="email" bind:value={editForm.email} />
+          <div class="form-row">
+            <div class="form-group">
+              <label for="edit-noAffilie">N° Affilié</label>
+              <input id="edit-noAffilie" type="text" bind:value={editForm.noAffilie} />
+            </div>
+            <div class="form-group">
+              <label for="edit-email">Email</label>
+              <input id="edit-email" type="email" bind:value={editForm.email} />
+            </div>
           </div>
-          <div class="form-group checkbox-group">
-            <label>
+          <div class="form-row checkbox-row">
+            <label class="checkbox-label">
               <input type="checkbox" bind:checked={editForm.isWhisteux} />
-              Joueur Whisteux (visible dans la liste de sélection)
+              <span>Whisteux</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" bind:checked={editForm.isProvisional} />
+              <span>Provisoire</span>
+            </label>
+            <label class="checkbox-label">
+              <input type="checkbox" bind:checked={editForm.isActif} />
+              <span>Actif</span>
             </label>
           </div>
         {:else}
@@ -734,21 +965,73 @@
           <p>Ce joueur externe va devenir un membre affilié du club. Veuillez compléter les informations d'affiliation.</p>
         </div>
 
+        <!-- Section Affiliation -->
+        <h3 class="section-title">📋 Affiliation</h3>
         <div class="form-row">
           <div class="form-group">
             <label for="convert-noAffilie">N° Affiliation *</label>
             <input id="convert-noAffilie" type="text" bind:value={convertForm.noAffilie} placeholder="Ex: 12345" />
-            <span class="hint">Prochain n° suggéré: {convertForm.noAffilie}</span>
+            <span class="hint">Prochain n° suggéré</span>
           </div>
+          <div class="form-group">
+            <label for="convert-bk">Code Bk *</label>
+            <input id="convert-bk" type="text" bind:value={convertForm.bk} placeholder="Ex: JP, JP2..." />
+            <span class="hint">Initiales uniques (modifiable)</span>
+          </div>
+        </div>
+        <div class="form-row">
           <div class="form-group">
             <label for="convert-club">Club</label>
             <input id="convert-club" type="text" bind:value={convertForm.club} placeholder="Ex: Les Amis Réunis" />
+          </div>
+          <div class="form-group">
+            <label for="convert-titre">Titre</label>
+            <select id="convert-titre" bind:value={convertForm.titre}>
+              <option value="">-- Aucun --</option>
+              <option value="Mr.">Mr.</option>
+              <option value="Mme">Mme</option>
+              <option value="Mlle">Mlle</option>
+            </select>
           </div>
         </div>
         <div class="form-group">
           <label for="convert-dateDebut">Date début affiliation</label>
           <input id="convert-dateDebut" type="date" bind:value={convertForm.dateDebut} />
         </div>
+
+        <!-- Section Identité -->
+        <h3 class="section-title">👤 Identité</h3>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="convert-nom">Nom *</label>
+            <input id="convert-nom" type="text" bind:value={convertForm.nom} placeholder="Nom de famille" />
+          </div>
+          <div class="form-group">
+            <label for="convert-prenom">Prénom *</label>
+            <input id="convert-prenom" type="text" bind:value={convertForm.prenom} placeholder="Prénom" />
+          </div>
+        </div>
+        <div class="form-row">
+          <div class="form-group">
+            <label for="convert-alias">Alias</label>
+            <input id="convert-alias" type="text" bind:value={convertForm.alias} placeholder="Pseudo / Alias" />
+          </div>
+          <div class="form-group">
+            <label for="convert-sexe">Sexe</label>
+            <select id="convert-sexe" bind:value={convertForm.sexe}>
+              <option value="">-- Non spécifié --</option>
+              <option value="M">Masculin</option>
+              <option value="F">Féminin</option>
+            </select>
+          </div>
+        </div>
+        <div class="form-group">
+          <label for="convert-dateNaissance">Date de naissance</label>
+          <input id="convert-dateNaissance" type="date" bind:value={convertForm.dateNaissance} />
+        </div>
+
+        <!-- Section Contact -->
+        <h3 class="section-title">📞 Contact</h3>
         <div class="form-row">
           <div class="form-group">
             <label for="convert-email">Email</label>
@@ -760,6 +1043,40 @@
           </div>
         </div>
 
+        <!-- Section Statuts -->
+        <h3 class="section-title">🏷️ Statuts</h3>
+        <div class="form-row checkbox-row">
+          <label class="checkbox-label">
+            <input type="checkbox" bind:checked={convertForm.membre} />
+            <span>Membre</span>
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" bind:checked={convertForm.whisteux} />
+            <span>Whisteux</span>
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" bind:checked={convertForm.actif} />
+            <span>Actif</span>
+          </label>
+          <label class="checkbox-label">
+            <input type="checkbox" bind:checked={convertForm.facebookGroup} />
+            <span>Groupe Facebook</span>
+          </label>
+        </div>
+
+        <!-- Section Carte 2025 -->
+        <h3 class="section-title">💳 Carte 2025</h3>
+        <div class="form-row">
+          <label class="checkbox-label">
+            <input type="checkbox" bind:checked={convertForm.carte2025} />
+            <span>Carte 2025</span>
+          </label>
+          <div class="form-group" style="flex: 1;">
+            <label for="convert-carte2025Delivree">Date de délivrance</label>
+            <input id="convert-carte2025Delivree" type="date" bind:value={convertForm.carte2025Delivree} disabled={!convertForm.carte2025} />
+          </div>
+        </div>
+
         {#if convertMessage}
           <p class={convertMessage.includes('✅') ? 'success' : 'error'}>{convertMessage}</p>
         {/if}
@@ -768,6 +1085,78 @@
           <button class="btn-cancel" on:click={closeConvertModal}>Annuler</button>
           <button class="btn-convert-confirm" on:click={convertJoueur} disabled={converting}>
             {converting ? 'Conversion...' : 'Affilier le joueur'}
+          </button>
+        </div>
+      </div>
+    </div>
+  {/if}
+
+  <!-- Modal fusion joueur externe avec interne -->
+  {#if showMergeModal && mergingJoueur}
+    <div class="modal-backdrop" on:click={closeMergeModal} role="presentation">
+      <!-- svelte-ignore a11y_no_noninteractive_element_interactions a11y_click_events_have_key_events -->
+      <div class="modal modal-merge" on:click|stopPropagation role="dialog" tabindex="-1">
+        <h2>
+          <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+          Fusionner un joueur
+        </h2>
+        <p class="modal-subtitle">Transférer les données de <strong>{mergingJoueur.alias}</strong> vers un joueur interne</p>
+
+        <div class="merge-warning">
+          <p><strong>Attention :</strong> Cette action est irréversible. Toutes les données (scores, partenaires, tables) seront transférées vers le joueur cible, puis le joueur externe sera supprimé.</p>
+        </div>
+
+        <div class="merge-source">
+          <h3>Joueur source (externe)</h3>
+          <div class="merge-player-info">
+            <span class="merge-alias">{mergingJoueur.alias}</span>
+            <span class="merge-id">ID: {mergingJoueur.id}</span>
+            <span class="merge-name">{mergingJoueur.prenom} {mergingJoueur.nom}</span>
+          </div>
+        </div>
+
+        <div class="merge-arrow">→</div>
+
+        <div class="merge-target">
+          <h3>Joueur cible (interne)</h3>
+          <input
+            type="text"
+            class="merge-search"
+            placeholder="Rechercher un joueur interne..."
+            bind:value={mergeTargetSearch}
+          />
+          <div class="merge-player-list">
+            {#each mergeTargetOptions.slice(0, 10) as joueur}
+              <button
+                class="merge-player-option"
+                class:selected={mergeTargetId === joueur.id}
+                on:click={() => (mergeTargetId = joueur.id)}
+              >
+                <span class="option-alias">{joueur.alias}</span>
+                <span class="option-name">{joueur.prenom} {joueur.nom}</span>
+                <span class="option-id">ID: {joueur.id}</span>
+                {#if mergeTargetId === joueur.id}
+                  <span class="option-check">✓</span>
+                {/if}
+              </button>
+            {/each}
+            {#if mergeTargetOptions.length === 0}
+              <p class="no-results">Aucun joueur trouvé</p>
+            {/if}
+            {#if mergeTargetOptions.length > 10}
+              <p class="more-results">... et {mergeTargetOptions.length - 10} autres</p>
+            {/if}
+          </div>
+        </div>
+
+        {#if mergeMessage}
+          <p class={mergeMessage.includes('✅') ? 'success' : 'error'} style="white-space: pre-line;">{mergeMessage}</p>
+        {/if}
+
+        <div class="modal-actions">
+          <button class="btn-cancel" on:click={closeMergeModal}>Annuler</button>
+          <button class="btn-merge-confirm" on:click={mergeJoueurs} disabled={merging || !mergeTargetId}>
+            {merging ? 'Fusion...' : 'Fusionner'}
           </button>
         </div>
       </div>
@@ -976,6 +1365,30 @@
     color: #6b7280;
   }
 
+  .badge-provisional {
+    color: #f59e0b;
+    font-weight: bold;
+  }
+
+  .badge-affiliated {
+    color: #22c55e;
+    font-weight: bold;
+  }
+
+  .provisional-row {
+    background: rgba(245, 158, 11, 0.05);
+  }
+
+  .provisional-row:hover {
+    background: rgba(245, 158, 11, 0.1) !important;
+  }
+
+  .bk-cell {
+    font-family: monospace;
+    font-weight: 600;
+    color: #60a5fa;
+  }
+
   .btn-edit {
     display: flex;
     align-items: center;
@@ -1021,6 +1434,27 @@
   }
 
   .btn-convert svg {
+    flex-shrink: 0;
+  }
+
+  .btn-merge {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+    padding: 0.3rem 0.7rem;
+    border-radius: 6px;
+    border: 1px solid rgba(249, 115, 22, 0.5);
+    background: transparent;
+    color: #f97316;
+    cursor: pointer;
+    font-size: 0.8rem;
+  }
+
+  .btn-merge:hover {
+    background: rgba(249, 115, 22, 0.1);
+  }
+
+  .btn-merge svg {
     flex-shrink: 0;
   }
 
@@ -1136,6 +1570,12 @@
   }
 
   /* Modal conversion */
+  .modal-convert {
+    max-height: 85vh;
+    overflow-y: auto;
+    max-width: 600px;
+  }
+
   .modal-convert h2 {
     display: flex;
     align-items: center;
@@ -1145,6 +1585,14 @@
 
   .modal-convert h2 svg {
     flex-shrink: 0;
+  }
+
+  .modal-convert h3.section-title {
+    font-size: 0.95rem;
+    color: #22c55e;
+    margin: 1rem 0 0.5rem 0;
+    padding-bottom: 0.25rem;
+    border-bottom: 1px solid rgba(34, 197, 94, 0.3);
   }
 
   .convert-info {
@@ -1161,12 +1609,52 @@
     font-size: 0.85rem;
   }
 
+  .checkbox-row {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 0.5rem;
+  }
+
+  .checkbox-label {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    cursor: pointer;
+    color: #e5e7eb;
+    font-size: 0.9rem;
+  }
+
+  .checkbox-label input[type='checkbox'] {
+    width: 18px;
+    height: 18px;
+    accent-color: #22c55e;
+    cursor: pointer;
+  }
+
+  .form-group select {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid rgba(75, 85, 99, 0.8);
+    background: #020617;
+    color: #e5e7eb;
+    font-size: 0.9rem;
+  }
+
   .form-group input[type='date'] {
     padding: 0.5rem 0.75rem;
     border-radius: 8px;
     border: 1px solid rgba(75, 85, 99, 0.8);
     background: #020617;
     color: #e5e7eb;
+  }
+
+  .form-group input:disabled,
+  .form-group select:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
   }
 
   .hint {
@@ -1192,6 +1680,187 @@
   }
 
   .btn-convert-confirm:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* Modal merge */
+  .modal-merge {
+    max-height: 85vh;
+    overflow-y: auto;
+    max-width: 550px;
+  }
+
+  .modal-merge h2 {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    color: #f97316;
+  }
+
+  .modal-merge h2 svg {
+    flex-shrink: 0;
+  }
+
+  .modal-merge h3 {
+    font-size: 0.9rem;
+    color: #9ca3af;
+    margin: 0 0 0.5rem 0;
+  }
+
+  .merge-warning {
+    background: rgba(239, 68, 68, 0.1);
+    border: 1px solid rgba(239, 68, 68, 0.3);
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .merge-warning p {
+    margin: 0;
+    color: #fca5a5;
+    font-size: 0.85rem;
+  }
+
+  .merge-source {
+    background: rgba(75, 85, 99, 0.2);
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin-bottom: 0.5rem;
+  }
+
+  .merge-player-info {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+    align-items: center;
+  }
+
+  .merge-alias {
+    font-weight: 700;
+    color: #f97316;
+    font-size: 1rem;
+  }
+
+  .merge-id {
+    font-size: 0.75rem;
+    color: #6b7280;
+    background: rgba(75, 85, 99, 0.4);
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+  }
+
+  .merge-name {
+    color: #9ca3af;
+    font-size: 0.85rem;
+  }
+
+  .merge-arrow {
+    text-align: center;
+    font-size: 1.5rem;
+    color: #f97316;
+    margin: 0.5rem 0;
+  }
+
+  .merge-target {
+    background: rgba(34, 197, 94, 0.1);
+    border: 1px solid rgba(34, 197, 94, 0.3);
+    border-radius: 8px;
+    padding: 0.75rem;
+    margin-bottom: 1rem;
+  }
+
+  .merge-search {
+    width: 100%;
+    padding: 0.5rem 0.75rem;
+    border-radius: 8px;
+    border: 1px solid rgba(75, 85, 99, 0.8);
+    background: #020617;
+    color: #e5e7eb;
+    margin-bottom: 0.5rem;
+    box-sizing: border-box;
+  }
+
+  .merge-player-list {
+    max-height: 200px;
+    overflow-y: auto;
+    display: flex;
+    flex-direction: column;
+    gap: 0.25rem;
+  }
+
+  .merge-player-option {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.5rem 0.75rem;
+    border-radius: 6px;
+    border: 1px solid rgba(75, 85, 99, 0.5);
+    background: transparent;
+    color: #e5e7eb;
+    cursor: pointer;
+    text-align: left;
+    font-size: 0.85rem;
+    transition: all 0.15s;
+  }
+
+  .merge-player-option:hover {
+    background: rgba(34, 197, 94, 0.1);
+    border-color: rgba(34, 197, 94, 0.5);
+  }
+
+  .merge-player-option.selected {
+    background: rgba(34, 197, 94, 0.2);
+    border-color: #22c55e;
+  }
+
+  .option-alias {
+    font-weight: 600;
+    color: #22c55e;
+  }
+
+  .option-name {
+    flex: 1;
+    color: #9ca3af;
+    font-size: 0.8rem;
+  }
+
+  .option-id {
+    font-size: 0.7rem;
+    color: #6b7280;
+  }
+
+  .option-check {
+    color: #22c55e;
+    font-weight: bold;
+  }
+
+  .no-results,
+  .more-results {
+    color: #6b7280;
+    font-size: 0.8rem;
+    text-align: center;
+    padding: 0.5rem;
+  }
+
+  .btn-merge-confirm {
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    border: none;
+    background: #f97316;
+    color: white;
+    font-weight: 600;
+    cursor: pointer;
+  }
+
+  .btn-merge-confirm:hover {
+    filter: brightness(1.1);
+  }
+
+  .btn-merge-confirm:disabled {
     opacity: 0.6;
     cursor: not-allowed;
   }
@@ -1288,6 +1957,11 @@
       box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
     }
 
+    .joueur-card.provisional-card {
+      border-color: rgba(245, 158, 11, 0.5);
+      background: linear-gradient(135deg, #1e1a0f 0%, #0a0805 100%);
+    }
+
     .card-header {
       display: flex;
       justify-content: space-between;
@@ -1295,6 +1969,12 @@
       margin-bottom: 0.25rem;
       padding-bottom: 0.25rem;
       border-bottom: 1px solid rgba(51, 65, 85, 0.4);
+    }
+
+    .card-header-right {
+      display: flex;
+      align-items: center;
+      gap: 0.5rem;
     }
 
     .card-alias {
@@ -1341,6 +2021,12 @@
       font-size: 0.8rem;
     }
 
+    .bk-value {
+      font-family: monospace;
+      font-weight: 600;
+      color: #60a5fa;
+    }
+
     .card-actions {
       margin-top: 0.4rem;
       display: flex;
@@ -1349,7 +2035,8 @@
     }
 
     .card-actions .btn-edit,
-    .card-actions .btn-convert {
+    .card-actions .btn-convert,
+    .card-actions .btn-merge {
       padding: 0.3rem 0.8rem;
       font-size: 0.75rem;
     }
