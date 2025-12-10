@@ -68,50 +68,59 @@
 
     {#if showTooltip}
       <div class="tooltip-box">
-        <p><strong>Mode Classique :</strong> Encodage par joueur, chaque joueur choisit son annonce.</p>
-        <p><strong>Mode Light :</strong> Encodage par annonce, optimisé pour les téléphones. Gain de place significatif.</p>
+        <p><strong>Mode Tablette :</strong> Encodage par joueur, chaque joueur choisit son annonce. Interface optimisée pour tablettes.</p>
+        <p><strong>Mode Tel :</strong> Encodage par annonce, optimisé pour les téléphones. Gain de place significatif.</p>
         <button class="close-tooltip" on:click={() => showTooltip = false}>✕</button>
       </div>
     {/if}
 
     <div class="toggle-container">
-      <button 
-        class="mode-btn" 
+      <button
+        class="mode-btn"
         class:active={mode === 'classic'}
         on:click={() => { if (mode !== 'classic') toggleMode(); }}
       >
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <path d="M12 2L12 6M12 18L12 22M4.93 4.93L7.76 7.76M16.24 16.24L19.07 19.07M2 12L6 12M18 12L22 12M4.93 19.07L7.76 16.24M16.24 7.76L19.07 4.93"/>
+        <svg width="18" height="14" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="1" y="1" width="22" height="16" rx="2" ry="2"/>
+          <circle cx="20" cy="9" r="1" fill="currentColor"/>
         </svg>
-        Classique
+        Tablette
       </button>
-      <button 
-        class="mode-btn" 
+      <button
+        class="mode-btn"
         class:active={mode === 'light'}
         on:click={() => { if (mode !== 'light') toggleMode(); }}
       >
-        ⚡ Light
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+          <line x1="12" y1="18" x2="12" y2="18.01"/>
+        </svg>
+        Tel
       </button>
     </div>
   </div>
 {:else if compact}
   <!-- Version compacte (page Annonces) -->
   <div class="mode-toggle-compact">
-    <span class="mode-icon" class:light={mode === 'light'} title={mode === 'classic' ? 'Mode Classique' : 'Mode Light'}>
+    <span class="mode-icon" class:light={mode === 'light'} title={mode === 'classic' ? 'Mode Tablette' : 'Mode Tel'}>
       {#if mode === 'light'}
-        ⚡
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+          <rect x="5" y="2" width="14" height="20" rx="2" ry="2"/>
+          <line x1="12" y1="18" x2="12" y2="18.01"/>
+        </svg>
       {:else}
-        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-          <path d="M12 2L12 6M12 18L12 22M4.93 4.93L7.76 7.76M16.24 16.24L19.07 19.07M2 12L6 12M18 12L22 12M4.93 19.07L7.76 16.24M16.24 7.76L19.07 4.93"/>
+        <svg width="16" height="12" viewBox="0 0 24 18" fill="none" stroke="currentColor" stroke-width="1.8">
+          <rect x="1" y="1" width="22" height="16" rx="2" ry="2"/>
+          <circle cx="20" cy="9" r="1" fill="currentColor"/>
         </svg>
       {/if}
     </span>
-    <button 
+    <button
       class="toggle-switch"
       class:light={mode === 'light'}
       on:click={toggleMode}
       aria-label="Changer de mode"
-      title={mode === 'classic' ? 'Passer en mode Light' : 'Passer en mode Classique'}
+      title={mode === 'classic' ? 'Passer en mode Tel' : 'Passer en mode Tablette'}
     >
       <span class="switch-track">
         <span class="switch-thumb"></span>
@@ -122,7 +131,7 @@
   <!-- Version standard (toggle simple) -->
   <div class="mode-toggle-simple">
     <span class="label-text">Mode :</span>
-    <button 
+    <button
       class="toggle-switch"
       class:light={mode === 'light'}
       on:click={toggleMode}
@@ -132,7 +141,7 @@
         <span class="switch-thumb"></span>
       </span>
     </button>
-    <span class="mode-name">{mode === 'classic' ? 'Classique' : 'Light'}</span>
+    <span class="mode-name">{mode === 'classic' ? 'Tablette' : 'Tel'}</span>
   </div>
 {/if}
 
@@ -220,6 +229,14 @@
     font-weight: 500;
     cursor: pointer;
     transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.4rem;
+  }
+
+  .mode-btn svg {
+    flex-shrink: 0;
   }
 
   .mode-btn:hover {
