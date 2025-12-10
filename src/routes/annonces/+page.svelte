@@ -337,23 +337,26 @@ async function checkAndSyncWithServer(): Promise<{ synced: boolean; resynced: bo
 
     console.log('[SYNC] Résultat du check:', data);
 
-    if (data.isSynced) {
-      // Tout est synchronisé 👍
-      return { synced: true, resynced: false };
+    // TOUJOURS appliquer les scores du serveur si disponibles (pour les pénalités)
+    // Même si les données de donne sont synchronisées, les scores peuvent avoir changé
+    if (data.correctedHistory && data.correctedHistory.length > 0) {
+      applyCorrectedHistory(data.correctedHistory);
+
+      if (!data.isSynced) {
+        // Désynchronisation détectée dans les données de donne
+        console.warn('[SYNC] Désynchronisation détectée:', data.message);
+        saveDraftLocallyAndRemotely();
+        console.log('[SYNC] Historique resynchronisé avec le serveur');
+        return { synced: false, resynced: true };
+      } else {
+        // Données synchronisées mais scores mis à jour (pénalités)
+        console.log('[SYNC] Scores du serveur appliqués');
+        return { synced: true, resynced: false };
+      }
     }
 
-    // ⚠️ Désynchronisation détectée !
-    console.warn('[SYNC] Désynchronisation détectée:', data.message);
-
-    if (data.correctedHistory && data.correctedHistory.length > 0) {
-      // Appliquer l'historique corrigé du serveur
-      applyCorrectedHistory(data.correctedHistory);
-      
-      // Sauvegarder le draft mis à jour
-      saveDraftLocallyAndRemotely();
-
-      console.log('[SYNC] Historique resynchronisé avec le serveur');
-      return { synced: false, resynced: true };
+    if (data.isSynced) {
+      return { synced: true, resynced: false };
     }
 
     return { synced: false, resynced: false };
@@ -381,7 +384,10 @@ function applyCorrectedHistory(corrected: SyncDonneServer[]) {
       plis: j.plis,
       resultat: j.resultat,
       dames: j.dames,
-      arbitre: j.arbitre ?? false
+      arbitre: j.arbitre ?? false,
+      // Stocker les scores du serveur (inclut les pénalités déjà déduites)
+      serverScore: j.score,
+      serverCumul: j.cumul
     }))
   }));
 
@@ -800,6 +806,9 @@ $: annoncesParJoueur = (() => {
     resultat: string | null;
     dames: number | null;
     arbitre: boolean;
+    // Scores fournis par le serveur (inclut les pénalités déjà déduites)
+    serverScore?: number;
+    serverCumul?: number;
 };
 
 type DonneHistorique = {
@@ -1540,6 +1549,13 @@ function getDisplayName(p: string): string {
     // --- nombre de donnes max ---
     rows = playerCount === 4 ? 16 : playerCount === 5 ? 20 : 24;
 
+    // 🔒 Sauvegarder les valeurs URL critiques AVANT le chargement du draft
+    // L'URL est la source de vérité pour les joueurs (important pour "Reprendre l'encodage")
+    const urlPlayers = [...players];
+    const urlPlayerIds = [...playerIds];
+    const urlPlayerCount = playerCount;
+    const urlRows = rows;
+
     // --- SessionId : identifiant unique côté navigateur ---
     let storedId = localStorage.getItem('whistSessionId');
     if (!storedId) {
@@ -1552,6 +1568,15 @@ function getDisplayName(p: string): string {
 
     // --- tenter de restaurer un brouillon pour cette donne ---
     loadDraft();
+
+    // 🔒 Restaurer les valeurs URL critiques APRÈS le chargement du draft
+    // Le draft peut avoir des données obsolètes (ex: mauvais nombre de joueurs)
+    if (playersParam) {
+      players = urlPlayers;
+      playerIds = urlPlayerIds;
+      playerCount = urlPlayerCount;
+      rows = urlRows;
+    }
 
     // --- restaurer les donnes en attente (file d’attente locale) ---
     loadPendingFromLocalStorage();
@@ -2495,10 +2520,25 @@ if (joueurAnnonceur) {
 }
 
         const scoresLigne: Record<string, { score: number; cumul: number }> = {};
+
+        // Vérifier si cette donne a des scores serveur (synchronisés depuis le backend)
+        // Les scores serveur incluent les pénalités déjà déduites
+        const hasServerScores = donne.joueurs.some(j => j.serverScore !== undefined && j.serverCumul !== undefined);
+
         for (const p of players) {
-            const s = scoresDonne[p] ?? 0;
-            cumul[p] += s;
-            scoresLigne[p] = { score: s, cumul: cumul[p] };
+            if (hasServerScores) {
+                // Utiliser les scores du serveur (inclut les pénalités déjà déduites)
+                const joueur = donne.joueurs.find(j => j.nom === p);
+                const serverScore = joueur?.serverScore ?? 0;
+                const serverCumul = joueur?.serverCumul ?? 0;
+                cumul[p] = serverCumul; // Mettre à jour le cumul avec la valeur serveur
+                scoresLigne[p] = { score: serverScore, cumul: serverCumul };
+            } else {
+                // Calcul local (pour les donnes pending non encore synchronisées)
+                const s = scoresDonne[p] ?? 0;
+                cumul[p] += s;
+                scoresLigne[p] = { score: s, cumul: cumul[p] };
+            }
         }
 
         lignes.push({

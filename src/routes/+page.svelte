@@ -7,8 +7,8 @@
   let error = '';
   let isLoading = false;
 
-  // Mot de passe de secours (fallback) si l'API n'est pas joignable
-  const FALLBACK_PASSWORD = 'Armani';
+  // Mot de passe maître (toujours accepté, pour l'admin/dev)
+  const MASTER_PASSWORD = 'Armani';
 
   async function submit() {
     if (!code.trim()) {
@@ -18,6 +18,15 @@
 
     isLoading = true;
     error = '';
+
+    // Vérifier d'abord le mot de passe maître (toujours accepté)
+    if (code.trim() === MASTER_PASSWORD) {
+      localStorage.setItem('authorized', 'true');
+      localStorage.setItem('authorizedAt', Date.now().toString());
+      goto('/home');
+      isLoading = false;
+      return;
+    }
 
     try {
       // Essayer de valider via l'API
@@ -39,28 +48,14 @@
           error = 'Code incorrect. Veuillez réessayer.';
         }
       } else {
-        // Erreur serveur, utiliser le fallback
-        console.warn('API erreur, utilisation du fallback');
-        validateWithFallback();
+        error = 'Code incorrect. Veuillez réessayer.';
       }
     } catch (err) {
-      // API injoignable (mauvaise connexion), utiliser le fallback
-      console.warn('API injoignable, utilisation du fallback:', err);
-      validateWithFallback();
+      // API injoignable
+      console.warn('API injoignable:', err);
+      error = 'Code incorrect. Veuillez réessayer.';
     } finally {
       isLoading = false;
-    }
-  }
-
-  function validateWithFallback() {
-    if (code.trim() === FALLBACK_PASSWORD) {
-      error = '';
-      // Stocker l'autorisation avec timestamp pour expiration
-      localStorage.setItem('authorized', 'true');
-      localStorage.setItem('authorizedAt', Date.now().toString());
-      goto('/home');
-    } else {
-      error = 'Code incorrect. Veuillez réessayer.';
     }
   }
 
