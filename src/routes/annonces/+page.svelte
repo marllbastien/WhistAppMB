@@ -3624,16 +3624,18 @@ console.log(
         showConfetti = false;
       }, 4000);
 
-      // 💌 Générer la feuille de points et l'envoyer par email
-      await exportFeuillePointsPdf({ archiveOnline: true });
-
       resetDonneState();
 
-      // 🔁 On tente d’envoyer toutes les donnes en attente,
-      // mais on ne bloque pas l’UI si ça échoue
-      flushPendingDonnes().catch((e) =>
-        console.error('Erreur flush pendings en fin de manche', e)
-      );
+      // 🔁 IMPORTANT : D'abord envoyer toutes les donnes pendantes au serveur
+      // avant de générer le PDF (sinon la dernière donne manque dans le PDF)
+      try {
+        await flushPendingDonnes();
+      } catch (e) {
+        console.error('Erreur flush pendings en fin de manche', e);
+      }
+
+      // 💌 Générer la feuille de points et l'archiver (maintenant que toutes les donnes sont en DB)
+      await exportFeuillePointsPdf({ archiveOnline: true });
 
       return;
     }
