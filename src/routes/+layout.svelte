@@ -6,8 +6,12 @@
   import favicon from '$lib/assets/favicon.svg';
   import CookieBubble from '$lib/components/CookieBubble.svelte';
 
-  // Pages publiques (pas besoin d'être authentifié)
+  // Pages publiques (pas besoin d'être authentifié par l'app principale)
+  // Note: /admin a son propre système d'authentification dans +layout.svelte admin
   const PUBLIC_ROUTES = ['/', '/legal'];
+
+  // Préfixes de routes avec leur propre authentification
+  const SELF_AUTH_PREFIXES = ['/admin'];
   
   // Durée de validité de l'autorisation (12 heures en millisecondes)
   const AUTH_EXPIRY_MS = 12 * 60 * 60 * 1000;
@@ -51,17 +55,18 @@
   // Vérification de l'autorisation
   function checkAuth(pathname: string) {
     if (!browser) return;
-    
+
     const isPublicRoute = PUBLIC_ROUTES.includes(pathname);
+    const hasSelfAuth = SELF_AUTH_PREFIXES.some(prefix => pathname.startsWith(prefix));
     const authorized = isAuthValid();
-    
-    if (!isPublicRoute && !authorized) {
+
+    if (!isPublicRoute && !hasSelfAuth && !authorized) {
       // Redirection vers la page de login
       goto('/');
       return;
     }
-    
-    isAuthorized = authorized || isPublicRoute;
+
+    isAuthorized = authorized || isPublicRoute || hasSelfAuth;
     isChecking = false;
   }
 

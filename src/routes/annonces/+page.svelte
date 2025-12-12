@@ -4524,7 +4524,11 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 {/if}
 
 <!-- Mode d'encodage Classique (avec Light intégré dans choixAnnonce) -->
-<div class="donne" class:donne-edit-mode={isEditingPreviousDonne}>
+<!-- Wrapper pour les logos mobiles autour de la section Donne -->
+<div class="donne-section-wrapper">
+  <img src="/Logo-tee-shirt.png" alt="Logo club" class="mobile-logo mobile-logo-left" />
+
+  <div class="donne" class:donne-edit-mode={isEditingPreviousDonne}>
 	{#if isEditingPreviousDonne}
 		<div class="edit-mode-banner">
 			<span class="edit-mode-icon">
@@ -4616,6 +4620,10 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 		{/each}
 	</div>
 </div>
+
+  <img src="/Logo_App_Rond.png" alt="Logo App" class="mobile-logo mobile-logo-right" />
+</div>
+<!-- Fin du wrapper logos mobiles -->
 
 <!-- Mode Light: sélection annonce puis joueur(s) - EN DEHORS de .donne pour avoir le même style que Encodage -->
 {#if encodingMode === 'light'}
@@ -4925,37 +4933,40 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   }
 
 
-  /* Wrapper global : logos + bandeau */
+  /* Wrapper global : logos + bandeau - CSS GRID pour un positionnement fiable */
   .page-header-wrapper {
-  display: flex;
-  align-items: stretch;
-  justify-content: center;
-  gap: 2rem;
+  display: grid;
+  grid-template-columns: 1fr auto 1fr;  /* logo | header | logo */
+  align-items: center;
+  gap: 1rem;
   margin: 0.5rem auto 1.5rem auto;
-  max-width: 1400px;       /* largeur totale */
+  max-width: 1400px;
+  padding: 0 1rem;
+  box-sizing: border-box;
   }
 
-  /* Bandeau central garde ton style existant */
+  /* Bandeau central */
   .header {
-  flex: 0 0 900px;         /* largeur fixe de l'encadré */
+  width: 900px;
+  max-width: 100%;
   }
 
   /* Logos sur les côtés */
   .corner-logo {
-  align-self: center;      /* verticalement centré par rapport au header */
-  height: 180px;           /* 🔥 tu peux monter à 200 / 220 si tu veux encore plus grand */
+  height: 180px;
   width: auto;
   object-fit: contain;
   filter: drop-shadow(0 8px 18px rgba(0, 0, 0, 0.7));
   }
 
-  /* optionnel : les coller un peu plus au bord */
+  /* Logo gauche : collé à droite de sa zone (vers le header) */
   .corner-logo-left {
-  margin-left: 0.5rem;
+  justify-self: end;
   }
 
+  /* Logo droit : collé à gauche de sa zone (vers le header) */
   .corner-logo-right {
-  margin-right: 0.5rem;
+  justify-self: start;
   }
 
 
@@ -5003,7 +5014,18 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   margin: 1.5rem auto;
   }
 
-  /* --- DONNE / CARTES D’ANNONCES --- */
+  /* --- DONNE / CARTES D'ANNONCES --- */
+
+  /* Wrapper pour les logos mobiles - par défaut logos cachés sur desktop */
+  .donne-section-wrapper {
+    display: block;  /* simple conteneur sur desktop */
+  }
+
+  /* Logos mobiles - cachés par défaut sur desktop */
+  .mobile-logo {
+    display: none;
+  }
+
   .donne {
   margin-top: 0.5rem;
   }
@@ -5690,94 +5712,47 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   }
   }
 
-  /* RESPONSIVE GRANDE TABLETTE (1101px - 1424px) : logos visibles */
+  /* RESPONSIVE GRANDE TABLETTE (1101px - 1424px) : logos visibles, taille réduite */
   @media (min-width: 1101px) and (max-width: 1424px) {
-  /* Header centré */
   .page-header-wrapper {
-    display: flex;
-    justify-content: center;
+    gap: 0.8rem;
     margin: 0.4rem auto 0.8rem;
   }
 
-  /* Header prend sa taille naturelle */
   .header {
     width: auto;
-    margin: 0;
-    flex: 0 0 auto;
+    max-width: 800px;
   }
 
-  /* Logos en fixed, positionnés par rapport au centre de l'écran */
   .corner-logo {
-    position: fixed !important;
-    top: 23.6% !important;
-    transform: translateY(-50%) !important;
-    height: 80px !important;
-    width: auto !important;
+    height: 100px;
     filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.6));
-    z-index: 100;
-    align-self: auto !important;
-  }
-
-  /* Logo gauche : centré - moitié du header - marge */
-  .corner-logo-left {
-    left: calc(50% - 450px) !important;
-    right: auto !important;
-    margin: 0 !important;
-  }
-
-  /* Logo droit : centré + moitié du header + marge */
-  .corner-logo-right {
-    right: calc(50% - 450px) !important;
-    left: auto !important;
-    margin: 0 !important;
   }
   }
 
-  /* RESPONSIVE MOBILE */
+  /* RESPONSIVE MOBILE / TABLETTE PORTRAIT */
 
   @media (max-width: 1150px) {
-  /* Header centré */
+  /* Grid simplifié : logos au-dessus/en-dessous ou cachés selon la place */
   .page-header-wrapper {
-  display: flex !important;
-  justify-content: center !important;
-  margin: 0.4rem auto 0.8rem !important;
+  grid-template-columns: auto 1fr auto;  /* logos flexibles autour du header */
+  gap: 0.5rem;
+  margin: 0.4rem auto 0.8rem;
+  padding: 0 0.5rem;
   }
 
   /* Header prend sa taille naturelle */
   .header {
-  width: auto !important;
-  max-width: calc(100vw - 1rem) !important;
-  margin: 0 !important;
-  flex: 0 0 auto !important;
+  width: auto;
+  max-width: calc(100vw - 180px);  /* place pour les logos */
   border-radius: 16px;
   padding: 0.7rem 0.9rem 1rem;
   }
 
-  /* Logos en fixed, positionnés par rapport au centre de l'écran (comme tablette mais plus petits) */
+  /* Logos plus petits sur mobile/tablette */
   .corner-logo {
-  display: block !important;
-  position: fixed !important;
-  top: 26.5% !important;
-  transform: translateY(-50%) !important;
-  height: 75px !important;
-  width: auto !important;
-  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.6)) !important;
-  z-index: 100 !important;
-  align-self: auto !important;
-  }
-
-  /* Logo gauche */
-  .corner-logo-left {
-  left: 25px !important;
-  right: auto !important;
-  margin: 0 !important;
-  }
-
-  /* Logo droit */
-  .corner-logo-right {
-  right: 25px !important;
-  left: auto !important;
-  margin: 0 !important;
+  height: 70px;
+  filter: drop-shadow(0 3px 6px rgba(0, 0, 0, 0.6));
   }
 
   .header-top {
@@ -5789,13 +5764,66 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   text-align: center;
   }
 
-  /* Boutons d’onglets : 2 par ligne max */
+  /* Boutons d'onglets : 2 par ligne max */
   .header-buttons {
   flex-wrap: wrap;
   gap: 0.4rem;
   margin-top: 0.8rem;
   }
+  }
 
+  /* RESPONSIVE : logos autour de la donne (< 1430px) */
+  @media (max-width: 1430px) {
+  .page-header-wrapper {
+  grid-template-columns: 1fr;  /* une seule colonne : header seul */
+  justify-items: center;
+  }
+
+  /* Header prend toute la largeur (logos ne sont plus dans le header) */
+  .header {
+  width: auto !important;
+  max-width: calc(100vw - 2rem) !important;  /* pleine largeur sans contrainte pour logos */
+  }
+
+  /* Cacher les logos du header sur mobile */
+  .corner-logo {
+  display: none;
+  }
+
+  /* Wrapper avec position relative pour les logos absolus */
+  .donne-section-wrapper {
+    position: relative;
+    display: block;  /* pas de flex - la donne garde sa largeur normale */
+  }
+
+  /* Logos mobiles en position absolue sur les côtés */
+  .mobile-logo {
+    display: block;
+    position: absolute;
+    top: -40px;  /* remonté pour centrage visuel */
+    height: 90px;
+    width: auto;
+    filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
+    opacity: 0.9;
+    z-index: 10;
+  }
+
+  .mobile-logo-left {
+    left: 30px;  /* plus vers l'intérieur */
+  }
+
+  .mobile-logo-right {
+    right: 30px;  /* plus vers l'intérieur */
+  }
+
+  /* La section donne garde sa largeur normale */
+  .donne-section-wrapper .donne {
+    width: 100%;
+  }
+  }
+
+  /* Suite des styles mobile (< 1150px) qui restent valides pour petits écrans aussi */
+  @media (max-width: 1150px) {
   .header-buttons button {
   flex: 1 1 45%;
   font-size: 0.8rem;
@@ -6997,26 +7025,20 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   border: none;
   }
 
-  /* ✅ Ajustement spécial tablettes (paysage) : 769px à 1200px */
-  @media (min-width: 769px) and (max-width: 1200px) {
+  /* ✅ Ajustement spécial tablettes (paysage) : 769px à 1100px */
+  @media (min-width: 769px) and (max-width: 1100px) {
   .page-header-wrapper {
-  max-width: 100%;      /* pas plus large que l'écran */
-  gap: 1rem;            /* un peu moins d'espace entre logo / header */
-  padding: 0 0.5rem;    /* petit padding intérieur pour éviter d'être collé au bord */
-  box-sizing: border-box;
+  gap: 0.5rem;
+  padding: 0 0.5rem;
+  }
+
+  .header {
+  max-width: calc(100vw - 200px);  /* place pour les logos */
   }
 
   .corner-logo {
-  height: 120px;        /* au lieu de 180px → plus adapté à une tablette */
-  filter: drop-shadow(0 6px 12px rgba(0, 0, 0, 0.65));
-  }
-
-  .corner-logo-left {
-  margin-left: 0;       /* évite de pousser vers l'extérieur */
-  }
-
-  .corner-logo-right {
-  margin-right: 0;
+  height: 90px;
+  filter: drop-shadow(0 4px 8px rgba(0, 0, 0, 0.65));
   }
   }
 
