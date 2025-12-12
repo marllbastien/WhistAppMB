@@ -78,6 +78,17 @@
     const data = event.detail;
     console.log('[LightEncode] Reçu:', data);
 
+    // ⏰ Si c'est la première annonce de la donne 1,
+    // on mémorise l'heure de début de la manche (même logique que mode tablette)
+    const hasAnnonce = Object.values(data.annonceByPlayer).some(code => code && code !== '');
+    if (!mancheStartTime && donneNumber === 1 && hasAnnonce) {
+      const now = new Date();
+      mancheStartTime = formatHeure(now);
+      // Pour la DB
+      mancheStartDate = now.toISOString();
+      void saveMancheStartToServer();
+    }
+
     // Mettre à jour annonceByPlayer avec les nouvelles valeurs
     annonceByPlayer = { ...data.annonceByPlayer };
     console.log('[LightEncode] annonceByPlayer mis à jour:', annonceByPlayer);
