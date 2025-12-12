@@ -1238,12 +1238,14 @@ function getChangeClass(after: number, before: number) {
         </td>
 
         <!-- Jetons (pénalités) -->
-        <td class="jetons-cell">
-          {#each getPenalitesForDonne(d.donneNumber) as pen}
-            <span class="jeton-item" title="{pen.joueurAlias}: -{pen.valeur} pts">
-              <JetonPoker color={jetonCodeToColor(pen.jetonTypeCode)} size={18} />
-            </span>
-          {/each}
+        <td>
+          <div class="jetons-cell">
+            {#each getPenalitesForDonne(d.donneNumber) as pen}
+              <span class="jeton-item" title="{pen.joueurAlias}: -{pen.valeur} pts">
+                <JetonPoker color={jetonCodeToColor(pen.jetonTypeCode)} size={18} />
+              </span>
+            {/each}
+          </div>
         </td>
 
         <!-- Action -->
@@ -2388,10 +2390,12 @@ function getChangeClass(after: number, before: number) {
 
   /* Jetons dans le tableau des donnes */
   .jetons-cell {
-    display: flex;
+    display: inline-flex;
     gap: 3px;
     justify-content: center;
     align-items: center;
+    min-height: 18px;
+    vertical-align: middle;
   }
 
   .jeton-item {

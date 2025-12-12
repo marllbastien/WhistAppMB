@@ -212,6 +212,7 @@
   competitionName: string | null;
   donnesCount: number;
   isCompleted: boolean;
+  isProtected: boolean;
   }
 
 
@@ -252,21 +253,28 @@
   let deleteError = '';
   let deleteSuccess = '';
 
-  // Réactive : tout est sélectionné ?
-  $: allSelected = filteredSortedManches.length > 0 && 
-    filteredSortedManches.every(m => selectedIds.has(m.tableConfigId));
+  // Réactive : manches sélectionnables (non protégées)
+  $: selectableManches = filteredSortedManches.filter(m => !m.isProtected);
+
+  // Réactive : tout est sélectionné ? (parmi les sélectionnables)
+  $: allSelected = selectableManches.length > 0 &&
+    selectableManches.every(m => selectedIds.has(m.tableConfigId));
 
   function toggleSelectAll() {
     if (allSelected) {
       // Désélectionner tout
       selectedIds = new Set();
     } else {
-      // Sélectionner toutes les manches filtrées
-      selectedIds = new Set(filteredSortedManches.map(m => m.tableConfigId));
+      // Sélectionner toutes les manches filtrées NON PROTÉGÉES
+      selectedIds = new Set(selectableManches.map(m => m.tableConfigId));
     }
   }
 
   function toggleSelect(id: number) {
+    // Ne pas permettre de sélectionner une table protégée
+    const manche = manches.find(m => m.tableConfigId === id);
+    if (manche?.isProtected) return;
+
     if (selectedIds.has(id)) {
       selectedIds.delete(id);
     } else {
@@ -331,8 +339,43 @@
   donnesCount: '',
   startTime: '',
   endTime: '',
-  statut: ''
+  statut: '',
+  protection: ''  // '', 'protected', 'unprotected'
   };
+
+  // Toggle protection d'une table
+  let togglingProtection = false;
+  async function toggleProtection(tableConfigId: number, event: Event) {
+    event.stopPropagation();
+    if (togglingProtection) return;
+
+    togglingProtection = true;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/manche/${tableConfigId}/protect`, {
+        method: 'PUT'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        // Mettre à jour localement
+        const idx = manches.findIndex(m => m.tableConfigId === tableConfigId);
+        if (idx !== -1) {
+          manches[idx].isProtected = data.isProtected;
+          manches = manches; // trigger reactivity
+        }
+        // Désélectionner si on vient de protéger
+        if (data.isProtected && selectedIds.has(tableConfigId)) {
+          selectedIds.delete(tableConfigId);
+          selectedIds = selectedIds;
+        }
+      } else {
+        console.error('Erreur toggle protection:', await res.text());
+      }
+    } catch (err) {
+      console.error('Erreur toggle protection:', err);
+    } finally {
+      togglingProtection = false;
+    }
+  }
 
   // Liste des numéros de manches disponibles (triée)
   $: availableMancheNumbers = [...new Set(manches.map(m => m.mancheNumber))].sort((a, b) => a - b);
@@ -409,6 +452,12 @@
     if (filters.statut) {
       const statut = m.isCompleted ? 'terminée' : 'en cours';
       if (statut !== filters.statut) return false;
+    }
+
+    // Protection
+    if (filters.protection) {
+      if (filters.protection === 'protected' && !m.isProtected) return false;
+      if (filters.protection === 'unprotected' && m.isProtected) return false;
     }
 
     return true;
@@ -811,11 +860,19 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
             </div>
             <div class="filter-item">
               <span class="filter-label">Date</span>
-              <input 
-                type="date" 
-                class="desktop-filter desktop-filter-date" 
+              <input
+                type="date"
+                class="desktop-filter desktop-filter-date"
                 bind:value={filters.startTime}
               />
+            </div>
+            <div class="filter-item">
+              <span class="filter-label">Protection</span>
+              <select class="desktop-filter" bind:value={filters.protection}>
+                <option value="">Tous</option>
+                <option value="protected">🛡️ Protégées</option>
+                <option value="unprotected">Non protégées</option>
+              </select>
             </div>
           </div>
         </div>
@@ -823,6 +880,7 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
              <table class="admin-table">
   <colgroup>
     <col class="col-checkbox" />
+    <col class="col-protect" />
     <col class="col-id" />
     <col class="col-type" />
     <col class="col-compnum" />
@@ -840,14 +898,15 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
                  <!-- Ligne 1 : en-têtes "généraux" -->
                  <tr>
                    <th class="col-checkbox-header">
-                     <input 
-                       type="checkbox" 
+                     <input
+                       type="checkbox"
                        checked={allSelected}
                        on:change={toggleSelectAll}
                        on:click|stopPropagation
                        title="Tout sélectionner"
                      />
                    </th>
+                   <th class="th-protect" title="Protection">🛡️</th>
                    <th class="hide-tablet" on:click={() =>
                      toggleSort('tableConfigId')}>
                      ID {#if sortKey === 'tableConfigId'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
@@ -898,13 +957,25 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
 
                <tbody>
     {#each filteredSortedManches as m}
-      <tr class="clickable" on:click={() => gotoManche(m.tableConfigId)}>
+      <tr class="clickable {m.isProtected ? 'row-protected' : ''}" on:click={() => gotoManche(m.tableConfigId)}>
         <td class="cell-checkbox" on:click|stopPropagation>
-          <input 
-            type="checkbox" 
+          <input
+            type="checkbox"
             checked={selectedIds.has(m.tableConfigId)}
             on:change={() => toggleSelect(m.tableConfigId)}
+            disabled={m.isProtected}
+            title={m.isProtected ? 'Table protégée - suppression impossible' : ''}
           />
+        </td>
+        <td class="cell-protect" on:click|stopPropagation>
+          <button
+            class="btn-protect {m.isProtected ? 'protected' : ''}"
+            on:click={(e) => toggleProtection(m.tableConfigId, e)}
+            disabled={togglingProtection}
+            title={m.isProtected ? 'Retirer la protection' : 'Protéger cette table'}
+          >
+            {m.isProtected ? '🛡️' : '🔓'}
+          </button>
         </td>
         <td class="cell-id hide-tablet">{m.tableConfigId}</td>
         <td class="cell-type"><span class="badge badge-type type-{m.competitionType ?? 0}">{formatCompetitionType(m)}</span></td>
@@ -983,17 +1054,25 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
           <div class="mobile-cards">
             {#each filteredSortedManches as m}
               <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
-              <div class="manche-card" on:click={() => gotoManche(m.tableConfigId)}>
+              <div class="manche-card {m.isProtected ? 'card-protected' : ''}" on:click={() => gotoManche(m.tableConfigId)}>
                 <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
                 <div class="card-checkbox" on:click|stopPropagation>
-                  <input 
-                    type="checkbox" 
+                  <input
+                    type="checkbox"
                     checked={selectedIds.has(m.tableConfigId)}
                     on:change={() => toggleSelect(m.tableConfigId)}
+                    disabled={m.isProtected}
                   />
                 </div>
               <div class="card-content">
                 <div class="card-header">
+                  {#if m.isProtected}
+                    <button
+                      class="btn-protect-mobile protected"
+                      on:click|stopPropagation={(e) => toggleProtection(m.tableConfigId, e)}
+                      title="Retirer la protection"
+                    >🛡️</button>
+                  {/if}
                   <span class="badge badge-type type-{m.competitionType ?? 0}">{formatCompetitionType(m)}</span>
                   {#if m.competitionNumber}
                     <span class="badge badge-compnum">N°{m.competitionNumber}</span>
@@ -2019,6 +2098,89 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
     .card-info {
       font-size: 0.7rem;
     }
+  }
+
+  /* ====================== STYLES PROTECTION ====================== */
+
+  .col-protect {
+    width: 4%;
+  }
+
+  .th-protect {
+    cursor: default !important;
+  }
+
+  .cell-protect {
+    text-align: center;
+    padding: 0.2rem !important;
+  }
+
+  .btn-protect {
+    background: transparent;
+    border: 1px solid rgba(107, 114, 128, 0.4);
+    border-radius: 50%;
+    width: 28px;
+    height: 28px;
+    font-size: 0.85rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0;
+    color: #6b7280;
+  }
+
+  .btn-protect:hover:not(:disabled) {
+    border-color: #22c55e;
+    background: rgba(34, 197, 94, 0.1);
+    color: #22c55e;
+  }
+
+  .btn-protect.protected {
+    background: rgba(251, 191, 36, 0.15);
+    border-color: rgba(251, 191, 36, 0.5);
+    color: #fbbf24;
+  }
+
+  .btn-protect.protected:hover:not(:disabled) {
+    background: rgba(251, 191, 36, 0.25);
+    border-color: #fbbf24;
+  }
+
+  .btn-protect:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* Ligne protégée */
+  .row-protected {
+    background: rgba(251, 191, 36, 0.05) !important;
+  }
+
+  .row-protected:hover {
+    background: rgba(251, 191, 36, 0.1) !important;
+  }
+
+  /* Checkbox désactivée pour tables protégées */
+  .cell-checkbox input[type="checkbox"]:disabled {
+    opacity: 0.3;
+    cursor: not-allowed;
+  }
+
+  /* Carte protégée (mobile) */
+  .card-protected {
+    border-color: rgba(251, 191, 36, 0.4) !important;
+    background: linear-gradient(135deg, rgba(251, 191, 36, 0.08) 0%, #020617 100%) !important;
+  }
+
+  .btn-protect-mobile {
+    background: rgba(251, 191, 36, 0.15);
+    border: 1px solid rgba(251, 191, 36, 0.5);
+    border-radius: 4px;
+    padding: 0.1rem 0.3rem;
+    font-size: 0.75rem;
+    cursor: pointer;
   }
 
 </style>

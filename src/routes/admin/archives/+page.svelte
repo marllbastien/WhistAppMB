@@ -18,6 +18,10 @@
     playerCount: number | null;
     manche: number | null;
     table: number | null;
+    // Nouvelles métadonnées
+    tableConfigId: number | null;
+    tableName: string | null;
+    players: string | null;
   }
 
   interface CompetitionDefinition {
@@ -26,6 +30,15 @@
     competitionNumber: number | null;
     name: string;
     allowedPlayers: string | null;
+  }
+
+  interface CompetitionType {
+    id: number;
+    name: string;
+    shortName: string | null;
+    description: string | null;
+    isActive: boolean;
+    sortOrder: number;
   }
 
   let archives: ArchiveFile[] = [];
@@ -42,6 +55,7 @@
   let filterPlayerCount = '';
   let filterManche = '';
   let filterTable = '';
+  let filterTableConfigId = '';
 
   // Données dynamiques pour les filtres
   let competitionDefinitions: CompetitionDefinition[] = [];
@@ -66,17 +80,44 @@
     { value: '12', label: 'Décembre' }
   ];
 
-  // Types de compétition (codes numériques mappés vers les labels)
-  const competitionTypes = [
-    { value: '', label: 'Tous les types' },
-    { value: 'Championnat', label: 'Championnat', code: 1 },
-    { value: 'Interclubs', label: 'Interclubs', code: 2 },
-    { value: 'Manche libre', label: 'Manche libre', code: 3 },
-    { value: 'Concours', label: 'Concours', code: 4 }
-  ];
+  // Types de compétition (chargés dynamiquement depuis l'API)
+  let competitionTypes: { value: string; label: string; code: number }[] = [];
 
   // Recherche par nom
   let searchQuery = '';
+
+  // Charger les types de compétition depuis l'API
+  async function loadCompetitionTypes() {
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/config/competition-types/active`);
+      if (!res.ok) {
+        console.error('Erreur chargement types de compétition', res.status);
+        return;
+      }
+
+      const data: CompetitionType[] = await res.json();
+
+      // Transformer en format pour le select (avec option "Tous" en premier)
+      competitionTypes = [
+        { value: '', label: 'Tous les types', code: 0 },
+        ...data.map((t) => ({
+          value: t.name,
+          label: t.name,
+          code: t.id
+        }))
+      ];
+    } catch (err) {
+      console.error('Erreur réseau loadCompetitionTypes', err);
+      // Fallback sur les types par défaut si l'API échoue
+      competitionTypes = [
+        { value: '', label: 'Tous les types', code: 0 },
+        { value: 'Championnat', label: 'Championnat', code: 1 },
+        { value: 'Interclubs', label: 'Interclubs', code: 2 },
+        { value: 'Manche libre', label: 'Manche libre', code: 3 },
+        { value: 'Concours', label: 'Concours', code: 4 }
+      ];
+    }
+  }
 
   // Charger les définitions de compétition pour le type sélectionné
   async function loadCompetitionDefinitions(typeCode: number | null) {
@@ -87,8 +128,9 @@
     }
 
     try {
+      // includeAll=true pour avoir TOUTES les compétitions (pas seulement celles d'aujourd'hui)
       const res = await fetch(
-        `${API_BASE_URL}/api/config/competitions?competitionType=${typeCode}`
+        `${API_BASE_URL}/api/config/competitions?competitionType=${typeCode}&includeAll=true`
       );
       if (!res.ok) {
         console.error('Erreur chargement competitions', res.status);
@@ -203,6 +245,8 @@
       window.location.href = '/admin';
       return;
     }
+    // Charger les types de compétition et les archives en parallèle
+    loadCompetitionTypes();
     loadArchives();
   });
 
@@ -222,6 +266,7 @@
       if (filterPlayerCount) params.append('playerCount', filterPlayerCount);
       if (filterManche) params.append('manche', filterManche);
       if (filterTable) params.append('table', filterTable);
+      if (filterTableConfigId) params.append('tableConfigId', filterTableConfigId);
 
       if (params.toString()) {
         url += `?${params.toString()}`;
@@ -303,6 +348,7 @@
     filterPlayerCount = '';
     filterManche = '';
     filterTable = '';
+    filterTableConfigId = '';
     searchQuery = '';
     loadArchives();
   }
@@ -420,6 +466,19 @@
           </select>
         </div>
 
+        <div class="filter-group">
+          <label for="filter-table-config-id">ID Table</label>
+          <input
+            type="number"
+            id="filter-table-config-id"
+            class="filter-input"
+            placeholder="Tous"
+            bind:value={filterTableConfigId}
+            on:change={loadArchives}
+            min="1"
+          />
+        </div>
+
         <input
           type="text"
           class="search-input"
@@ -471,8 +530,12 @@
                     <span>{formatFileSize(file.size)}</span>
                     <span>•</span>
                     <span>{formatLastModified(file.lastModified)}</span>
+                    {#if file.tableConfigId}
+                      <span>•</span>
+                      <span class="meta-id">ID: {file.tableConfigId}</span>
+                    {/if}
                   </div>
-                  {#if file.competitionType || file.manche || file.table || file.playerCount}
+                  {#if file.competitionType || file.manche || file.table || file.playerCount || file.tableName}
                     <div class="file-badges">
                       {#if file.competitionType}
                         <span class="badge {getCompetitionTypeBadgeClass(file.competitionType)}">
@@ -483,12 +546,19 @@
                       {#if file.manche}
                         <span class="badge badge-manche">M{file.manche}</span>
                       {/if}
-                      {#if file.table}
+                      {#if file.tableName}
+                        <span class="badge badge-table">{file.tableName}</span>
+                      {:else if file.table}
                         <span class="badge badge-table">T{file.table}</span>
                       {/if}
                       {#if file.playerCount}
                         <span class="badge badge-players">{file.playerCount}J</span>
                       {/if}
+                    </div>
+                  {/if}
+                  {#if file.players}
+                    <div class="file-players">
+                      <span class="players-label">Joueurs:</span> {file.players}
                     </div>
                   {/if}
                 </div>
@@ -747,6 +817,25 @@
     display: flex;
     gap: 0.5rem;
     margin-top: 0.25rem;
+    flex-wrap: wrap;
+    align-items: center;
+  }
+
+  .meta-id {
+    color: #22c55e;
+    font-weight: 500;
+  }
+
+  .file-players {
+    font-size: 0.75rem;
+    color: #9ca3af;
+    margin-top: 0.3rem;
+    font-style: italic;
+  }
+
+  .players-label {
+    color: #6b7280;
+    font-style: normal;
   }
 
   .file-badges {
