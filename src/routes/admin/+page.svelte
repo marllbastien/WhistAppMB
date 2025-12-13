@@ -1,5 +1,6 @@
 ﻿<script lang="ts">
   import { onMount } from 'svelte';
+  import { replaceState } from '$app/navigation';
   import JetonPoker from '$lib/components/JetonPoker.svelte';
 
   const API_BASE_URL =
@@ -34,6 +35,13 @@
       description: 'Consulter, modifier et supprimer les tables de jeu',
       icon: '♤',
       action: () => { viewMode = 'manches'; }
+    },
+    {
+      id: 'verrous',
+      title: 'Gestion des verrous',
+      description: 'Voir et débloquer les tables verrouillées',
+      icon: '🔒',
+      href: '/admin/verrous'
     },
     {
       id: 'joueurs',
@@ -90,6 +98,13 @@
       description: 'Attribuer des jetons de pénalité aux joueurs',
       icon: 'jeton',
       href: '/admin/penalites'
+    },
+    {
+      id: 'notifications',
+      title: 'Notifications email',
+      description: 'Gérer les alertes par email (création/fin de tables)',
+      icon: '📧',
+      href: '/admin/notifications'
     },
     {
       id: 'config',
@@ -377,6 +392,98 @@
     }
   }
 
+  // Forcer la clôture d'une manche non terminée
+  let closingMancheId: number | null = null;
+  let closeSuccess = '';
+  let closeError = '';
+
+  // Modale de confirmation de clôture
+  let showCloseModal = false;
+  let closeModalMancheId: number | null = null;
+  let closeModalMancheInfo: { tableName: string; mancheNumber: number; donnesCount: number } | null = null;
+
+  // Modale de succès après clôture
+  let showSuccessModal = false;
+  let successModalInfo: {
+    tableName: string;
+    mancheNumber: number;
+    endTime: string;
+    dureeMinutes: number;
+  } | null = null;
+
+  function openCloseModal(tableConfigId: number, event: Event) {
+    event.stopPropagation();
+    if (closingMancheId) return;
+
+    const manche = manches.find(m => m.tableConfigId === tableConfigId);
+    if (manche) {
+      closeModalMancheId = tableConfigId;
+      closeModalMancheInfo = {
+        tableName: manche.tableName,
+        mancheNumber: manche.mancheNumber,
+        donnesCount: manche.donnesCount
+      };
+      showCloseModal = true;
+    }
+  }
+
+  function cancelCloseModal() {
+    showCloseModal = false;
+    closeModalMancheId = null;
+    closeModalMancheInfo = null;
+  }
+
+  async function confirmCloseManche() {
+    if (!closeModalMancheId || !closeModalMancheInfo) return;
+
+    const tableConfigId = closeModalMancheId;
+    const mancheInfo = closeModalMancheInfo;
+    showCloseModal = false;
+    closingMancheId = tableConfigId;
+    closeSuccess = '';
+    closeError = '';
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/manche/${tableConfigId}/close`, {
+        method: 'POST'
+      });
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        // Mettre à jour localement
+        const idx = manches.findIndex(m => m.tableConfigId === tableConfigId);
+        if (idx !== -1) {
+          manches[idx].isCompleted = true;
+          manches[idx].endTime = data.endTime;
+          manches = manches; // trigger reactivity
+        }
+
+        // Afficher la modale de succès
+        successModalInfo = {
+          tableName: mancheInfo.tableName,
+          mancheNumber: mancheInfo.mancheNumber,
+          endTime: data.endTime,
+          dureeMinutes: data.dureeMinutes
+        };
+        showSuccessModal = true;
+      } else {
+        closeError = data.message || 'Erreur lors de la clôture.';
+      }
+    } catch (err) {
+      console.error('Erreur clôture manche:', err);
+      closeError = 'Impossible de contacter le serveur.';
+    } finally {
+      closingMancheId = null;
+      closeModalMancheId = null;
+      closeModalMancheInfo = null;
+    }
+  }
+
+  function closeSuccessModal() {
+    showSuccessModal = false;
+    successModalInfo = null;
+  }
+
   // Liste des numéros de manches disponibles (triée)
   $: availableMancheNumbers = [...new Set(manches.map(m => m.mancheNumber))].sort((a, b) => a - b);
 
@@ -520,7 +627,16 @@
 
   onMount(async () => {
     // L'authentification admin est gérée par le layout parent
-    
+
+    // Vérifier si on doit afficher directement la vue tables (retour depuis détail)
+    const urlParams = new URLSearchParams(window.location.search);
+    if (urlParams.get('view') === 'tables') {
+      viewMode = 'manches';
+      loadManches();
+      // Nettoyer l'URL sans recharger la page
+      replaceState('/admin', {});
+    }
+
     // 🔥 Charger les types de compétition depuis l'API
     try {
       const resTypes = await fetch(`${API_BASE_URL}/api/config/competition-types`);
@@ -661,7 +777,7 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
   {:else if viewMode === 'manches'}
     <h1>
       <button class="back-link" on:click={goToMenu}>← Administration</button>
-      <span class="sep">⟶</span> Gestion des manches
+      <span class="sep">⟶</span> Gestion des tables
     </h1>
   {:else if viewMode === 'password'}
     <h1>
@@ -753,7 +869,7 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
       </div>
     </div>
   {:else if viewMode === 'manches'}
-    <!-- Vue Gestion des manches -->
+    <!-- Vue Gestion des tables -->
     <div class="admin-card">
       <div class="list-header">
         <h2>Liste des tables</h2>
@@ -782,6 +898,12 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
       {/if}
       {#if deleteError}
         <p class="error">{deleteError}</p>
+      {/if}
+      {#if closeSuccess}
+        <p class="success">{closeSuccess}</p>
+      {/if}
+      {#if closeError}
+        <p class="error">{closeError}</p>
       {/if}
 
       {#if isLoading}
@@ -907,7 +1029,7 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
                      />
                    </th>
                    <th class="th-protect" title="Protection">🛡️</th>
-                   <th class="hide-tablet" on:click={() =>
+                   <th class="th-id" on:click={() =>
                      toggleSort('tableConfigId')}>
                      ID {#if sortKey === 'tableConfigId'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
                    </th>
@@ -916,7 +1038,7 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
                      toggleSort('competitionType')}>
                      Type {#if sortKey === 'competitionType'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
                    </th>
-                   <th class="hide-tablet" on:click={() =>
+                   <th class="th-compnum" on:click={() =>
                      toggleSort('competitionNumber')}>
                      N° {#if sortKey === 'competitionNumber'}{sortDirection === 'asc' ? '▲' : '▼'}{/if}
                    </th>
@@ -977,16 +1099,35 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
             {m.isProtected ? '🛡️' : '🔓'}
           </button>
         </td>
-        <td class="cell-id hide-tablet">{m.tableConfigId}</td>
-        <td class="cell-type"><span class="badge badge-type type-{m.competitionType ?? 0}">{formatCompetitionType(m)}</span></td>
-        <td class="cell-compnum hide-tablet">{m.competitionNumber ?? '-'}</td>
+        <td class="cell-id">{m.tableConfigId}</td>
+        <td class="cell-type" title={m.competitionType ? getCompetitionTypeLabel(m.competitionType) : ''}>
+          <span class="badge badge-type type-{m.competitionType ?? 0}">{formatCompetitionType(m)}</span>
+        </td>
+        <td class="cell-compnum" title={formatCompetitionName(m)}>{m.competitionNumber ?? '-'}</td>
         <td class="cell-manche">{m.mancheNumber}</td>
         <td class="cell-table">{m.tableName}</td>
         <td class="cell-joueurs hide-mobile"><span class="cell-players">👤 {m.playerCount}</span></td>
         <td class="cell-donnes-td hide-mobile"><span class="cell-donnes">{m.donnesCount}</span></td>
         <td class="cell-date cell-debut">{formatDate(m.startTime)}</td>
         <td class="cell-date cell-fin hide-mobile">{formatDate(m.endTime)}</td>
-        <td class="cell-statut"><span class="badge {m.isCompleted ? 'badge-success' : 'badge-warning'}">{m.isCompleted ? '✓' : '⏳'}</span></td>
+        <td class="cell-statut" on:click|stopPropagation>
+          {#if m.isCompleted}
+            <span class="badge badge-success">✓</span>
+          {:else}
+            <button
+              class="btn-close-manche"
+              on:click={(e) => openCloseModal(m.tableConfigId, e)}
+              disabled={closingMancheId === m.tableConfigId}
+              title="Forcer la clôture de cette manche"
+            >
+              {#if closingMancheId === m.tableConfigId}
+                ⏳
+              {:else}
+                ⏳ Clôturer
+              {/if}
+            </button>
+          {/if}
+        </td>
       </tr>
     {/each}
   </tbody>
@@ -1079,7 +1220,17 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
                   {/if}
                   <span class="card-manche">Manche {m.mancheNumber}</span>
                   <span class="card-table">Table {m.tableName}</span>
-                  <span class="badge {m.isCompleted ? 'badge-success' : 'badge-warning'}">{m.isCompleted ? '✓ Terminée' : '⏳ En cours'}</span>
+                  {#if m.isCompleted}
+                    <span class="badge badge-success">✓ Terminée</span>
+                  {:else}
+                    <button
+                      class="btn-close-manche-mobile"
+                      on:click|stopPropagation={(e) => openCloseModal(m.tableConfigId, e)}
+                      disabled={closingMancheId === m.tableConfigId}
+                    >
+                      {closingMancheId === m.tableConfigId ? '⏳' : '⏳ Clôturer'}
+                    </button>
+                  {/if}
                 </div>
                 <div class="card-details">
                   <span class="card-date">📅 {formatDate(m.startTime)}</span>
@@ -1095,6 +1246,67 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
     </div>
   {/if}
 </div>
+
+<!-- Modale de confirmation de clôture -->
+{#if showCloseModal && closeModalMancheInfo}
+  <div class="modal-overlay" on:click={cancelCloseModal}>
+    <div class="modal-close-manche" on:click|stopPropagation>
+      <div class="modal-icon">
+        <span class="icon-clock">⏱️</span>
+      </div>
+      <h2>Forcer la clôture</h2>
+      <div class="modal-manche-info">
+        <span class="manche-badge">Table {closeModalMancheInfo.tableName}</span>
+        <span class="manche-badge">Manche {closeModalMancheInfo.mancheNumber}</span>
+        <span class="manche-badge donnes">{closeModalMancheInfo.donnesCount} donnes</span>
+      </div>
+      <p class="modal-description">
+        Êtes-vous sûr de vouloir forcer la clôture de cette manche ?
+      </p>
+      <div class="modal-info-box">
+        <span class="info-icon">💡</span>
+        <span>L'heure de fin sera calculée automatiquement à partir de la dernière donne enregistrée.</span>
+      </div>
+      <div class="modal-actions">
+        <button class="btn-cancel" on:click={cancelCloseModal}>
+          Annuler
+        </button>
+        <button class="btn-confirm" on:click={confirmCloseManche}>
+          <span class="btn-icon">✓</span> Confirmer la clôture
+        </button>
+      </div>
+    </div>
+  </div>
+{/if}
+
+<!-- Modale de succès après clôture -->
+{#if showSuccessModal && successModalInfo}
+  <div class="modal-overlay" on:click={closeSuccessModal}>
+    <div class="modal-success" on:click|stopPropagation>
+      <div class="success-icon-container">
+        <span class="success-checkmark">✓</span>
+      </div>
+      <h2>Manche clôturée</h2>
+      <div class="modal-manche-info">
+        <span class="manche-badge success-badge">Table {successModalInfo.tableName}</span>
+        <span class="manche-badge success-badge">Manche {successModalInfo.mancheNumber}</span>
+      </div>
+      <div class="success-details">
+        <div class="success-detail-row">
+          <span class="detail-label">Heure de fin :</span>
+          <span class="detail-value">{formatDate(successModalInfo.endTime)}</span>
+        </div>
+        <div class="success-detail-row">
+          <span class="detail-label">Durée totale :</span>
+          <span class="detail-value highlight">{successModalInfo.dureeMinutes} minutes</span>
+        </div>
+      </div>
+      <button class="btn-success-close" on:click={closeSuccessModal}>
+        Fermer
+      </button>
+    </div>
+  </div>
+{/if}
 
 <footer class="copyright">
   © {currentYear} Wb-Scoring — Tous droits réservés
@@ -1120,10 +1332,18 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
 
 
   .admin-page {
-  max-width: 1100px;
-  margin: 2rem auto;
-  padding: 1rem;
-  color: #f9fafb;
+    width: 100%;
+    margin: 2rem auto;
+    padding: 1rem;
+    color: #f9fafb;
+    box-sizing: border-box;
+  }
+
+  /* Grands écrans uniquement: limiter la largeur */
+  @media (min-width: 1101px) {
+    .admin-page {
+      max-width: 1100px;
+    }
   }
 
   h1 {
@@ -1218,6 +1438,8 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
   padding: 1.5rem;
   border: 1px solid rgba(34, 197, 94, 0.3);
   box-shadow: 0 15px 40px rgba(0, 0, 0, 0.6);
+  width: 100%;
+  box-sizing: border-box;
   }
 
   .pin-row {
@@ -1381,11 +1603,11 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
   }
 
   .admin-table tbody tr:nth-child(even) {
-  background: #020b06;
+    background: rgba(34, 197, 94, 0.12) !important;
   }
 
   .admin-table tbody tr:nth-child(odd) {
-  background: #020617;
+    background: rgba(0, 0, 0, 0.15) !important;
   }
 
   .clickable {
@@ -1688,6 +1910,7 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
   .cell-date {
     font-size: 0.8rem;
     color: #9ca3af;
+    white-space: nowrap;
   }
 
   /* Animation sur les lignes */
@@ -1833,29 +2056,21 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
     display: none;
   }
 
-  /* Tablettes */
-  @media (max-width: 900px) {
+  /* Tablettes - optimisation du tableau */
+  @media (max-width: 1100px) {
     .admin-page {
       padding: 0.5rem;
-      margin: 1rem auto;
-    }
-
-    h1 {
-      font-size: 1.4rem;
-      flex-wrap: wrap;
+      margin: 0.5rem auto;
+      max-width: 100%;
     }
 
     .admin-card {
-      padding: 1rem;
-    }
-
-    /* Masquer les colonnes tablet */
-    .hide-tablet {
-      display: none !important;
+      padding: 0.75rem;
     }
 
     .admin-table {
-      font-size: 0.8rem;
+      font-size: 0.78rem;
+      width: 100%;
     }
 
     .admin-table th,
@@ -1863,23 +2078,214 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
       padding: 0.35rem 0.2rem;
     }
 
-    .filter-input {
+    .admin-table th {
+      font-size: 0.68rem;
+      letter-spacing: 0;
+    }
+
+    .badge {
+      font-size: 0.6rem;
+      padding: 0.12rem 0.3rem;
+    }
+
+    .cell-date {
+      font-size: 0.68rem;
+    }
+
+    /* Filtres desktop plus compacts */
+    .desktop-filters {
+      padding: 0.6rem 0.75rem;
+    }
+
+    .filter-row-desktop {
+      gap: 0.4rem;
+    }
+
+    .filter-item {
+      min-width: 70px;
+    }
+
+    .desktop-filter {
+      padding: 0.35rem 0.4rem;
+      font-size: 0.78rem;
+    }
+
+    .filter-item .filter-label {
+      font-size: 0.65rem;
+    }
+  }
+
+  /* Tablettes portrait - tableau pleine largeur */
+  @media (max-width: 900px) {
+    .admin-page {
+      width: 100% !important;
+      max-width: 100% !important;
+      padding: 0.5rem !important;
+      margin: 0.5rem auto !important;
+      box-sizing: border-box !important;
+    }
+
+    .admin-card {
+      width: 100% !important;
+      padding: 0.5rem !important;
+      box-sizing: border-box !important;
+    }
+
+    .desktop-filters {
+      width: 100% !important;
+      box-sizing: border-box !important;
+    }
+
+    .admin-table {
+      width: 100% !important;
+    }
+
+    h1 {
+      font-size: 1.2rem;
+    }
+
+    .back-link {
+      font-size: 0.9rem;
+    }
+
+    .admin-table {
+      font-size: 0.78rem;
+      width: 100%;
+      table-layout: fixed;
+    }
+
+    .admin-table th {
       font-size: 0.7rem;
-      padding: 0.15rem 0.2rem;
+      padding: 0.4rem 0.25rem;
+      white-space: nowrap;
+    }
+
+    .admin-table td {
+      padding: 0.4rem 0.25rem;
     }
 
     .badge {
       font-size: 0.65rem;
+      padding: 0.15rem 0.35rem;
+    }
+
+    .badge-type {
       padding: 0.15rem 0.4rem;
     }
 
     .cell-date {
+      font-size: 0.72rem;
+      white-space: nowrap;
+    }
+
+    /* On garde toutes les colonnes visibles sur tablette */
+
+    .btn-close-manche {
       font-size: 0.7rem;
+      padding: 0.25rem 0.4rem;
+    }
+
+    /* Checkboxes */
+    .cell-checkbox input[type="checkbox"],
+    .col-checkbox-header input[type="checkbox"] {
+      width: 16px;
+      height: 16px;
+    }
+
+    .btn-protect {
+      width: 26px;
+      height: 26px;
+      font-size: 0.8rem;
+    }
+
+    /* Filtres pleine largeur */
+    .desktop-filters {
+      padding: 0.6rem;
+    }
+
+    .filter-row-desktop {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 0.5rem;
+    }
+
+    .filter-item {
+      min-width: unset;
+    }
+
+    .filter-item-small {
+      min-width: unset;
+      max-width: unset;
+    }
+
+    .desktop-filter {
+      padding: 0.4rem 0.5rem;
+      font-size: 0.78rem;
+      width: 100%;
+    }
+
+    .filter-item .filter-label {
+      font-size: 0.68rem;
+    }
+  }
+
+  /* Petites tablettes - layout flex intelligent */
+  @media (max-width: 850px) {
+    .filter-row-desktop {
+      display: flex;
+      flex-wrap: wrap;
+      gap: 0.5rem 0.4rem;
+    }
+
+    .filter-item {
+      flex: 1 1 120px;
+      min-width: 100px;
+      overflow: hidden;
+      position: relative;
+    }
+
+    /* Petits champs (ID, N°) - largeur réduite */
+    .filter-item-small {
+      flex: 0 0 60px;
+      min-width: 50px;
+      max-width: 70px;
+    }
+
+    .desktop-filter {
+      font-size: 0.75rem;
+      padding: 0.35rem 0.4rem;
+      width: 100%;
+      box-sizing: border-box;
+    }
+
+    .filter-label {
+      font-size: 0.6rem !important;
+      white-space: nowrap;
+      overflow: hidden;
+      text-overflow: ellipsis;
+      display: block;
+      max-width: 100%;
+    }
+  }
+
+  /* Très petites tablettes */
+  @media (max-width: 700px) {
+    .filter-item {
+      flex: 1 1 100px;
+      min-width: 80px;
+    }
+
+    .admin-table {
+      font-size: 0.72rem;
+    }
+
+    .admin-table th {
+      font-size: 0.65rem;
     }
   }
 
   /* Mobile - afficher les cartes, masquer le tableau */
-  @media (max-width: 700px) {
+  @media (max-width: 650px) {
     .admin-page {
       padding: 0.5rem;
       margin: 0.5rem auto;
@@ -2181,6 +2587,384 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
     padding: 0.1rem 0.3rem;
     font-size: 0.75rem;
     cursor: pointer;
+  }
+
+  /* ====================== STYLES CLÔTURE MANCHE ====================== */
+
+  .btn-close-manche {
+    background: rgba(251, 191, 36, 0.15);
+    border: 1px solid rgba(251, 191, 36, 0.5);
+    border-radius: 6px;
+    padding: 0.25rem 0.5rem;
+    font-size: 0.75rem;
+    color: #fbbf24;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    white-space: nowrap;
+  }
+
+  .btn-close-manche:hover:not(:disabled) {
+    background: rgba(251, 191, 36, 0.25);
+    border-color: #fbbf24;
+  }
+
+  .btn-close-manche:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .btn-close-manche-mobile {
+    background: rgba(251, 191, 36, 0.15);
+    border: 1px solid rgba(251, 191, 36, 0.5);
+    border-radius: 4px;
+    padding: 0.15rem 0.4rem;
+    font-size: 0.7rem;
+    color: #fbbf24;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn-close-manche-mobile:hover:not(:disabled) {
+    background: rgba(251, 191, 36, 0.25);
+  }
+
+  .btn-close-manche-mobile:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  /* ====================== MODALE DE CLÔTURE ====================== */
+
+  .modal-overlay {
+    position: fixed;
+    inset: 0;
+    background: rgba(0, 0, 0, 0.8);
+    backdrop-filter: blur(4px);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    z-index: 1000;
+    padding: 1rem;
+    animation: fadeIn 0.2s ease;
+  }
+
+  @keyframes fadeIn {
+    from { opacity: 0; }
+    to { opacity: 1; }
+  }
+
+  .modal-close-manche {
+    background: linear-gradient(135deg, #1a2f23 0%, #0d1a12 100%);
+    border: 1px solid rgba(251, 191, 36, 0.4);
+    border-radius: 16px;
+    padding: 2rem;
+    max-width: 420px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 40px rgba(251, 191, 36, 0.1);
+    animation: slideUp 0.3s ease;
+  }
+
+  @keyframes slideUp {
+    from {
+      opacity: 0;
+      transform: translateY(20px) scale(0.95);
+    }
+    to {
+      opacity: 1;
+      transform: translateY(0) scale(1);
+    }
+  }
+
+  .modal-icon {
+    margin-bottom: 1rem;
+  }
+
+  .icon-clock {
+    font-size: 3rem;
+    display: inline-block;
+    animation: pulse 2s infinite;
+  }
+
+  @keyframes pulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+  }
+
+  .modal-close-manche h2 {
+    color: #fbbf24;
+    font-size: 1.5rem;
+    margin: 0 0 1rem 0;
+    font-weight: 600;
+  }
+
+  .modal-manche-info {
+    display: flex;
+    justify-content: center;
+    gap: 0.5rem;
+    flex-wrap: wrap;
+    margin-bottom: 1.25rem;
+  }
+
+  .manche-badge {
+    background: rgba(34, 197, 94, 0.15);
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    color: #4ade80;
+    padding: 0.35rem 0.75rem;
+    border-radius: 20px;
+    font-size: 0.85rem;
+    font-weight: 500;
+  }
+
+  .manche-badge.donnes {
+    background: rgba(59, 130, 246, 0.15);
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #60a5fa;
+  }
+
+  .modal-description {
+    color: #e5e7eb;
+    font-size: 1rem;
+    margin: 0 0 1rem 0;
+    line-height: 1.5;
+  }
+
+  .modal-info-box {
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    border-radius: 10px;
+    padding: 0.85rem 1rem;
+    display: flex;
+    align-items: flex-start;
+    gap: 0.75rem;
+    text-align: left;
+    margin-bottom: 1.5rem;
+  }
+
+  .info-icon {
+    font-size: 1.2rem;
+    flex-shrink: 0;
+  }
+
+  .modal-info-box span:last-child {
+    color: #d4af37;
+    font-size: 0.85rem;
+    line-height: 1.4;
+  }
+
+  .modal-actions {
+    display: flex;
+    gap: 0.75rem;
+    justify-content: center;
+  }
+
+  .btn-cancel {
+    background: rgba(107, 114, 128, 0.2);
+    border: 1px solid rgba(107, 114, 128, 0.4);
+    color: #9ca3af;
+    padding: 0.75rem 1.5rem;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 500;
+    cursor: pointer;
+    transition: all 0.2s ease;
+  }
+
+  .btn-cancel:hover {
+    background: rgba(107, 114, 128, 0.3);
+    border-color: #6b7280;
+    color: #e5e7eb;
+  }
+
+  .btn-confirm {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    border: none;
+    color: #fff;
+    padding: 0.75rem 1.5rem;
+    border-radius: 10px;
+    font-size: 0.95rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+  }
+
+  .btn-confirm:hover {
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    transform: translateY(-1px);
+    box-shadow: 0 4px 15px rgba(34, 197, 94, 0.4);
+  }
+
+  .btn-icon {
+    font-size: 1rem;
+  }
+
+  @media (max-width: 480px) {
+    .modal-close-manche {
+      padding: 1.5rem;
+    }
+
+    .modal-close-manche h2 {
+      font-size: 1.3rem;
+    }
+
+    .modal-actions {
+      flex-direction: column;
+    }
+
+    .btn-cancel, .btn-confirm {
+      width: 100%;
+      justify-content: center;
+    }
+  }
+
+  /* ====================== MODALE DE SUCCÈS ====================== */
+
+  .modal-success {
+    background: linear-gradient(135deg, #0d2818 0%, #0a1f14 100%);
+    border: 2px solid rgba(34, 197, 94, 0.5);
+    border-radius: 16px;
+    padding: 2rem;
+    max-width: 400px;
+    width: 100%;
+    text-align: center;
+    box-shadow: 0 20px 60px rgba(0, 0, 0, 0.5), 0 0 50px rgba(34, 197, 94, 0.15);
+    animation: successPopIn 0.4s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+  }
+
+  @keyframes successPopIn {
+    0% {
+      opacity: 0;
+      transform: scale(0.5);
+    }
+    100% {
+      opacity: 1;
+      transform: scale(1);
+    }
+  }
+
+  .success-icon-container {
+    width: 80px;
+    height: 80px;
+    margin: 0 auto 1.25rem;
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    border-radius: 50%;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    box-shadow: 0 8px 25px rgba(34, 197, 94, 0.4);
+    animation: checkBounce 0.6s ease 0.2s both;
+  }
+
+  @keyframes checkBounce {
+    0% {
+      transform: scale(0);
+    }
+    50% {
+      transform: scale(1.2);
+    }
+    100% {
+      transform: scale(1);
+    }
+  }
+
+  .success-checkmark {
+    font-size: 2.5rem;
+    color: #fff;
+    font-weight: bold;
+  }
+
+  .modal-success h2 {
+    color: #4ade80;
+    font-size: 1.6rem;
+    margin: 0 0 1rem 0;
+    font-weight: 600;
+  }
+
+  .manche-badge.success-badge {
+    background: rgba(34, 197, 94, 0.2);
+    border: 1px solid rgba(34, 197, 94, 0.5);
+    color: #4ade80;
+  }
+
+  .success-details {
+    background: rgba(0, 0, 0, 0.3);
+    border: 1px solid rgba(34, 197, 94, 0.2);
+    border-radius: 12px;
+    padding: 1rem;
+    margin: 1.25rem 0;
+  }
+
+  .success-detail-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 0.5rem 0;
+  }
+
+  .success-detail-row:not(:last-child) {
+    border-bottom: 1px solid rgba(34, 197, 94, 0.15);
+  }
+
+  .detail-label {
+    color: #9ca3af;
+    font-size: 0.9rem;
+  }
+
+  .detail-value {
+    color: #e5e7eb;
+    font-weight: 500;
+    font-size: 0.95rem;
+  }
+
+  .detail-value.highlight {
+    color: #4ade80;
+    font-weight: 700;
+    font-size: 1.1rem;
+  }
+
+  .btn-success-close {
+    background: linear-gradient(135deg, #22c55e 0%, #16a34a 100%);
+    border: none;
+    color: #fff;
+    padding: 0.85rem 2.5rem;
+    border-radius: 10px;
+    font-size: 1rem;
+    font-weight: 600;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    margin-top: 0.5rem;
+  }
+
+  .btn-success-close:hover {
+    background: linear-gradient(135deg, #16a34a 0%, #15803d 100%);
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(34, 197, 94, 0.4);
+  }
+
+  @media (max-width: 480px) {
+    .modal-success {
+      padding: 1.5rem;
+    }
+
+    .modal-success h2 {
+      font-size: 1.4rem;
+    }
+
+    .success-icon-container {
+      width: 65px;
+      height: 65px;
+    }
+
+    .success-checkmark {
+      font-size: 2rem;
+    }
+
+    .btn-success-close {
+      width: 100%;
+    }
   }
 
 </style>
