@@ -78,6 +78,7 @@
     mancheNumber: number;
     eventDate: string;
     isCancelled: boolean;
+    isClosedForEncoding: boolean;
   }
 
   // État
@@ -179,6 +180,7 @@
   };
 
   // Grille filtrée et triée avec index de groupe pour le regroupement visuel
+  // Note: on retourne les objets originaux pour que les bindings fonctionnent
   $: filteredGrille = (() => {
     let result = grille.filter(item => {
       if (grilleFilterAnnonce && item.annonceLabel !== grilleFilterAnnonce) return false;
@@ -188,7 +190,7 @@
       if (grilleShowOverridesOnly && item.overrideResultatInd === null && item.overrideResultatJeu === null) return false;
       return true;
     });
-    
+
     if (grilleSortColumn) {
       result = [...result].sort((a, b) => {
         let valA: any, valB: any;
@@ -211,20 +213,8 @@
         return 0;
       });
     }
-    
-    // Calculer l'index de groupe basé sur annonceType pour le regroupement visuel
-    let groupIndex = 0;
-    let lastType: string | null = null;
-    return result.map((item, idx) => {
-      if (idx === 0) {
-        lastType = item.annonceType;
-        groupIndex = 0;
-      } else if (item.annonceType !== lastType) {
-        lastType = item.annonceType;
-        groupIndex = (groupIndex + 1) % 2;
-      }
-      return { ...item, _groupIndex: groupIndex };
-    });
+
+    return result;
   })();
 
   // Calculer le groupe d'annonce pour le regroupement visuel (utilisé par annonceType)
@@ -300,7 +290,12 @@
     try {
       const res = await fetch(`${API_BASE_URL}/api/admin/competitions/${competitionId}`);
       if (res.ok) {
-        competition = await res.json();
+        const data = await res.json();
+        // Formater eventDate au format yyyy-MM-dd pour l'input date
+        if (data.eventDate) {
+          data.eventDate = data.eventDate.split('T')[0];
+        }
+        competition = data;
       } else {
         error = 'Compétition non trouvée';
       }
@@ -408,7 +403,8 @@
           id: s.id,
           mancheNumber: s.mancheNumber,
           eventDate: s.eventDate.split('T')[0], // Format YYYY-MM-DD pour input date
-          isCancelled: s.isCancelled
+          isCancelled: s.isCancelled,
+          isClosedForEncoding: s.isClosedForEncoding
         }));
       }
     } catch (err) {
@@ -587,7 +583,8 @@
             id: s.id,
             mancheNumber: s.mancheNumber,
             eventDate: s.eventDate,
-            isCancelled: s.isCancelled
+            isCancelled: s.isCancelled,
+            isClosedForEncoding: s.isClosedForEncoding
           }))
         })
       });
@@ -612,7 +609,8 @@
       id: null,
       mancheNumber: lastManche + 1,
       eventDate: new Date().toISOString().split('T')[0],
-      isCancelled: false
+      isCancelled: false,
+      isClosedForEncoding: false
     }];
   }
 
@@ -1110,26 +1108,31 @@
               <span class="schedule-col-manche">Manche</span>
               <span class="schedule-col-date">Date</span>
               <span class="schedule-col-status">Statut</span>
+              <span class="schedule-col-encoding">Encodage</span>
               <span class="schedule-col-action"></span>
             </div>
             <div class="schedule-list">
               {#each schedule as entry, index}
-                <div class="schedule-entry" class:cancelled={entry.isCancelled}>
-                  <input 
-                    type="number" 
+                <div class="schedule-entry" class:cancelled={entry.isCancelled} class:closed-encoding={entry.isClosedForEncoding}>
+                  <input
+                    type="number"
                     bind:value={entry.mancheNumber}
                     min="1"
                     class="manche-input"
                     title="Numéro de manche"
                   />
-                  <input 
-                    type="date" 
+                  <input
+                    type="date"
                     bind:value={entry.eventDate}
                     class="date-input"
                   />
                   <label class="checkbox-inline">
                     <input type="checkbox" bind:checked={entry.isCancelled} />
                     <span class="cancelled-label">Annulée</span>
+                  </label>
+                  <label class="checkbox-inline closed-checkbox" title="Fermer cette manche à l'encodage">
+                    <input type="checkbox" bind:checked={entry.isClosedForEncoding} disabled={entry.isCancelled} />
+                    <span class="closed-label">Fermé</span>
                   </label>
                   <button class="btn-remove-small" on:click={() => removeScheduleEntry(index)} title="Supprimer">
                     ✕
@@ -2189,14 +2192,14 @@
     }
 
     .schedule-entry {
-      grid-template-columns: 60px 1fr 80px 28px;
+      grid-template-columns: 60px 1fr 70px 70px 28px;
     }
   }
 
   /* Styles pour le calendrier - version compacte */
   .schedule-header {
     display: grid;
-    grid-template-columns: 70px 1fr 100px 32px;
+    grid-template-columns: 70px 1fr 100px 100px 32px;
     gap: 0.5rem;
     padding: 0.5rem 0.75rem;
     font-size: 0.75rem;
@@ -2217,7 +2220,7 @@
 
   .schedule-entry {
     display: grid;
-    grid-template-columns: 70px 1fr 100px 32px;
+    grid-template-columns: 70px 1fr 100px 100px 32px;
     align-items: center;
     gap: 0.5rem;
     background: rgba(34, 197, 94, 0.03);
@@ -2234,6 +2237,11 @@
     opacity: 0.6;
     background: rgba(239, 68, 68, 0.1);
     border-color: rgba(239, 68, 68, 0.2);
+  }
+
+  .schedule-entry.closed-encoding:not(.cancelled) {
+    background: rgba(234, 179, 8, 0.1);
+    border-color: rgba(234, 179, 8, 0.3);
   }
 
   .manche-input {
@@ -2271,14 +2279,24 @@
     height: 14px;
   }
 
-  .cancelled-label {
+  .cancelled-label,
+  .closed-label {
     display: none;
   }
 
   @media (min-width: 600px) {
-    .cancelled-label {
+    .cancelled-label,
+    .closed-label {
       display: inline;
     }
+  }
+
+  .closed-checkbox input[type="checkbox"] {
+    accent-color: #eab308;
+  }
+
+  .closed-checkbox input[type="checkbox"]:disabled {
+    opacity: 0.4;
   }
 
   .btn-remove-small {

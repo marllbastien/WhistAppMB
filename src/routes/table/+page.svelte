@@ -50,6 +50,9 @@ let annonces = [
 	let plis: number[] = [];
 	let tableData: { annonces: string[]; plis: number[]; emballes: (string | null)[] }[] = [];
 
+	// Fallback pour le nombre de tours par manche (donne 16/20/24 donnes)
+	const DEFAULT_TOURS_PER_MANCHE = 4;
+
 	onMount(() => {
 		const url = new URL(window.location.href);
 		tableName = url.searchParams.get('tableName') || 'A';
@@ -57,7 +60,9 @@ let annonces = [
 		playerCount = Number(url.searchParams.get('playerCount') || 4);
 		players = JSON.parse(url.searchParams.get('players') || '["Alice","Bob","Claire","David"]');
 
-		rows = playerCount === 4 ? 16 : playerCount === 5 ? 20 : 24;
+		// Nombre de donnes = playerCount × nbreToursPerManche (avec fallback)
+		const nbreToursPerManche = Number(url.searchParams.get('nbreToursPerManche') || DEFAULT_TOURS_PER_MANCHE);
+		rows = playerCount * nbreToursPerManche;
 		//resetArrays();
 	});
 

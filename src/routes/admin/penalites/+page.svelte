@@ -10,8 +10,7 @@
     code: string;
     label: string;
     color: string;
-    defaultValeur: number;
-    sortOrder: number;
+    valeur: number;  // valeur effective (defaultValeur ou override)
     isActive: boolean;
   }
 
@@ -60,7 +59,8 @@
   // Filtres de compétition
   let selectedCompetitionType: string = '';
   let selectedCompetitionNumber: string = '';
-  let selectedDateFilter: string = '';
+  // Date du jour par défaut (format YYYY-MM-DD)
+  let selectedDateFilter: string = new Date().toISOString().split('T')[0];
 
   // États
   let isLoading = false;
@@ -174,6 +174,11 @@
     selectedTableId = null;
     joueurs = [];
     penalites = [];
+
+    // Recharger les jetons spécifiques à la compétition
+    const compType = selectedCompetitionType === '' ? null : parseInt(selectedCompetitionType);
+    const compNumber = selectedCompetitionNumber === '' ? null : parseInt(selectedCompetitionNumber);
+    loadJetons(compType, compNumber);
   }
 
   function onDateFilterChange() {
@@ -207,16 +212,13 @@
     loadError = '';
 
     try {
-      const [resJetons, resTables] = await Promise.all([
-        fetch(`${API_BASE_URL}/api/config/jetons`),
-        fetch(`${API_BASE_URL}/api/admin/manches`)
-      ]);
+      // Charger uniquement les tables au démarrage (les jetons seront chargés quand une compétition est sélectionnée)
+      const resTables = await fetch(`${API_BASE_URL}/api/admin/manches`);
 
-      if (!resJetons.ok || !resTables.ok) {
+      if (!resTables.ok) {
         throw new Error('Erreur lors du chargement');
       }
 
-      jetonTypes = await resJetons.json();
       tables = await resTables.json();
 
       // Trier les tables par date décroissante
@@ -226,16 +228,43 @@
         return dateB - dateA;
       });
 
-      // Initialiser la valeur par défaut du jeton
-      if (jetonTypes.length > 0) {
-        newPenalite.jetonTypeCode = jetonTypes[0].code;
-        newPenalite.valeur = jetonTypes[0].defaultValeur;
-      }
+      // Charger les jetons globaux par défaut
+      await loadJetons(null, null);
     } catch (err: any) {
       console.error(err);
       loadError = 'Impossible de charger les données.';
     } finally {
       isLoading = false;
+    }
+  }
+
+  // Charger les jetons (globaux ou spécifiques à une compétition)
+  async function loadJetons(compType: number | null, compNumber: number | null) {
+    try {
+      const params = new URLSearchParams();
+      if (compType !== null) params.set('competitionType', String(compType));
+      if (compNumber !== null) params.set('competitionNumber', String(compNumber));
+
+      const url = `${API_BASE_URL}/api/encoding/jetons?${params.toString()}`;
+      const res = await fetch(url);
+
+      if (!res.ok) {
+        console.warn('Erreur chargement jetons, fallback sur jetons globaux');
+        return;
+      }
+
+      const data = await res.json();
+      jetonTypes = data.jetons;
+
+      // Initialiser la valeur par défaut du jeton
+      if (jetonTypes.length > 0) {
+        newPenalite.jetonTypeCode = jetonTypes[0].code;
+        newPenalite.valeur = jetonTypes[0].valeur;
+      }
+
+      console.log(`[Jetons] Chargés: ${jetonTypes.length} jetons (compétition: ${data.isCompetitionSpecific})`);
+    } catch (err) {
+      console.error('Erreur chargement jetons:', err);
     }
   }
 
@@ -320,7 +349,7 @@
   function onJetonChange() {
     const jeton = jetonTypes.find(j => j.code === newPenalite.jetonTypeCode);
     if (jeton) {
-      newPenalite.valeur = jeton.defaultValeur;
+      newPenalite.valeur = jeton.valeur;
     }
   }
 
@@ -330,7 +359,7 @@
       donneNumber: 1,
       joueurId: joueurs[0]?.playerId ?? 0,
       jetonTypeCode: jetonTypes[0]?.code ?? 'BLEU',
-      valeur: jetonTypes[0]?.defaultValeur ?? 0,
+      valeur: jetonTypes[0]?.valeur ?? 0,
       motif: ''
     };
     createMessage = '';
@@ -709,7 +738,7 @@
           <label for="jeton">Type de jeton</label>
           <select id="jeton" bind:value={newPenalite.jetonTypeCode} on:change={onJetonChange}>
             {#each jetonTypes as jt}
-              <option value={jt.code}>{jt.label} (-{jt.defaultValeur} pts)</option>
+              <option value={jt.code}>{jt.label} (-{jt.valeur} pts)</option>
             {/each}
           </select>
         </div>

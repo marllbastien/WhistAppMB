@@ -673,41 +673,41 @@
         <table class="joueurs-table">
           <thead>
             <tr>
-              <th class="sortable" on:click={() => toggleSort('id')}>ID <span class="sort-icon">{sortIcons.id}</span></th>
-              <th class="sortable" on:click={() => toggleSort('alias')}>Alias <span class="sort-icon">{sortIcons.alias}</span></th>
-              <th class="sortable" on:click={() => toggleSort('nom')}>Nom <span class="sort-icon">{sortIcons.nom}</span></th>
-              <th class="sortable" on:click={() => toggleSort('prenom')}>Prénom <span class="sort-icon">{sortIcons.prenom}</span></th>
-              <th class="sortable" on:click={() => toggleSort('email')}>Email <span class="sort-icon">{sortIcons.email}</span></th>
+              <th class="sortable col-id" on:click={() => toggleSort('id')}>ID <span class="sort-icon">{sortIcons.id}</span></th>
+              <th class="sortable col-alias" on:click={() => toggleSort('alias')}>Alias <span class="sort-icon">{sortIcons.alias}</span></th>
+              <th class="sortable col-nom" on:click={() => toggleSort('nom')}>Nom <span class="sort-icon">{sortIcons.nom}</span></th>
+              <th class="sortable col-prenom" on:click={() => toggleSort('prenom')}>Prénom <span class="sort-icon">{sortIcons.prenom}</span></th>
+              <th class="sortable col-email" on:click={() => toggleSort('email')}>Email <span class="sort-icon">{sortIcons.email}</span></th>
               {#if activeTab === 'internes'}
-                <th class="sortable" on:click={() => toggleSort('bk')}>Bk <span class="sort-icon">{sortIcons.bk}</span></th>
-                <th class="sortable" on:click={() => toggleSort('noAffilie')}>N° Affilié <span class="sort-icon">{sortIcons.noAffilie}</span></th>
-                <th class="sortable" on:click={() => toggleSort('isProvisional')}>Prov. <span class="sort-icon">{sortIcons.isProvisional}</span></th>
-                <th class="sortable" on:click={() => toggleSort('isWhisteux')}>Whisteux <span class="sort-icon">{sortIcons.isWhisteux}</span></th>
+                <th class="sortable col-bk" on:click={() => toggleSort('bk')}>Bk <span class="sort-icon">{sortIcons.bk}</span></th>
+                <th class="sortable col-noaffilie" on:click={() => toggleSort('noAffilie')}>N° Aff. <span class="sort-icon">{sortIcons.noAffilie}</span></th>
+                <th class="sortable col-prov" on:click={() => toggleSort('isProvisional')}>Prov. <span class="sort-icon">{sortIcons.isProvisional}</span></th>
+                <th class="sortable col-whisteux" on:click={() => toggleSort('isWhisteux')}>Whist. <span class="sort-icon">{sortIcons.isWhisteux}</span></th>
               {:else}
-                <th class="sortable" on:click={() => toggleSort('phone')}>Téléphone <span class="sort-icon">{sortIcons.phone}</span></th>
+                <th class="sortable col-phone" on:click={() => toggleSort('phone')}>Tél. <span class="sort-icon">{sortIcons.phone}</span></th>
               {/if}
-              <th>Actions</th>
+              <th class="col-actions">Actions</th>
             </tr>
           </thead>
           <tbody>
             {#each filteredJoueurs as joueur}
               <tr class:provisional-row={joueur.isProvisional}>
-                <td>{joueur.id}</td>
-                <td class="alias-cell">{joueur.alias}</td>
-                <td>{joueur.nom}</td>
-                <td>{joueur.prenom}</td>
-                <td>{joueur.email ?? '-'}</td>
+                <td class="col-id">{joueur.id}</td>
+                <td class="col-alias alias-cell">{joueur.alias}</td>
+                <td class="col-nom">{joueur.nom}</td>
+                <td class="col-prenom">{joueur.prenom}</td>
+                <td class="col-email">{joueur.email ?? '-'}</td>
                 {#if activeTab === 'internes'}
-                  <td class="bk-cell">{joueur.bk ?? '-'}</td>
-                  <td>{joueur.noAffilie ?? '-'}</td>
-                  <td class="center">
+                  <td class="col-bk bk-cell">{joueur.bk ?? '-'}</td>
+                  <td class="col-noaffilie">{joueur.noAffilie ?? '-'}</td>
+                  <td class="col-prov center">
                     {#if joueur.isProvisional}
                       <span class="badge-provisional" title="Joueur provisoire">⏳</span>
                     {:else}
                       <span class="badge-affiliated" title="Joueur affilié">✓</span>
                     {/if}
                   </td>
-                  <td class="center">
+                  <td class="col-whisteux center">
                     {#if joueur.isWhisteux}
                       <span class="badge-yes">✓</span>
                     {:else}
@@ -715,9 +715,9 @@
                     {/if}
                   </td>
                 {:else}
-                  <td>{joueur.phone ?? '-'}</td>
+                  <td class="col-phone">{joueur.phone ?? '-'}</td>
                 {/if}
-                <td class="actions-cell">
+                <td class="col-actions actions-cell">
                   <button class="btn-edit" on:click={() => openEdit(joueur)} title="Modifier">
                     <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                   </button>
@@ -752,59 +752,37 @@
                   <span class="card-id">#{joueur.id}</span>
                 </div>
               </div>
-              <div class="card-body">
-                <div class="card-name">{joueur.prenom} {joueur.nom}</div>
-                {#if joueur.email}
-                  <div class="card-info">
-                    <span class="card-label">📧</span>
-                    <span class="card-value">{joueur.email}</span>
-                  </div>
-                {/if}
-                {#if activeTab === 'internes'}
-                  {#if joueur.bk}
-                    <div class="card-info">
-                      <span class="card-label">Bk:</span>
-                      <span class="card-value bk-value">{joueur.bk}</span>
-                    </div>
-                  {/if}
-                  {#if joueur.noAffilie}
-                    <div class="card-info">
-                      <span class="card-label">N° Affilié:</span>
-                      <span class="card-value">{joueur.noAffilie}</span>
-                    </div>
-                  {/if}
-                  <div class="card-info">
-                    <span class="card-label">Whisteux:</span>
-                    {#if joueur.isWhisteux}
-                      <span class="badge-yes">✓ Oui</span>
-                    {:else}
-                      <span class="badge-no">✗ Non</span>
+              <div class="card-content-row">
+                <div class="card-body">
+                  <div class="card-name">{joueur.prenom} {joueur.nom}</div>
+                  {#if activeTab === 'internes'}
+                    {#if joueur.noAffilie}
+                      <span class="card-inline-info info-noaffilie">N°{joueur.noAffilie}</span>
                     {/if}
-                  </div>
-                {:else if joueur.phone}
-                  <div class="card-info">
-                    <span class="card-label">📱</span>
-                    <span class="card-value">{joueur.phone}</span>
-                  </div>
-                {/if}
-              </div>
-              <div class="card-actions">
-                <button class="btn-edit" on:click={() => openEdit(joueur)} title="Modifier">
-                  <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
-                  <span>Modifier</span>
-                </button>
-                {#if activeTab === 'externes' || joueur.isProvisional}
-                  <button class="btn-convert" on:click={() => openConvertModal(joueur)} title="Convertir en joueur affilié">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
-                    <span>Affilier</span>
+                    {#if joueur.bk}
+                      <span class="card-inline-info">Bk:<span class="bk-value">{joueur.bk}</span></span>
+                    {/if}
+                    <span class="card-inline-info" class:info-yes={joueur.isWhisteux} class:info-no={!joueur.isWhisteux}>{joueur.isWhisteux ? '✓W' : '✗W'}</span>
+                    <span class="card-inline-info" class:info-yes={joueur.email} class:info-no={!joueur.email} title={joueur.email || 'Pas d\'email'}>{joueur.email ? '✓@' : '✗@'}</span>
+                  {:else if joueur.phone}
+                    <span class="card-inline-info">📱 {joueur.phone}</span>
+                  {/if}
+                </div>
+                <div class="card-actions">
+                  <button class="btn-edit" on:click={() => openEdit(joueur)} title="Modifier">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
                   </button>
-                {/if}
-                {#if activeTab === 'externes'}
-                  <button class="btn-merge" on:click={() => openMergeModal(joueur)} title="Fusionner">
-                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
-                    <span>Fusionner</span>
-                  </button>
-                {/if}
+                  {#if activeTab === 'externes' || joueur.isProvisional}
+                    <button class="btn-convert" on:click={() => openConvertModal(joueur)} title="Affilier">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+                    </button>
+                  {/if}
+                  {#if activeTab === 'externes'}
+                    <button class="btn-merge" on:click={() => openMergeModal(joueur)} title="Fusionner">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M8 6h13"/><path d="M8 12h13"/><path d="M8 18h13"/><path d="M3 6h.01"/><path d="M3 12h.01"/><path d="M3 18h.01"/></svg>
+                    </button>
+                  {/if}
+                </div>
               </div>
             </div>
           {/each}
@@ -1889,6 +1867,56 @@
     display: none;
   }
 
+  /* Tablet: optimiser le tableau */
+  @media (max-width: 1050px) {
+    .joueurs-table {
+      font-size: 0.82rem;
+    }
+    .joueurs-table th,
+    .joueurs-table td {
+      padding: 0.38rem 0.5rem;
+    }
+    .joueurs-table .col-email {
+      display: none;
+    }
+  }
+
+  @media (max-width: 900px) {
+    .joueurs-table {
+      font-size: 0.78rem;
+    }
+    .joueurs-table th,
+    .joueurs-table td {
+      padding: 0.32rem 0.4rem;
+    }
+    .joueurs-table .col-noaffilie {
+      display: none;
+    }
+    .joueurs-table .col-prenom {
+      display: none;
+    }
+    .btn-edit, .btn-convert, .btn-merge {
+      padding: 0.35rem !important;
+    }
+    .btn-edit svg, .btn-convert svg, .btn-merge svg {
+      width: 14px;
+      height: 14px;
+    }
+  }
+
+  @media (max-width: 780px) {
+    .joueurs-table .col-id {
+      display: none;
+    }
+    .joueurs-table {
+      font-size: 0.75rem;
+    }
+    .joueurs-table th,
+    .joueurs-table td {
+      padding: 0.28rem 0.35rem;
+    }
+  }
+
   @media (max-width: 700px) {
     .desktop-view {
       display: none;
@@ -1946,15 +1974,15 @@
     .mobile-cards {
       display: flex;
       flex-direction: column;
-      gap: 0.5rem;
+      gap: 0.4rem;
     }
 
     .joueur-card {
       background: linear-gradient(135deg, #0f172a 0%, #020617 100%);
       border: 1px solid rgba(34, 197, 94, 0.3);
-      border-radius: 10px;
-      padding: 0.5rem 0.65rem;
-      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.3);
+      border-radius: 8px;
+      padding: 0.4rem 0.55rem;
+      box-shadow: 0 2px 6px rgba(0, 0, 0, 0.25);
     }
 
     .joueur-card.provisional-card {
@@ -1966,35 +1994,44 @@
       display: flex;
       justify-content: space-between;
       align-items: center;
-      margin-bottom: 0.25rem;
-      padding-bottom: 0.25rem;
+      margin-bottom: 0.2rem;
+      padding-bottom: 0.2rem;
       border-bottom: 1px solid rgba(51, 65, 85, 0.4);
     }
 
     .card-header-right {
       display: flex;
       align-items: center;
-      gap: 0.5rem;
+      gap: 0.4rem;
     }
 
     .card-alias {
-      font-size: 0.95rem;
+      font-size: 0.9rem;
       font-weight: 700;
       color: #22c55e;
     }
 
     .card-id {
-      font-size: 0.7rem;
+      font-size: 0.65rem;
       color: #6b7280;
       background: rgba(75, 85, 99, 0.3);
-      padding: 0.15rem 0.4rem;
-      border-radius: 5px;
+      padding: 0.12rem 0.35rem;
+      border-radius: 4px;
+    }
+
+    .card-content-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 0.5rem;
     }
 
     .card-body {
       display: flex;
-      flex-direction: column;
-      gap: 0.15rem;
+      flex-wrap: wrap;
+      align-items: center;
+      gap: 0.3rem 0.6rem;
+      flex: 1;
     }
 
     .card-name {
@@ -2003,22 +2040,22 @@
       color: #e5e7eb;
     }
 
-    .card-info {
-      display: flex;
-      align-items: center;
-      gap: 0.3rem;
-      font-size: 0.8rem;
+    .card-inline-info {
+      font-size: 0.75rem;
       color: #9ca3af;
     }
 
-    .card-label {
-      font-size: 0.75rem;
+    .info-noaffilie {
+      color: #fbbf24;
+      font-weight: 500;
     }
 
-    .card-value {
-      color: #d1d5db;
-      word-break: break-all;
-      font-size: 0.8rem;
+    .info-yes {
+      color: #4ade80;
+    }
+
+    .info-no {
+      color: #6b7280;
     }
 
     .bk-value {
@@ -2028,17 +2065,15 @@
     }
 
     .card-actions {
-      margin-top: 0.4rem;
       display: flex;
-      justify-content: flex-end;
-      gap: 0.5rem;
+      gap: 0.3rem;
+      flex-shrink: 0;
     }
 
     .card-actions .btn-edit,
     .card-actions .btn-convert,
     .card-actions .btn-merge {
-      padding: 0.3rem 0.8rem;
-      font-size: 0.75rem;
+      padding: 0.3rem;
     }
 
     /* Modal responsive */

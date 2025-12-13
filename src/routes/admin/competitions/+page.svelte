@@ -710,11 +710,15 @@
     background: #0f172a;
     border: 1px solid rgba(34, 197, 94, 0.3);
     border-radius: 16px;
-    padding: 1.5rem;
-    max-width: 500px;
+    padding: 1.5rem 2rem;
+    max-width: 520px;
     width: 100%;
-    max-height: 90vh;
-    overflow-y: auto;
+  }
+
+  .modal form {
+    display: flex;
+    flex-direction: column;
+    gap: 0;
   }
 
   .modal h2 {
@@ -737,6 +741,7 @@
   .form-group input,
   .form-group select {
     width: 100%;
+    box-sizing: border-box;
     background: #020617;
     color: #e2e8f0;
     border: 1px solid rgba(34, 197, 94, 0.3);
@@ -755,6 +760,11 @@
     display: grid;
     grid-template-columns: 1fr 1fr;
     gap: 1rem;
+    margin-bottom: 1rem;
+  }
+
+  .form-row .form-group {
+    margin-bottom: 0;
   }
 
   .form-row.checkboxes {

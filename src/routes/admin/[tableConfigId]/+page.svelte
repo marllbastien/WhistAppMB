@@ -71,6 +71,39 @@
   donnes: AdminDonneSummaryDto[];
   }
 
+  // Fonction pour calculer la durée entre deux dates
+  function calculateDuration(start: string | null, end: string | null): string {
+    if (!start || !end) return '-';
+    const startDate = new Date(start);
+    const endDate = new Date(end);
+    const diffMs = endDate.getTime() - startDate.getTime();
+    if (diffMs < 0) return '-';
+
+    const hours = Math.floor(diffMs / (1000 * 60 * 60));
+    const minutes = Math.floor((diffMs % (1000 * 60 * 60)) / (1000 * 60));
+
+    if (hours > 0) {
+      return `${hours}h ${minutes}min`;
+    }
+    return `${minutes} min`;
+  }
+
+  // Fonction pour obtenir le shortName du type de compétition
+  function getCompetitionShortName(competitionType: number | null): string {
+    if (competitionType == null) return 'ML';
+    if (allCompetitionTypes.length > 0) {
+      const found = allCompetitionTypes.find(t => t.id === competitionType);
+      return found?.shortName ?? 'ML';
+    }
+    const fallback: Record<number, string> = { 1: 'Ch', 2: 'IC', 3: 'ML', 4: 'CC', 5: 'EN', 6: 'FG', 7: 'EF' };
+    return fallback[competitionType] ?? 'ML';
+  }
+
+  // Fonction pour obtenir les initiales d'un alias
+  function getInitials(alias: string): string {
+    return alias.substring(0, 2).toUpperCase();
+  }
+
 
 
   interface ScorePreviewLine {
@@ -611,7 +644,8 @@ async function openFeuillePoints() {
 
     const data = await res.json();   // { players, lignes }
 
-    feuillePlayers = data.players;
+    // Utiliser l'ordre des joueurs de detail.players (J1, J2, J3, J4)
+    feuillePlayers = detail.players.map(p => p.alias);
 
     // On enrichit avec l’annonce principale depuis detail.donnes
     feuillePoints = data.lignes.map((l) => {
@@ -1105,7 +1139,7 @@ function getChangeClass(after: number, before: number) {
 </svelte:head>
 
 <div class="admin-page">
-  <button class="back-btn" on:click={() => (window.location.href = '/admin')}>
+  <button class="back-btn" on:click={() => (window.location.href = '/admin?view=tables')}>
     ⬅ Retour à la liste
   </button>
 
@@ -1116,20 +1150,87 @@ function getChangeClass(after: number, before: number) {
   {:else if !detail}
     <p>Aucune donnée.</p>
   {:else}
-    <h1>
-      Table {detail.tableName} — Manche {detail.mancheNumber}
-    </h1>
+    <!-- Header Card avec toutes les informations de la table -->
+    <div class="table-header-card">
+      <div class="header-main">
+        <div class="header-title-row">
+          <div class="header-title">
+            <span class="table-icon">♠</span>
+            <h1>Table {detail.tableName}</h1>
+          </div>
+          <div class="header-badges">
+            <span class="badge badge-manche">Manche {detail.mancheNumber}</span>
+            <span
+              class="badge badge-type type-{detail.competitionType ?? 3}"
+              title={getCompetitionLabel(detail.competitionType)}
+            >
+              {getCompetitionShortName(detail.competitionType)}
+            </span>
+            {#if detail.endTime}
+              <span class="badge badge-status badge-completed">Terminée</span>
+            {:else}
+              <span class="badge badge-status badge-in-progress">En cours</span>
+            {/if}
+          </div>
+        </div>
 
-    <p class="meta">
-      Joueurs :
-      {#each detail.players as p, i}
-        {p.alias}{#if i < detail.players.length - 1}, {/if}
-      {/each}
-    </p>
+        {#if detail.competitionName || detail.competitionNumber}
+          <div class="competition-info">
+            <span class="competition-label">{getCompetitionLabel(detail.competitionType)}</span>
+            {#if detail.competitionNumber}
+              <span class="competition-number">N° {detail.competitionNumber}</span>
+            {/if}
+            {#if detail.competitionName}
+              <span class="competition-name">« {detail.competitionName} »</span>
+            {/if}
+          </div>
+        {/if}
+      </div>
 
-    <p class="meta">
-      Début : {formatDate(detail.startTime)} — Fin : {formatDate(detail.endTime)}
-    </p>
+      <div class="header-details-compact">
+        <!-- Joueurs -->
+        <div class="detail-item">
+          <span class="detail-icon-sm">👥</span>
+          <span class="detail-text">{detail.playerCount} joueurs : {#each detail.players as p, i}{p.alias}{#if i < detail.players.length - 1}, {/if}{/each}</span>
+        </div>
+
+        <span class="detail-separator">•</span>
+
+        <!-- Horaires -->
+        <div class="detail-item">
+          <span class="detail-icon-sm">🕐</span>
+          <span class="detail-text">{formatDate(detail.startTime)}</span>
+        </div>
+
+        <span class="detail-separator">→</span>
+
+        <div class="detail-item">
+          <span class="detail-icon-sm">🏁</span>
+          <span class="detail-text">{detail.endTime ? formatDate(detail.endTime) : 'En cours...'}</span>
+        </div>
+
+        <span class="detail-separator">•</span>
+
+        <!-- Durée -->
+        <div class="detail-item">
+          <span class="detail-icon-sm">⏱️</span>
+          <span class="detail-text duration-text">{calculateDuration(detail.startTime, detail.endTime)}</span>
+        </div>
+
+        <span class="detail-separator">•</span>
+
+        <!-- Meta -->
+        <div class="detail-item">
+          <span class="detail-text-muted">ID {detail.tableConfigId}</span>
+        </div>
+
+        <span class="detail-separator">•</span>
+
+        <div class="detail-item">
+          <span class="detail-text-muted">{detail.donnes?.length ?? 0} donnes</span>
+        </div>
+      </div>
+    </div>
 
     <div class="actions-row">
       <button on:click={deleteTable} class="danger">
@@ -1195,16 +1296,16 @@ function getChangeClass(after: number, before: number) {
 
     <thead>
       <tr>
-        <th>#</th>
-        <th>Annonce</th>
-        <th>Joueur</th>
-        <th>Partenaire</th>
-        <th>Plis</th>
-        <th>Résultat</th>
-        <th>Dames</th>
-        <th>Arbitre</th>
-        <th>Jetons</th>
-        <th>Action</th>
+        <th class="col-num">#</th>
+        <th class="col-annonce">Annonce</th>
+        <th class="col-joueur">Joueur</th>
+        <th class="col-partenaire">Part.</th>
+        <th class="col-plis">Plis</th>
+        <th class="col-resultat">Rés.</th>
+        <th class="col-dames hide-tablet">Dames</th>
+        <th class="col-arbitre hide-tablet">Arb.</th>
+        <th class="col-jetons hide-tablet">Jet.</th>
+        <th class="col-action">Action</th>
       </tr>
     </thead>
 
@@ -1212,33 +1313,15 @@ function getChangeClass(after: number, before: number) {
   {#each detail.donnes as d}
     {#if getAnnonceRow(d)}
       <tr>
-        <td>{d.donneNumber}</td>
-
-        <!-- Annonce -->
-        <td>{getAnnonceRow(d).annonce}</td>
-
-        <!-- Joueur (celui qui a annoncé) -->
-        <td>{getAnnonceRow(d).alias}</td>
-
-        
-
-        <!-- Partenaire (nom) -->
-        <td>{getPartnerAliasForRow(getAnnonceRow(d))}</td>
-
-        <!-- Plis / Résultat / Dames -->
-        <td>{getAnnonceRow(d).plis ?? ''}</td>
-        <td>{getAnnonceRow(d).resultat ?? ''}</td>
-        <td>{getAnnonceRow(d).dames ?? ''}</td>
-
-        <!-- Arbitre -->
-        <td style="text-align:center;">
-          {#if getAnnonceRow(d).arbitre}
-            ✓
-          {/if}
-        </td>
-
-        <!-- Jetons (pénalités) -->
-        <td>
+        <td class="col-num">{d.donneNumber}</td>
+        <td class="col-annonce">{getAnnonceRow(d).annonce}</td>
+        <td class="col-joueur">{getAnnonceRow(d).alias}</td>
+        <td class="col-partenaire">{getPartnerAliasForRow(getAnnonceRow(d))}</td>
+        <td class="col-plis">{getAnnonceRow(d).plis ?? ''}</td>
+        <td class="col-resultat">{getAnnonceRow(d).resultat ?? ''}</td>
+        <td class="col-dames hide-tablet">{getAnnonceRow(d).dames ?? ''}</td>
+        <td class="col-arbitre hide-tablet">{#if getAnnonceRow(d).arbitre}✓{/if}</td>
+        <td class="col-jetons hide-tablet">
           <div class="jetons-cell">
             {#each getPenalitesForDonne(d.donneNumber) as pen}
               <span class="jeton-item" title="{pen.joueurAlias}: -{pen.valeur} pts">
@@ -1247,10 +1330,10 @@ function getChangeClass(after: number, before: number) {
             {/each}
           </div>
         </td>
-
-        <!-- Action -->
-        <td>
-          <button on:click={() => openEdit(d)}>Modifier</button>
+        <td class="col-action">
+          <button on:click={() => openEdit(d)} title="Modifier">
+            <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+          </button>
         </td>
       </tr>
     {/if}
@@ -1731,8 +1814,8 @@ function getChangeClass(after: number, before: number) {
   .simple-table td,
   .donnes-table th,
   .donnes-table td {
-    border: 1px solid rgba(51, 65, 85, 0.9);
-    padding: 0.35rem 0.6rem;
+    border: 1px solid rgba(51, 65, 85, 0.6);
+    padding: 0.32rem 0.5rem;
     text-align: center;
   }
 
@@ -1740,8 +1823,84 @@ function getChangeClass(after: number, before: number) {
   .donnes-table th {
     background: linear-gradient(to bottom, #14532d, #052e16);
     text-transform: uppercase;
-    letter-spacing: 0.06em;
-    font-size: 0.78rem;
+    letter-spacing: 0.05em;
+    font-size: 0.75rem;
+    padding: 0.38rem 0.5rem;
+  }
+
+  /* Donnes table - style général */
+  .donnes-table { font-size: 0.88rem; }
+
+  /* Zebra stripes + hover */
+  .donnes-table tbody tr:nth-child(even) {
+    background: rgba(15, 23, 42, 0.35);
+  }
+  .donnes-table tbody tr:nth-child(odd) {
+    background: rgba(0, 0, 0, 0.15);
+  }
+  .donnes-table tbody tr:hover {
+    background: rgba(34, 197, 94, 0.12);
+  }
+
+  /* Donnes table - colonnes */
+  .donnes-table .col-num { width: 40px; }
+  .donnes-table .col-annonce { width: 70px; }
+  .donnes-table .col-plis { width: 48px; }
+  .donnes-table .col-resultat { width: 60px; }
+  .donnes-table .col-dames { width: 55px; }
+  .donnes-table .col-arbitre { width: 45px; }
+  .donnes-table .col-jetons { width: 50px; }
+  .donnes-table .col-action { width: 50px; }
+
+  /* Bouton icône stylisé */
+  .donnes-table .col-action button {
+    padding: 0.35rem;
+    background: transparent;
+    border: 1px solid rgba(34, 197, 94, 0.35);
+    border-radius: 6px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    color: #86efac;
+  }
+  .donnes-table .col-action button:hover {
+    background: rgba(34, 197, 94, 0.2);
+    border-color: #22c55e;
+    color: #bbf7d0;
+  }
+  .donnes-table .col-action button svg {
+    display: block;
+  }
+
+  /* Responsive donnes table */
+  @media (max-width: 900px) {
+    .donnes-table .hide-tablet {
+      display: none;
+    }
+    .donnes-table {
+      font-size: 0.75rem;
+    }
+    .donnes-table th,
+    .donnes-table td {
+      padding: 0.18rem 0.3rem;
+    }
+  }
+
+  @media (max-width: 650px) {
+    .donnes-table .col-partenaire {
+      display: none;
+    }
+    .donnes-table {
+      font-size: 0.7rem;
+    }
+  }
+
+  @media (max-width: 500px) {
+    .donnes-table .col-resultat {
+      display: none;
+    }
   }
 
   .actions-row {
@@ -2266,6 +2425,7 @@ function getChangeClass(after: number, before: number) {
   margin-top: 0.75rem;
   font-size: 0.95rem;
   background: #020b06;
+  table-layout: fixed;
   }
 
   .players-table th,
@@ -2273,6 +2433,12 @@ function getChangeClass(after: number, before: number) {
   padding: 0.45rem 0.8rem;
   text-align: center;
   border: 1px solid rgba(22, 163, 74, 0.35);
+  }
+
+  /* Première colonne (label) plus étroite */
+  .players-table th:first-child,
+  .players-table td:first-child {
+  width: 100px;
   }
 
   /* Ligne d'en-tête (noms des joueurs) */
@@ -2451,6 +2617,228 @@ function getChangeClass(after: number, before: number) {
   .penalites-table .points-negative {
     color: white;
     font-weight: 600;
+  }
+
+  /* ==================== */
+  /* Header Card Styles   */
+  /* ==================== */
+  .table-header-card {
+    background: linear-gradient(135deg, #020617 0%, #0f172a 50%, #020617 100%);
+    border-radius: 16px;
+    padding: 1.5rem;
+    border: 1px solid rgba(34, 197, 94, 0.35);
+    box-shadow:
+      0 20px 50px rgba(0, 0, 0, 0.5),
+      inset 0 1px 0 rgba(255, 255, 255, 0.05);
+    margin-bottom: 1.5rem;
+  }
+
+  .header-main {
+    margin-bottom: 1.25rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid rgba(34, 197, 94, 0.2);
+  }
+
+  .header-title-row {
+    display: flex;
+    justify-content: space-between;
+    align-items: flex-start;
+    flex-wrap: wrap;
+    gap: 1rem;
+  }
+
+  .header-title {
+    display: flex;
+    align-items: center;
+    gap: 0.75rem;
+  }
+
+  .table-icon {
+    font-size: 2rem;
+    filter: drop-shadow(0 2px 4px rgba(0, 0, 0, 0.4));
+  }
+
+  .header-title h1 {
+    margin: 0;
+    font-size: 1.8rem;
+    font-weight: 700;
+    background: linear-gradient(135deg, #f9fafb 0%, #e5e7eb 100%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    text-shadow: none;
+  }
+
+  .header-badges {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.5rem;
+    align-items: center;
+  }
+
+  .badge {
+    padding: 0.3rem 0.7rem;
+    border-radius: 999px;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.04em;
+  }
+
+  .badge-manche {
+    background: linear-gradient(135deg, #14532d, #166534);
+    color: #bbf7d0;
+    border: 1px solid rgba(34, 197, 94, 0.4);
+  }
+
+  .badge-type {
+    min-width: 2rem;
+    text-align: center;
+  }
+
+  .badge-type.type-1 { background: #1e3a5f; color: #93c5fd; }
+  .badge-type.type-2 { background: #5b21b6; color: #c4b5fd; }
+  .badge-type.type-3 { background: #374151; color: #e5e7eb; }
+  .badge-type.type-4 { background: #92400e; color: #fcd34d; }
+  .badge-type.type-5 { background: #7c2d12; color: #fed7aa; }
+  .badge-type.type-6 { background: #701a75; color: #f5d0fe; }
+  .badge-type.type-7 { background: #134e4a; color: #99f6e4; }
+
+  .badge-status {
+    font-weight: 700;
+  }
+
+  .badge-completed {
+    background: linear-gradient(135deg, #166534, #14532d);
+    color: #86efac;
+    border: 1px solid #22c55e;
+  }
+
+  .badge-in-progress {
+    background: linear-gradient(135deg, #b45309, #92400e);
+    color: #fef3c7;
+    border: 1px solid #f59e0b;
+    animation: pulse-status 2s ease-in-out infinite;
+  }
+
+  @keyframes pulse-status {
+    0%, 100% { opacity: 1; }
+    50% { opacity: 0.7; }
+  }
+
+  .competition-info {
+    margin-top: 0.75rem;
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    font-size: 0.9rem;
+    color: #9ca3af;
+  }
+
+  .competition-label {
+    color: #facc15;
+    font-weight: 600;
+  }
+
+  .competition-number {
+    background: rgba(250, 204, 21, 0.15);
+    color: #fef08a;
+    padding: 0.15rem 0.5rem;
+    border-radius: 4px;
+    font-size: 0.8rem;
+  }
+
+  .competition-name {
+    color: #d1d5db;
+    font-style: italic;
+  }
+
+  /* Détails compacts */
+  .header-details-compact {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 0.5rem;
+    padding: 0.6rem 0.8rem;
+    background: rgba(0, 0, 0, 0.2);
+    border-radius: 8px;
+    font-size: 0.82rem;
+  }
+
+  .detail-item {
+    display: flex;
+    align-items: center;
+    gap: 0.3rem;
+  }
+
+  .detail-icon-sm {
+    font-size: 0.85rem;
+  }
+
+  .detail-text {
+    color: #e5e7eb;
+  }
+
+  .detail-text-muted {
+    color: #9ca3af;
+    font-size: 0.78rem;
+  }
+
+  .duration-text {
+    color: #facc15;
+    font-weight: 600;
+  }
+
+  .detail-separator {
+    color: #4b5563;
+    font-size: 0.7rem;
+  }
+
+  .player-order {
+    color: #9ca3af;
+    font-size: 0.75em;
+  }
+
+  /* Responsive */
+  @media (max-width: 700px) {
+    .header-title-row {
+      flex-direction: column;
+      align-items: flex-start;
+    }
+
+    .header-title h1 {
+      font-size: 1.4rem;
+    }
+
+    .table-icon {
+      font-size: 1.5rem;
+    }
+
+    .header-details-compact {
+      font-size: 0.75rem;
+      gap: 0.4rem;
+    }
+
+    .detail-icon-sm {
+      font-size: 0.75rem;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .table-header-card {
+      padding: 1rem;
+    }
+
+    .header-details-compact {
+      flex-direction: column;
+      align-items: flex-start;
+      gap: 0.3rem;
+    }
+
+    .detail-separator {
+      display: none;
+    }
   }
 
 

@@ -720,39 +720,252 @@ function nextDonne() {
 
 
 
-  let annonces = [
-  { code: 'E8', label: 'Emballage 8 plis', templateResult: 2 },
-  { code: 'E9', label: 'Emballage 9 plis', templateResult: 2 },
-  { code: 'S6', label: 'Seul 6 plis', templateResult: 1 },
-  { code: 'E10', label: 'Emballage 10 plis', templateResult: 2 },
-  { code: 'S7', label: 'Seul 7 plis', templateResult: 1 },
-  { code: 'E11', label: 'Emballage 11 plis', templateResult: 2 },
-  { code: 'PM', label: 'Petite misère', templateResult: 3 },
-  { code: 'PM2', label: 'Petite misère 2 joueurs', templateResult: 4 },
-  { code: 'E12', label: 'Emballage 12 plis', templateResult: 2 },
-  { code: 'S8', label: 'Seul 8 plis', templateResult: 1 },
-  { code: 'S8_D', label: 'Seul 8 plis direct', templateResult: 1 },
-  { code: 'P', label: 'Picolo', templateResult: 3 },
-  { code: 'P2', label: 'Picolo 2 joueurs', templateResult: 4 },
-  { code: 'PME', label: 'Petite misère étalée', templateResult: 3 },
-  { code: 'PME2', label: 'Petite misère étalée 2 joueurs', templateResult: 4 },
-  { code: 'E13', label: 'Emballage 13 plis', templateResult: 2 },
-  { code: 'A9', label: 'Abondance 9 plis', templateResult: 3 },
-  { code: 'TR', label: 'Trou', templateResult: 5 },
-  { code: 'GM', label: 'Grande misère', templateResult: 3 },
-  { code: 'GM2', label: 'Grande misère 2 joueurs', templateResult: 4 },
-  { code: 'A10', label: 'Abondance 10 plis', templateResult: 3 },
-  { code: 'A11', label: 'Abondance 11 plis', templateResult: 3 },
-  { code: 'GME', label: 'Grande misère étalée', templateResult: 3 },
-  { code: 'GME2', label: 'Grande misère étalée 2 joueurs', templateResult: 4 },
-  { code: 'PC', label: 'Petit chelem', templateResult: 3 },
-  { code: 'CH', label: 'Chelem', templateResult: 3 },
-  { code: 'D', label: 'Dames', templateResult: 6 }
+  // ============================================
+  // ANNONCES : Chargement dynamique avec cache offline
+  // ============================================
+
+  // Type pour une annonce
+  type Annonce = {
+    code: string;
+    label: string;
+    templateResult: number;
+  };
+
+  // Fallback ultime : annonces hardcodées (utilisées si offline et pas de cache)
+  const DEFAULT_ANNONCES: Annonce[] = [
+    { code: 'E8', label: 'Emballage 8 plis', templateResult: 2 },
+    { code: 'E9', label: 'Emballage 9 plis', templateResult: 2 },
+    { code: 'S6', label: 'Seul 6 plis', templateResult: 1 },
+    { code: 'E10', label: 'Emballage 10 plis', templateResult: 2 },
+    { code: 'S7', label: 'Seul 7 plis', templateResult: 1 },
+    { code: 'E11', label: 'Emballage 11 plis', templateResult: 2 },
+    { code: 'PM', label: 'Petite misère', templateResult: 3 },
+    { code: 'PM2', label: 'Petite misère 2 joueurs', templateResult: 4 },
+    { code: 'E12', label: 'Emballage 12 plis', templateResult: 2 },
+    { code: 'S8', label: 'Seul 8 plis', templateResult: 1 },
+    { code: 'S8_D', label: 'Seul 8 plis direct', templateResult: 1 },
+    { code: 'P', label: 'Picolo', templateResult: 3 },
+    { code: 'P2', label: 'Picolo 2 joueurs', templateResult: 4 },
+    { code: 'PME', label: 'Petite misère étalée', templateResult: 3 },
+    { code: 'PME2', label: 'Petite misère étalée 2 joueurs', templateResult: 4 },
+    { code: 'E13', label: 'Emballage 13 plis', templateResult: 2 },
+    { code: 'A9', label: 'Abondance 9 plis', templateResult: 3 },
+    { code: 'TR', label: 'Trou', templateResult: 5 },
+    { code: 'GM', label: 'Grande misère', templateResult: 3 },
+    { code: 'GM2', label: 'Grande misère 2 joueurs', templateResult: 4 },
+    { code: 'A10', label: 'Abondance 10 plis', templateResult: 3 },
+    { code: 'A11', label: 'Abondance 11 plis', templateResult: 3 },
+    { code: 'GME', label: 'Grande misère étalée', templateResult: 3 },
+    { code: 'GME2', label: 'Grande misère étalée 2 joueurs', templateResult: 4 },
+    { code: 'PC', label: 'Petit chelem', templateResult: 3 },
+    { code: 'CH', label: 'Chelem', templateResult: 3 },
+    { code: 'D', label: 'Dames', templateResult: 6 }
   ];
 
-  const ANNONCES_AVEC_ARBITRE = new Set([
-  'GM', 'A10', 'A11', 'GME', 'PC', 'CH', 'GM2', 'GME2'
+  // Annonces avec arbitre par défaut (fallback si pas de données serveur)
+  const DEFAULT_ANNONCES_AVEC_ARBITRE = new Set([
+    'GM', 'A10', 'A11', 'GME', 'PC', 'CH', 'GM2', 'GME2'
   ]);
+
+  // Variables réactives pour les annonces
+  let annonces: Annonce[] = [...DEFAULT_ANNONCES];
+  let annoncesAvecArbitre: Set<string> = new Set(DEFAULT_ANNONCES_AVEC_ARBITRE);
+
+  // État du chargement des annonces
+  type AnnoncesSource = 'hardcoded' | 'cache' | 'api';
+  let annoncesSource: AnnoncesSource = 'hardcoded';
+  let annoncesIsCompetitionSpecific = false;
+  let annoncesCacheTimestamp: number | null = null;
+  const ANNONCES_CACHE_TTL_MS = 24 * 60 * 60 * 1000; // 24 heures
+  const ANNONCES_CACHE_PREFIX = 'whist-annonces';
+
+  // Clé de cache pour les annonces de la compétition
+  function getAnnoncesCacheKey(): string {
+    const typePart = competitionType ?? 'global';
+    const numPart = competitionNumber ?? 'none';
+    return `${ANNONCES_CACHE_PREFIX}-${typePart}-${numPart}`;
+  }
+
+  // Type pour la réponse API
+  interface EncodingAnnoncesResponse {
+    annonces: Array<{
+      code: string;
+      label: string | null;
+      templateResult: number;
+      requirePartner: boolean;
+      requirePlis: boolean;
+      requireArbitre: boolean;
+    }>;
+    isCompetitionSpecific: boolean;
+    competitionDefinitionId: number | null;
+    nbreToursPerManche: number | null;
+    serverTimestamp: string;
+  }
+
+  // Nombre de tours par manche (fallback = 4, ce qui donne 16/20/24 donnes)
+  const DEFAULT_TOURS_PER_MANCHE = 4;
+  let nbreToursPerManche: number = DEFAULT_TOURS_PER_MANCHE;
+
+  // Calcule le nombre de donnes en fonction du nombre de joueurs et tours
+  function calculateRows(playerCount: number, tours: number): number {
+    return playerCount * tours;
+  }
+
+  // Charger les annonces depuis le cache localStorage
+  function loadAnnoncesFromCache(): boolean {
+    if (typeof window === 'undefined') return false;
+
+    const cacheKey = getAnnoncesCacheKey();
+    const cached = localStorage.getItem(cacheKey);
+    if (!cached) return false;
+
+    try {
+      const data = JSON.parse(cached);
+      const cacheAge = Date.now() - data.timestamp;
+
+      // Charger les données du cache
+      annonces = data.annonces.map((a: any) => ({
+        code: a.code,
+        label: a.label ?? a.code,
+        templateResult: a.templateResult
+      }));
+
+      // Mettre à jour les annonces avec arbitre
+      annoncesAvecArbitre = new Set(
+        data.annonces
+          .filter((a: any) => a.requireArbitre)
+          .map((a: any) => a.code)
+      );
+
+      annoncesIsCompetitionSpecific = data.isCompetitionSpecific;
+      annoncesCacheTimestamp = data.timestamp;
+      annoncesSource = 'cache';
+
+      // Charger nbreToursPerManche (avec fallback)
+      if (data.nbreToursPerManche != null) {
+        nbreToursPerManche = data.nbreToursPerManche;
+      }
+
+      console.log(`[Annonces] Chargées depuis le cache (âge: ${Math.round(cacheAge / 60000)}min, tours: ${nbreToursPerManche})`);
+      return true;
+    } catch (e) {
+      console.error('[Annonces] Erreur lecture cache:', e);
+      return false;
+    }
+  }
+
+  // Sauvegarder les annonces dans le cache localStorage
+  function saveAnnoncesToCache(response: EncodingAnnoncesResponse): void {
+    if (typeof window === 'undefined') return;
+
+    const cacheKey = getAnnoncesCacheKey();
+    const cacheData = {
+      annonces: response.annonces,
+      isCompetitionSpecific: response.isCompetitionSpecific,
+      nbreToursPerManche: response.nbreToursPerManche,
+      timestamp: Date.now()
+    };
+
+    localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+    console.log(`[Annonces] Sauvegardées dans le cache: ${cacheKey}`);
+  }
+
+  // Charger les annonces depuis l'API
+  async function loadAnnoncesFromApi(): Promise<boolean> {
+    try {
+      const params = new URLSearchParams();
+      if (competitionType !== null) params.set('competitionType', String(competitionType));
+      if (competitionNumber !== null) params.set('competitionNumber', String(competitionNumber));
+
+      const url = `${API_BASE_URL}/api/encoding/annonces?${params.toString()}`;
+      const response = await fetch(url, {
+        signal: AbortSignal.timeout(5000) // timeout 5s
+      });
+
+      if (!response.ok) {
+        console.warn(`[Annonces] API retourne ${response.status}`);
+        return false;
+      }
+
+      const data: EncodingAnnoncesResponse = await response.json();
+
+      // Mettre à jour les annonces
+      annonces = data.annonces.map(a => ({
+        code: a.code,
+        label: a.label ?? a.code,
+        templateResult: a.templateResult
+      }));
+
+      // Mettre à jour les annonces avec arbitre
+      annoncesAvecArbitre = new Set(
+        data.annonces
+          .filter(a => a.requireArbitre)
+          .map(a => a.code)
+      );
+
+      annoncesIsCompetitionSpecific = data.isCompetitionSpecific;
+      annoncesCacheTimestamp = Date.now();
+      annoncesSource = 'api';
+
+      // Charger nbreToursPerManche (avec fallback)
+      if (data.nbreToursPerManche != null) {
+        nbreToursPerManche = data.nbreToursPerManche;
+      }
+
+      // Sauvegarder dans le cache
+      saveAnnoncesToCache(data);
+
+      console.log(`[Annonces] Chargées depuis l'API (${annonces.length} annonces, compétition: ${data.isCompetitionSpecific}, tours: ${nbreToursPerManche})`);
+      return true;
+    } catch (e) {
+      console.warn('[Annonces] Erreur API (offline?):', e);
+      return false;
+    }
+  }
+
+  // Charger les annonces avec stratégie offline-first
+  async function loadAnnonces(): Promise<void> {
+    // 1. Essayer le cache d'abord
+    const hasCache = loadAnnoncesFromCache();
+    const cacheIsFresh = annoncesCacheTimestamp &&
+      (Date.now() - annoncesCacheTimestamp) < ANNONCES_CACHE_TTL_MS;
+
+    // 2. Si online, mettre à jour depuis l'API (même si cache existe)
+    if (navigator.onLine) {
+      const apiSuccess = await loadAnnoncesFromApi();
+      if (!apiSuccess && !hasCache) {
+        // API échoue et pas de cache → fallback hardcodé
+        console.log('[Annonces] Fallback sur les annonces par défaut');
+        annonces = [...DEFAULT_ANNONCES];
+        annoncesAvecArbitre = new Set(DEFAULT_ANNONCES_AVEC_ARBITRE);
+        annoncesSource = 'hardcoded';
+        annoncesIsCompetitionSpecific = false;
+      }
+    } else if (!hasCache) {
+      // Offline et pas de cache → fallback hardcodé
+      console.log('[Annonces] Offline sans cache - fallback sur les annonces par défaut');
+      annonces = [...DEFAULT_ANNONCES];
+      annoncesAvecArbitre = new Set(DEFAULT_ANNONCES_AVEC_ARBITRE);
+      annoncesSource = 'hardcoded';
+      annoncesIsCompetitionSpecific = false;
+    }
+  }
+
+  // Helper pour vérifier si le cache est périmé
+  function isAnnoncesCacheStale(): boolean {
+    if (!annoncesCacheTimestamp) return false;
+    return (Date.now() - annoncesCacheTimestamp) > ANNONCES_CACHE_TTL_MS;
+  }
+
+  // Compatibilité : fonction pour vérifier si une annonce nécessite l'arbitre
+  function requiresArbitre(code: string): boolean {
+    return annoncesAvecArbitre.has(code);
+  }
+
+  // Alias pour rétro-compatibilité (utilisé dans le code existant)
+  const ANNONCES_AVEC_ARBITRE = {
+    has: (code: string) => annoncesAvecArbitre.has(code)
+  };
 
   let annonceByPlayer: Record<string, string> = {};
 	let emballes: Record<string, string> = {};
@@ -760,12 +973,6 @@ function nextDonne() {
 
 // Sous-ensemble : les solos qui se jugent au nombre de plis
 const JEUX_SOLOS_PLIS = new Set(['S6','S7','S8','S8_D']);
-
-type Annonce = {
-    code: string;
-    label: string;
-    templateResult: number;
-};
 
 // Pour chaque joueur, la liste d'annonces autorisées dans le menu déroulant
 let annoncesParJoueur: Record<string, Annonce[]> = {};
@@ -887,8 +1094,8 @@ function getPenalitesForDonne(donneNumber: number): PenaliteInfo[] {
 
 
 
-// Jeux nécessitant TOUJOURS l'arbitre
-const ARBITRE_CODES = new Set([
+// Jeux nécessitant TOUJOURS l'arbitre (fallback si pas de config compétition)
+const DEFAULT_ARBITRE_CODES = new Set([
     'E11','E12','E13','GM', 'GM2', 'A10', 'A11', 'GME', 'GME2', 'PC', 'CH'
 ]);
 
@@ -944,7 +1151,8 @@ function isArbitreRequis(
         return { required: false, fails: 0, byCode: false, byHistory: false };
     }
 
-    const mustByCode = ARBITRE_CODES.has(code);
+    // Utilise annoncesAvecArbitre (dynamique selon la compétition) ou le fallback
+    const mustByCode = annoncesAvecArbitre.has(code) || DEFAULT_ARBITRE_CODES.has(code);
 
     let fails = 0;
     let mustByHistory = false;
@@ -1340,7 +1548,8 @@ function getDisplayName(p: string): string {
 
     type GrilleRow = GrilleRowPlis | GrilleRowEtat;
 
-    const GRILLE_RESULTATS: GrilleRow[] = [
+    // Grille de résultats par défaut (fallback offline)
+    const DEFAULT_GRILLE_RESULTATS: GrilleRow[] = [
     // --- EXEMPLES JEUX À PLIS ---
 
     // Emballage E8
@@ -1523,6 +1732,182 @@ function getDisplayName(p: string): string {
 
     ];
 
+    // Variable réactive pour la grille de résultats (chargée depuis API ou fallback)
+    let grilleResultats: GrilleRow[] = [...DEFAULT_GRILLE_RESULTATS];
+    let grilleIsCompetitionSpecific = false;
+    let grilleCacheTimestamp: number | null = null;
+    let grilleSource: 'hardcoded' | 'cache' | 'api' = 'hardcoded';
+    const GRILLE_CACHE_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+    // Réponse API pour la grille
+    interface EncodingGrilleResultatsResponse {
+      grille: Array<{
+        code: string;
+        kind: string;
+        nbJoueursDedans: number;
+        plisFaits: number | null;
+        etat: string | null;
+        resultatInd: number;
+        resultatJeu: number;
+      }>;
+      isCompetitionSpecific: boolean;
+      competitionDefinitionId: number | null;
+      serverTimestamp: string;
+    }
+
+    // Clé de cache pour la grille (par compétition)
+    function getGrilleCacheKey(): string {
+      if (competitionType !== null && competitionNumber !== null) {
+        return `whist_grille_${competitionType}_${competitionNumber}`;
+      }
+      return 'whist_grille_global';
+    }
+
+    // Charger la grille depuis le cache localStorage
+    function loadGrilleFromCache(): boolean {
+      if (typeof window === 'undefined') return false;
+
+      const cacheKey = getGrilleCacheKey();
+      const cached = localStorage.getItem(cacheKey);
+      if (!cached) return false;
+
+      try {
+        const data = JSON.parse(cached);
+        const cacheAge = Date.now() - data.timestamp;
+
+        // Convertir les données API en format GrilleRow
+        grilleResultats = data.grille.map((item: any): GrilleRow => {
+          if (item.kind === 'plis') {
+            return {
+              kind: 'plis',
+              code: item.code,
+              nbJoueursDedans: item.nbJoueursDedans,
+              plisFaits: item.plisFaits,
+              resultatInd: item.resultatInd,
+              resultatJeu: item.resultatJeu
+            } as GrilleRowPlis;
+          } else {
+            return {
+              kind: 'etat',
+              code: item.code,
+              nbJoueursDedans: item.nbJoueursDedans,
+              etat: item.etat as EtatJeu,
+              resultatInd: item.resultatInd,
+              resultatJeu: item.resultatJeu
+            } as GrilleRowEtat;
+          }
+        });
+
+        grilleIsCompetitionSpecific = data.isCompetitionSpecific;
+        grilleCacheTimestamp = data.timestamp;
+        grilleSource = 'cache';
+
+        console.log(`[Grille] Chargée depuis le cache (âge: ${Math.round(cacheAge / 60000)}min, ${grilleResultats.length} entrées)`);
+        return true;
+      } catch (e) {
+        console.error('[Grille] Erreur lecture cache:', e);
+        return false;
+      }
+    }
+
+    // Sauvegarder la grille dans le cache localStorage
+    function saveGrilleToCache(response: EncodingGrilleResultatsResponse): void {
+      if (typeof window === 'undefined') return;
+
+      const cacheKey = getGrilleCacheKey();
+      const cacheData = {
+        grille: response.grille,
+        isCompetitionSpecific: response.isCompetitionSpecific,
+        timestamp: Date.now()
+      };
+
+      localStorage.setItem(cacheKey, JSON.stringify(cacheData));
+      console.log(`[Grille] Sauvegardée dans le cache: ${cacheKey}`);
+    }
+
+    // Charger la grille depuis l'API
+    async function loadGrilleFromApi(): Promise<boolean> {
+      try {
+        const params = new URLSearchParams();
+        if (competitionType !== null) params.set('competitionType', String(competitionType));
+        if (competitionNumber !== null) params.set('competitionNumber', String(competitionNumber));
+
+        const url = `${API_BASE_URL}/api/encoding/grille-resultats?${params.toString()}`;
+        const response = await fetch(url, {
+          signal: AbortSignal.timeout(5000)
+        });
+
+        if (!response.ok) {
+          console.warn(`[Grille] API retourne ${response.status}`);
+          return false;
+        }
+
+        const data: EncodingGrilleResultatsResponse = await response.json();
+
+        // Convertir les données API en format GrilleRow
+        grilleResultats = data.grille.map((item): GrilleRow => {
+          if (item.kind === 'plis') {
+            return {
+              kind: 'plis',
+              code: item.code,
+              nbJoueursDedans: item.nbJoueursDedans,
+              plisFaits: item.plisFaits!,
+              resultatInd: item.resultatInd,
+              resultatJeu: item.resultatJeu
+            } as GrilleRowPlis;
+          } else {
+            return {
+              kind: 'etat',
+              code: item.code,
+              nbJoueursDedans: item.nbJoueursDedans,
+              etat: item.etat as EtatJeu,
+              resultatInd: item.resultatInd,
+              resultatJeu: item.resultatJeu
+            } as GrilleRowEtat;
+          }
+        });
+
+        grilleIsCompetitionSpecific = data.isCompetitionSpecific;
+        grilleCacheTimestamp = Date.now();
+        grilleSource = 'api';
+
+        // Sauvegarder dans le cache
+        saveGrilleToCache(data);
+
+        console.log(`[Grille] Chargée depuis l'API (${grilleResultats.length} entrées, compétition: ${data.isCompetitionSpecific})`);
+        return true;
+      } catch (e) {
+        console.warn('[Grille] Erreur API (offline?):', e);
+        return false;
+      }
+    }
+
+    // Charger la grille avec stratégie offline-first
+    async function loadGrille(): Promise<void> {
+      // 1. Essayer le cache d'abord
+      const hasCache = loadGrilleFromCache();
+      const cacheIsFresh = grilleCacheTimestamp &&
+        (Date.now() - grilleCacheTimestamp) < GRILLE_CACHE_TTL_MS;
+
+      // 2. Si online, mettre à jour depuis l'API
+      if (navigator.onLine) {
+        const apiSuccess = await loadGrilleFromApi();
+        if (!apiSuccess && !hasCache) {
+          // API échoue et pas de cache → fallback hardcodé
+          console.log('[Grille] Fallback sur la grille par défaut');
+          grilleResultats = [...DEFAULT_GRILLE_RESULTATS];
+          grilleSource = 'hardcoded';
+          grilleIsCompetitionSpecific = false;
+        }
+      } else if (!hasCache) {
+        // Offline et pas de cache → fallback hardcodé
+        console.log('[Grille] Offline sans cache - fallback sur la grille par défaut');
+        grilleResultats = [...DEFAULT_GRILLE_RESULTATS];
+        grilleSource = 'hardcoded';
+        grilleIsCompetitionSpecific = false;
+      }
+    }
+
     onMount(() => {
     if (typeof window === 'undefined') return;
 
@@ -1552,6 +1937,11 @@ function getDisplayName(p: string): string {
     const subtypeLabelParam = url.searchParams.get('competitionSubtypeLabel');
     competitionSubtypeLabel = subtypeLabelParam ?? '';
 
+    // 📦 Charger les annonces spécifiques à la compétition (avec cache offline)
+    loadAnnonces();
+
+    // 📦 Charger la grille de résultats spécifique à la compétition (avec cache offline)
+    loadGrille();
 
     const tcfgParam =
     url.searchParams.get('tableConfigId') ??
@@ -1573,8 +1963,8 @@ function getDisplayName(p: string): string {
     ? JSON.parse(playerIdsParam)
     : players.map(() => null);
 
-    // --- nombre de donnes max ---
-    rows = playerCount === 4 ? 16 : playerCount === 5 ? 20 : 24;
+    // --- nombre de donnes max (playerCount × nbreToursPerManche) ---
+    rows = calculateRows(playerCount, nbreToursPerManche);
 
     // 🔒 Sauvegarder les valeurs URL critiques AVANT le chargement du draft
     // L'URL est la source de vérité pour les joueurs (important pour "Reprendre l'encodage")
@@ -1683,7 +2073,7 @@ function getDisplayName(p: string): string {
 
 
     // 👉 IMPORTANT : recalcul du nombre total de donnes
-    rows = playerCount === 4 ? 16 : playerCount === 5 ? 20 : 24;
+    rows = calculateRows(playerCount, nbreToursPerManche);
     }
 
     // 🔥 Restaurer le timing de la manche
@@ -2198,7 +2588,7 @@ function handleEmballageChange(player: string) {
 
 
 function findRowPlis(code: string, plisFaits: number, nbJoueursDedans: number): GrilleRowPlis | undefined {
-    return GRILLE_RESULTATS.find(
+    return grilleResultats.find(
         (r): r is GrilleRowPlis =>
             r.kind === 'plis' &&
             r.code === code &&
@@ -2208,7 +2598,7 @@ function findRowPlis(code: string, plisFaits: number, nbJoueursDedans: number): 
 }
 
 function findRowEtat(code: string, etat: EtatJeu, nbJoueursDedans: number): GrilleRowEtat | undefined {
-    return GRILLE_RESULTATS.find(
+    return grilleResultats.find(
         (r): r is GrilleRowEtat =>
             r.kind === 'etat' &&
             r.code === code &&
@@ -3965,6 +4355,19 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
       <button on:click={() => { showFeuillePoints = true; loadPenalites(); }}>Feuille de points</button>
     </div>
 
+    <!-- Bandeau d'avertissement pour les annonces -->
+    {#if annoncesSource === 'hardcoded' || (annoncesSource === 'cache' && isAnnoncesCacheStale())}
+      <div class="annonces-warning-banner">
+        {#if annoncesSource === 'hardcoded'}
+          ⚠️ Annonces par défaut (offline)
+        {:else if !annoncesIsCompetitionSpecific}
+          ⚠️ Annonces globales (pas de config compétition)
+        {:else}
+          ⚠️ Cache > 24h
+        {/if}
+      </div>
+    {/if}
+
 <table
   class="players-table players-table-clickable"
   on:click={() => showResultatsZoom = true}
@@ -4368,14 +4771,14 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 
 {#if showArbitreModal}
     <div class="modal-backdrop" on:click={() => showArbitreModal = false}>
-        <div class="modal" on:click|stopPropagation style="text-align:center;">
-            <h3 style="margin-bottom:1rem;">Appel à l'arbitre requis</h3>
+        <div class="modal arbitre-modal" on:click|stopPropagation>
+            <h3>Appel à l'arbitre requis</h3>
 
-            <p style="margin: 0 auto 1.5rem auto; max-width: 80%;">
+            <p class="arbitre-message">
                 {arbitreMessage}
             </p>
 
-            <div style="display:flex; justify-content:center; margin-top:1.5rem;">
+            <div class="arbitre-buttons">
                 <button on:click={() => showArbitreModal = false}>
                     Fermer
                 </button>
@@ -4936,6 +5339,18 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   gap: 0.6rem;
   }
 
+  /* Bandeau d'avertissement pour les annonces (offline/cache périmé) */
+  .annonces-warning-banner {
+    background: rgba(245, 158, 11, 0.15);
+    border: 1px solid rgba(245, 158, 11, 0.4);
+    color: #fbbf24;
+    padding: 0.4rem 0.8rem;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    text-align: center;
+    margin-top: 0.5rem;
+  }
+
   .header-top {
   display: flex;
   align-items: center;
@@ -5432,6 +5847,10 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   .history-modal {
   max-width: 760px;
   width: 94%;
+  border: 1px solid rgba(0, 255, 156, 0.5);
+  box-shadow:
+    0 0 15px rgba(0, 255, 156, 0.25),
+    0 0 30px rgba(0, 0, 0, 0.6);
   }
 
   .history-table {
@@ -5485,6 +5904,41 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   .feuille-points-modal {
   max-width: 900px;
   width: 95%;
+  border: 1px solid rgba(0, 255, 156, 0.5);
+  box-shadow:
+    0 0 15px rgba(0, 255, 156, 0.25),
+    0 0 30px rgba(0, 0, 0, 0.6);
+  }
+
+  /* Modale Appel à l'arbitre */
+  .arbitre-modal {
+    max-width: 420px;
+    min-height: auto !important;
+    text-align: center;
+    border: 1px solid rgba(0, 255, 156, 0.5);
+    box-shadow:
+      0 0 15px rgba(0, 255, 156, 0.25),
+      0 0 30px rgba(0, 0, 0, 0.6);
+    padding: 1.5rem 2rem;
+  }
+
+  .arbitre-modal h3 {
+    margin-bottom: 1.2rem;
+    font-size: 1.3rem;
+  }
+
+  .arbitre-message {
+    margin: 0 auto 1rem auto;
+    max-width: 90%;
+    white-space: pre-line;
+    font-size: 1.1rem;
+    line-height: 1.5;
+  }
+
+  .arbitre-buttons {
+    display: flex;
+    justify-content: center;
+    margin-top: 1.2rem;
   }
 
   .feuille-table {
@@ -5971,6 +6425,8 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   max-height: 90vh;
   overflow: auto;
   padding: 1rem 0.9rem 0.9rem;
+  margin-left: auto;
+  margin-right: auto;
   }
 
   .history-modal,
@@ -6646,7 +7102,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 
 
   .modal {
-  max-height: 88vh  /* utilise plus d’écran */
+  max-height: 88vh;             /* utilise plus d'écran */
   min-height: 60vh;             /* évite une petite modale */
   overflow: auto;               /* scroll interne si besoin */
   }
@@ -6722,13 +7178,35 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   /* Modale "Ordre des annonces" un peu plus haute */
   .modal-annonces {
   max-height: 86vh;              /* laisse une petite marge en haut/bas */
+  margin: 0 auto;                /* centrage horizontal */
+  border: 1px solid rgba(0, 255, 156, 0.5);
+  box-shadow:
+    0 0 15px rgba(0, 255, 156, 0.25),
+    0 0 30px rgba(0, 0, 0, 0.6);
   }
 
   /* Liste qui prend plus de place dans la modale */
   .modal-annonces .annonces-list {
-  max-height: 560px;             /* augmente pour remplir l’espace */
+  max-height: 560px;             /* augmente pour remplir l'espace */
   margin-bottom: 0.6rem;         /* rapproche du bloc des couleurs */
   }
+
+  /* Modale Ordre des annonces sur tablette/mobile - largeur limitée et centrée */
+  @media (max-width: 1150px) {
+    .modal-annonces {
+      width: 85% !important;
+      max-width: 380px !important;
+      margin: 0 auto !important;
+    }
+  }
+
+  @media (max-width: 480px) {
+    .modal-annonces {
+      width: 90% !important;
+      max-width: 320px !important;
+    }
+  }
+
   /* Wrapper centré */
   .ordre-couleurs-wrapper {
   display: flex;
@@ -6807,6 +7285,8 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   .leave-modal {
   max-width: 480px;
   text-align: center;
+  min-height: auto;  /* désactive le min-height de .modal */
+  max-height: fit-content;
   box-shadow:
   0 0 40px rgba(250, 204, 21, 0.23),
   0 0 0 1px rgba(250, 204, 21, 0.08);
@@ -7390,6 +7870,8 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
     padding: 2rem 2.5rem;
     min-width: 320px;
     max-width: 95vw;
+    min-height: auto;  /* désactive le min-height de .modal */
+    max-height: fit-content;
     box-shadow: 0 0 40px rgba(0, 255, 120, 0.3);
     overflow: hidden;
     box-sizing: border-box;
