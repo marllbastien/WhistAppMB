@@ -447,6 +447,7 @@ function applyCorrectedHistory(corrected: SyncDonneServer[]) {
   let showAnnonceOrder = false; // Permet d'afficher la latte des annonces
   let showHistorique = false; // Permet d'afficher le tableau des scores complet
   let showFeuillePoints = false;
+  let showResultatsZoom = false; // Modale pour agrandir le tableau des résultats
   let showArbitreModal = false;
   let arbitreMessage = "";
   let mancheTerminee = false;
@@ -3964,7 +3965,14 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
       <button on:click={() => { showFeuillePoints = true; loadPenalites(); }}>Feuille de points</button>
     </div>
 
-<table class="players-table">
+<table
+  class="players-table players-table-clickable"
+  on:click={() => showResultatsZoom = true}
+  on:keydown={(e) => e.key === 'Enter' && (showResultatsZoom = true)}
+  role="button"
+  tabindex="0"
+  title="Cliquer pour agrandir"
+>
   <thead>
     <tr>
       <th></th>
@@ -4168,6 +4176,41 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
     </div>
 {/if}
 
+<!-- MODALE : Résultats agrandis -->
+{#if showResultatsZoom}
+<div class="modal-backdrop" on:click={() => showResultatsZoom = false} role="dialog" aria-modal="true" aria-labelledby="resultats-zoom-title">
+    <div class="modal resultats-zoom-modal" on:click|stopPropagation>
+        <button class="modal-close-btn" on:click={() => showResultatsZoom = false} aria-label="Fermer">✕</button>
+        <h3 id="resultats-zoom-title">Résultats</h3>
+        <table class="resultats-zoom-table">
+            <thead>
+                <tr>
+                    {#each players as p, i}
+                    <th class:leader={leaderScore !== 0 && scoresCumulés[p] === leaderScore}>
+                        {#if i === currentDealer}
+                        <span class="dealer-icon">🖐️</span>
+                        {/if}
+                        {p}
+                    </th>
+                    {/each}
+                </tr>
+            </thead>
+            <tbody>
+                <tr>
+                    {#each players as p}
+                    <td class:leader={leaderScore !== 0 && scoresCumulés[p] === leaderScore}>
+                        {scoresCumulés[p] ?? 0}
+                    </td>
+                    {/each}
+                </tr>
+            </tbody>
+        </table>
+        <div class="resultats-zoom-donne-info">
+            Donne n° {donneNumber} / {rows}
+        </div>
+    </div>
+</div>
+{/if}
 
 {#if showFeuillePoints}
     <div class="modal-backdrop" on:click={() => showFeuillePoints = false}>
@@ -7103,6 +7146,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
     border: 2px solid #991b1b;
     border-radius: var(--radius-md);
     position: relative;
+    z-index: 20; /* Au-dessus des logos mobiles (z-index: 10) */
   }
 
   /* Bandeau mode édition */
@@ -7317,6 +7361,189 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
       width: 100%;
     }
   }
- 
+
+  /* ============================================
+     MODALE RÉSULTATS AGRANDIS
+     ============================================ */
+
+  /* Tableau cliquable - indication visuelle */
+  .players-table-clickable {
+    cursor: pointer;
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+
+  .players-table-clickable:hover {
+    transform: scale(1.02);
+    box-shadow: 0 0 20px rgba(0, 255, 140, 0.4);
+  }
+
+  .players-table-clickable:active {
+    transform: scale(0.98);
+  }
+
+  /* Modale résultats zoom */
+  .resultats-zoom-modal {
+    position: relative;
+    background: linear-gradient(180deg, #0a1f14 0%, #061510 100%);
+    border: 2px solid rgba(0, 255, 140, 0.4);
+    border-radius: 20px;
+    padding: 2rem 2.5rem;
+    min-width: 320px;
+    max-width: 95vw;
+    box-shadow: 0 0 40px rgba(0, 255, 120, 0.3);
+    overflow: hidden;
+    box-sizing: border-box;
+  }
+
+  .resultats-zoom-modal h3 {
+    text-align: center;
+    font-size: 1.8rem;
+    color: var(--accent);
+    margin-bottom: 1.5rem;
+  }
+
+  /* Bouton fermer */
+  .modal-close-btn {
+    position: absolute;
+    top: 0.8rem;
+    right: 0.8rem;
+    background: rgba(255, 255, 255, 0.1);
+    border: none;
+    color: #9ca3af;
+    font-size: 1.4rem;
+    width: 2.2rem;
+    height: 2.2rem;
+    border-radius: 50%;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .modal-close-btn:hover {
+    background: rgba(255, 255, 255, 0.2);
+    color: white;
+  }
+
+  /* Tableau agrandi */
+  .resultats-zoom-table {
+    width: 100%;
+    max-width: 100%;
+    table-layout: fixed;
+    border-collapse: collapse;
+    background: rgba(2, 12, 7, 0.95);
+    border-radius: 14px;
+    overflow: hidden;
+  }
+
+  .resultats-zoom-table th,
+  .resultats-zoom-table td {
+    padding: 1.2rem 0.8rem;
+    text-align: center;
+    border-bottom: 1px solid rgba(75, 85, 99, 0.5);
+  }
+
+  .resultats-zoom-table th {
+    background: linear-gradient(to bottom, #0f3820, #071d12);
+    font-size: 1.8rem;
+    font-weight: 700;
+    color: var(--text-main);
+  }
+
+  .resultats-zoom-table td {
+    font-size: 3rem;
+    font-weight: 800;
+    color: #e7e7e7;
+  }
+
+  .resultats-zoom-table .leader {
+    color: #e7c76a;
+    text-shadow: 0 0 8px rgba(231, 199, 106, 0.6);
+  }
+
+  .resultats-zoom-table .dealer-icon {
+    margin-right: 0.3rem;
+  }
+
+  .resultats-zoom-donne-info {
+    text-align: center;
+    margin-top: 1rem;
+    font-size: 1.2rem;
+    color: #9ca3af;
+    font-weight: 500;
+  }
+
+  /* Responsive pour petits écrans */
+  @media (max-width: 600px) {
+    .modal-backdrop:has(.resultats-zoom-modal) {
+      overflow: hidden;
+      padding: 0 0.5rem;
+    }
+
+    .resultats-zoom-modal {
+      padding: 1rem 0.4rem !important;
+      margin: 0 !important;
+      width: calc(100vw - 1rem) !important;
+      max-width: calc(100vw - 1rem) !important;
+      min-width: unset !important;
+      overflow: hidden !important;
+    }
+
+    .resultats-zoom-modal h3 {
+      font-size: 1.2rem;
+      margin-bottom: 0.8rem;
+    }
+
+    .resultats-zoom-table {
+      table-layout: fixed !important;
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+
+    .resultats-zoom-table th,
+    .resultats-zoom-table td {
+      padding: 0.4rem 0.1rem !important;
+      box-sizing: border-box;
+    }
+
+    .resultats-zoom-table th {
+      font-size: 0.75rem !important;
+      word-wrap: break-word;
+      overflow-wrap: break-word;
+      white-space: normal;
+    }
+
+    .resultats-zoom-table td {
+      font-size: 1.4rem !important;
+    }
+
+    .resultats-zoom-table .dealer-icon {
+      display: block;
+      margin: 0 auto 0.1rem;
+      font-size: 0.7rem;
+    }
+
+    .resultats-zoom-donne-info {
+      font-size: 0.9rem;
+      margin-top: 0.8rem;
+    }
+  }
+
+  /* Très petits écrans (< 400px) */
+  @media (max-width: 400px) {
+    .resultats-zoom-modal {
+      padding: 0.8rem 0.2rem !important;
+    }
+
+    .resultats-zoom-table th {
+      font-size: 0.65rem !important;
+    }
+
+    .resultats-zoom-table td {
+      font-size: 1.2rem !important;
+    }
+  }
+
 </style>
 
