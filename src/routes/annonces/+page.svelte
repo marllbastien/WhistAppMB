@@ -34,6 +34,8 @@
   // Libellés lisibles reçus depuis /home
   let competitionTypeLabel = '';
   let competitionSubtypeLabel = '';
+  // Logo (priorité: compétition > club > défaut)
+  let logoPath: string | null = null;
   
   // Mode d'encodage : 'classic' ou 'light'
   let encodingMode: 'classic' | 'light' = 'classic';
@@ -1936,6 +1938,10 @@ function getDisplayName(p: string): string {
 
     const subtypeLabelParam = url.searchParams.get('competitionSubtypeLabel');
     competitionSubtypeLabel = subtypeLabelParam ?? '';
+
+    // Logo (priorité: compétition > club)
+    const logoParam = url.searchParams.get('logoPath');
+    logoPath = logoParam ?? null;
 
     // 📦 Charger les annonces spécifiques à la compétition (avec cache offline)
     loadAnnonces();
@@ -4333,8 +4339,8 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
     </script>
 <!-- Bandeau supérieur + logos extérieurs -->
 <div class="page-header-wrapper">
-  <!-- Logo gauche (extérieur) -->
-  <img src="/Logo-tee-shirt.png" alt="Logo club" class="corner-logo corner-logo-left" />
+  <!-- Logo gauche (extérieur) - logo du club organisateur ou logo par défaut -->
+  <img src={logoPath || '/Logo-tee-shirt.png'} alt="Logo club" class="corner-logo corner-logo-left" />
 
   <!-- Encadré central -->
   <div class="header">
@@ -4985,7 +4991,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 <!-- Mode d'encodage Classique (avec Light intégré dans choixAnnonce) -->
 <!-- Wrapper pour les logos mobiles autour de la section Donne -->
 <div class="donne-section-wrapper">
-  <img src="/Logo-tee-shirt.png" alt="Logo club" class="mobile-logo mobile-logo-left" />
+  <img src={logoPath || '/Logo-tee-shirt.png'} alt="Logo club" class="mobile-logo mobile-logo-left" />
 
   <div class="donne" class:donne-edit-mode={isEditingPreviousDonne}>
 	{#if isEditingPreviousDonne}
@@ -5847,6 +5853,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   .history-modal {
   max-width: 760px;
   width: 94%;
+  min-height: auto;  /* taille adaptée au contenu */
   border: 1px solid rgba(0, 255, 156, 0.5);
   box-shadow:
     0 0 15px rgba(0, 255, 156, 0.25),
@@ -5904,6 +5911,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   .feuille-points-modal {
   max-width: 900px;
   width: 95%;
+  min-height: auto;  /* taille adaptée au contenu */
   border: 1px solid rgba(0, 255, 156, 0.5);
   box-shadow:
     0 0 15px rgba(0, 255, 156, 0.25),
@@ -6686,6 +6694,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   .end-manche-modal {
   max-width: 520px;
   width: 95%;
+  min-height: auto;  /* taille adaptée au contenu */
   text-align: center;
   background: radial-gradient(circle at top, #052e16 0%, #020b06 65%, #000 100%);
   border: 1px solid rgba(250, 204, 21, 0.6);
@@ -7101,7 +7110,8 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   }
 
 
-  .modal {
+  /* Modale "Ordre des annonces" : plus haute pour afficher toute la liste */
+  .modal-annonces {
   max-height: 88vh;             /* utilise plus d'écran */
   min-height: 60vh;             /* évite une petite modale */
   overflow: auto;               /* scroll interne si besoin */
@@ -7729,6 +7739,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
     text-align: center;
     padding: 2rem;
     max-width: 420px;
+    min-height: auto;  /* taille adaptée au contenu */
   }
 
   .edit-confirm-icon,

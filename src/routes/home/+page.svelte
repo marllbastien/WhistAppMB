@@ -127,6 +127,13 @@
   usesArbitre: boolean;
   isActive: boolean;
   todayMancheNumbers?: number[] | null;
+  // Infos du club organisateur
+  clubId: number | null;
+  clubName: string | null;
+  clubShortName: string | null;
+  clubColor: string | null;
+  // Logo (priorité: compétition > club)
+  logoPath: string | null;
   }
 
   // 🔥 définitions de compétition pour le type sélectionné (1,2,3,4)
@@ -418,6 +425,14 @@
   }
   if (competitionSubtypeLabel) {
     params.set('competitionSubtypeLabel', competitionSubtypeLabel);
+  }
+  // Trouver le logo pour la compétition sélectionnée (priorité: compétition > club)
+  const def = competitionDefinitions.find(d =>
+    d.competitionType === compTypeInt &&
+    (compNumberInt === null || d.competitionNumber === compNumberInt)
+  );
+  if (def?.logoPath) {
+    params.set('logoPath', def.logoPath);
   }
     return params;
   }
@@ -835,7 +850,14 @@ async function loadDefinitionsForType(type: CompetitionTypeCode) {
         scoringGridCode: d.scoringGridCode ?? d.ScoringGridCode ?? null,
         usesArbitre: d.usesArbitre ?? d.UsesArbitre ?? false,
         isActive: d.isActive ?? d.IsActive ?? true,
-        todayMancheNumbers
+        todayMancheNumbers,
+        // Infos du club organisateur
+        clubId: d.clubId ?? d.ClubId ?? null,
+        clubName: d.clubName ?? d.ClubName ?? null,
+        clubShortName: d.clubShortName ?? d.ClubShortName ?? null,
+        clubColor: d.clubColor ?? d.ClubColor ?? null,
+        // Logo (priorité: compétition > club)
+        logoPath: d.logoPath ?? d.LogoPath ?? null
       } as CompetitionDefinition;
     });
 

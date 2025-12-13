@@ -69,6 +69,10 @@
   players: AdminPlayerDto[];
   finalScores: AdminFinalScoreDto[];
   donnes: AdminDonneSummaryDto[];
+  // Infos session/navigateur
+  sessionId: string | null;
+  createdByIp: string | null;
+  createdByUserAgent: string | null;
   }
 
   // Fonction pour calculer la durée entre deux dates
@@ -86,6 +90,127 @@
       return `${hours}h ${minutes}min`;
     }
     return `${minutes} min`;
+  }
+
+  // Fonction pour parser le User-Agent et extraire navigateur/OS/appareil
+  interface ParsedUserAgent {
+    browser: string;
+    os: string;
+    device: string;
+    deviceModel: string | null;
+  }
+
+  function parseUserAgent(ua: string | null): ParsedUserAgent {
+    if (!ua) return { browser: '-', os: '-', device: '-', deviceModel: null };
+
+    // Détection du navigateur
+    let browser = 'Inconnu';
+    if (ua.includes('Edg/')) {
+      const match = ua.match(/Edg\/([\d.]+)/);
+      browser = `Edge ${match ? match[1].split('.')[0] : ''}`;
+    } else if (ua.includes('Chrome/') && !ua.includes('Chromium')) {
+      const match = ua.match(/Chrome\/([\d.]+)/);
+      browser = `Chrome ${match ? match[1].split('.')[0] : ''}`;
+    } else if (ua.includes('Firefox/')) {
+      const match = ua.match(/Firefox\/([\d.]+)/);
+      browser = `Firefox ${match ? match[1].split('.')[0] : ''}`;
+    } else if (ua.includes('Safari/') && !ua.includes('Chrome')) {
+      const match = ua.match(/Version\/([\d.]+)/);
+      browser = `Safari ${match ? match[1].split('.')[0] : ''}`;
+    } else if (ua.includes('Opera') || ua.includes('OPR/')) {
+      const match = ua.match(/(?:Opera|OPR)\/([\d.]+)/);
+      browser = `Opera ${match ? match[1].split('.')[0] : ''}`;
+    }
+
+    // Détection de l'OS
+    let os = 'Inconnu';
+    if (ua.includes('Windows NT 10')) {
+      os = 'Windows 10/11';
+    } else if (ua.includes('Windows NT 6.3')) {
+      os = 'Windows 8.1';
+    } else if (ua.includes('Windows NT 6.2')) {
+      os = 'Windows 8';
+    } else if (ua.includes('Windows NT 6.1')) {
+      os = 'Windows 7';
+    } else if (ua.includes('Mac OS X')) {
+      const match = ua.match(/Mac OS X ([\d_]+)/);
+      os = `macOS ${match ? match[1].replace(/_/g, '.') : ''}`;
+    } else if (ua.includes('Android')) {
+      const match = ua.match(/Android ([\d.]+)/);
+      os = `Android ${match ? match[1] : ''}`;
+    } else if (ua.includes('iPhone') || ua.includes('iPad')) {
+      const match = ua.match(/OS ([\d_]+)/);
+      os = `iOS ${match ? match[1].replace(/_/g, '.') : ''}`;
+    } else if (ua.includes('Linux')) {
+      os = 'Linux';
+    }
+
+    // Détection du type d'appareil
+    let device = 'Desktop';
+    if (ua.includes('Mobile') || (ua.includes('Android') && !ua.includes('Tablet'))) {
+      device = 'Mobile';
+    } else if (ua.includes('Tablet') || ua.includes('iPad')) {
+      device = 'Tablette';
+    }
+
+    // Détection du modèle d'appareil
+    let deviceModel: string | null = null;
+
+    // Apple - iPhone
+    if (ua.includes('iPhone')) {
+      deviceModel = 'iPhone';
+    }
+    // Apple - iPad
+    else if (ua.includes('iPad')) {
+      deviceModel = 'iPad';
+    }
+    // Samsung Galaxy (format: SM-XXXX ou Samsung SM-XXXX)
+    else if (ua.includes('SM-')) {
+      const match = ua.match(/SM-([A-Z]\d{3}[A-Z]?)/i);
+      if (match) {
+        const model = match[1].toUpperCase();
+        // Mapper les codes Samsung courants
+        if (model.startsWith('G9')) deviceModel = 'Samsung Galaxy S';
+        else if (model.startsWith('S9')) deviceModel = 'Samsung Galaxy S';
+        else if (model.startsWith('A')) deviceModel = 'Samsung Galaxy A';
+        else if (model.startsWith('T')) deviceModel = 'Samsung Galaxy Tab';
+        else if (model.startsWith('X')) deviceModel = 'Samsung Galaxy Tab';
+        else deviceModel = `Samsung ${match[0]}`;
+      }
+    }
+    // Huawei
+    else if (ua.includes('HUAWEI') || ua.includes('Huawei')) {
+      const match = ua.match(/(?:HUAWEI|Huawei)[- ]?([A-Z0-9-]+)/i);
+      deviceModel = match ? `Huawei ${match[1]}` : 'Huawei';
+    }
+    // Xiaomi / Redmi
+    else if (ua.includes('Xiaomi') || ua.includes('Redmi') || ua.includes('POCO')) {
+      if (ua.includes('Redmi')) {
+        const match = ua.match(/Redmi[- ]?([A-Z0-9 ]+)/i);
+        deviceModel = match ? `Redmi ${match[1].trim()}` : 'Redmi';
+      } else if (ua.includes('POCO')) {
+        const match = ua.match(/POCO[- ]?([A-Z0-9]+)/i);
+        deviceModel = match ? `POCO ${match[1]}` : 'POCO';
+      } else {
+        deviceModel = 'Xiaomi';
+      }
+    }
+    // OnePlus
+    else if (ua.includes('OnePlus')) {
+      const match = ua.match(/OnePlus[- ]?([A-Z0-9]+)/i);
+      deviceModel = match ? `OnePlus ${match[1]}` : 'OnePlus';
+    }
+    // Google Pixel
+    else if (ua.includes('Pixel')) {
+      const match = ua.match(/Pixel[- ]?(\d+[a-z]?)/i);
+      deviceModel = match ? `Pixel ${match[1]}` : 'Pixel';
+    }
+    // Ordinateur Mac
+    else if (ua.includes('Macintosh')) {
+      deviceModel = 'Mac';
+    }
+
+    return { browser, os, device, deviceModel };
   }
 
   // Fonction pour obtenir le shortName du type de compétition
@@ -1230,6 +1355,40 @@ function getChangeClass(after: number, before: number) {
           <span class="detail-text-muted">{detail.donnes?.length ?? 0} donnes</span>
         </div>
       </div>
+
+      <!-- Infos session/navigateur -->
+      {#if detail.sessionId || detail.createdByIp || detail.createdByUserAgent}
+        {@const parsed = parseUserAgent(detail.createdByUserAgent)}
+        <div class="header-details-compact session-info">
+          {#if detail.sessionId}
+            <div class="detail-item">
+              <span class="detail-icon-sm">🔑</span>
+              <span class="detail-text-muted">Session: {detail.sessionId.substring(0, 8)}...</span>
+            </div>
+            <span class="detail-separator">•</span>
+          {/if}
+
+          {#if detail.createdByIp}
+            <div class="detail-item">
+              <span class="detail-icon-sm">🌐</span>
+              <span class="detail-text-muted">IP: {detail.createdByIp}</span>
+            </div>
+            <span class="detail-separator">•</span>
+          {/if}
+
+          {#if detail.createdByUserAgent}
+            <div class="detail-item">
+              <span class="detail-icon-sm">💻</span>
+              <span class="detail-text-muted">
+                {#if parsed.deviceModel}
+                  <strong>{parsed.deviceModel}</strong> -
+                {/if}
+                {parsed.browser} / {parsed.os} ({parsed.device})
+              </span>
+            </div>
+          {/if}
+        </div>
+      {/if}
     </div>
 
     <div class="actions-row">
@@ -2793,6 +2952,13 @@ function getChangeClass(after: number, before: number) {
   .detail-separator {
     color: #4b5563;
     font-size: 0.7rem;
+  }
+
+  .session-info {
+    margin-top: 0.4rem;
+    background: rgba(0, 0, 0, 0.15);
+    font-size: 0.75rem;
+    padding: 0.4rem 0.8rem;
   }
 
   .player-order {
