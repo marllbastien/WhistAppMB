@@ -4493,6 +4493,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
     <div class="modal-backdrop" on:click={() => showHistorique = false}>
         <div class="modal history-modal" on:click|stopPropagation>
 
+            <div class="history-content">
             <h3>Historique des donnes</h3>
 
             {#if history.length === 0}
@@ -4579,8 +4580,11 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 </tbody>
                 </table>
             {/if}
+            </div><!-- fin history-content -->
 
-            <button on:click={() => showHistorique = false}>Fermer</button>
+            <div class="history-footer">
+              <button on:click={() => showHistorique = false}>Fermer</button>
+            </div>
         </div>
     </div>
 {/if}
@@ -4625,7 +4629,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
     <div class="modal-backdrop" on:click={() => showFeuillePoints = false}>
         <div class="modal feuille-points-modal" on:click|stopPropagation>
 
-
+            <div class="feuille-points-content">
             <h3>Feuille de points</h3>
 
             {#if history.length === 0}
@@ -4760,15 +4764,15 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
                 </table>
               </div>
             {/if}
+            </div><!-- fin feuille-points-content -->
 
-           <div style="display:flex; justify-content:flex-end; gap:0.5rem; margin-top:0.8rem;">
+           <div class="feuille-points-footer">
     <button on:click={exportFeuillePointsPdf}>
         Exporter en PDF
     </button>
              <button on:click={closeFeuillePoints}>
                Fermer
              </button>
-
            </div>
 
         </div>
@@ -5512,6 +5516,9 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   font-size: 1.2rem;
   font-weight: 600;
   color: var(--accent);
+  /* Passer au-dessus des logos mobiles */
+  position: relative;
+  z-index: 15;
   }
 
   .choixAnnonce {
@@ -5918,6 +5925,15 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
     0 0 30px rgba(0, 0, 0, 0.6);
   }
 
+  /* Footer avec boutons - style par défaut */
+  .feuille-points-footer,
+  .history-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  margin-top: 0.8rem;
+  }
+
   /* Modale Appel à l'arbitre */
   .arbitre-modal {
     max-width: 420px;
@@ -6314,11 +6330,11 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
     display: block;  /* pas de flex - la donne garde sa largeur normale */
   }
 
-  /* Logos mobiles en position absolue sur les côtés */
+  /* Logos mobiles en position absolue sur les côtés - TABLETTE */
   .mobile-logo {
     display: block;
     position: absolute;
-    top: -40px;  /* remonté pour centrage visuel */
+    top: -40px;
     height: 90px;
     width: auto;
     filter: drop-shadow(0 2px 6px rgba(0, 0, 0, 0.6));
@@ -6327,16 +6343,32 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   }
 
   .mobile-logo-left {
-    left: 30px;  /* plus vers l'intérieur */
+    left: 30px;
   }
 
   .mobile-logo-right {
-    right: 30px;  /* plus vers l'intérieur */
+    right: 30px;
   }
 
   /* La section donne garde sa largeur normale */
   .donne-section-wrapper .donne {
     width: 100%;
+  }
+  }
+
+  /* RESPONSIVE TÉLÉPHONE : logos plus petits (< 600px) */
+  @media (max-width: 600px) {
+  .mobile-logo {
+    top: -45px;
+    height: 60px;
+  }
+
+  .mobile-logo-left {
+    left: 10px;
+  }
+
+  .mobile-logo-right {
+    right: 10px;
   }
   }
 
@@ -6363,8 +6395,8 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   /* Titre de la donne */
   .donne h3 {
   font-size: 1.2rem;
-  margin-top: 1rem;
-  margin-bottom: 1rem;
+  margin-top: 0;
+  margin-bottom: 0;
   }
 
   /* Cartes annonces joueurs en colonne, pleine largeur */
@@ -6441,6 +6473,31 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   .feuille-points-modal {
   max-width: 100%;
   width: 100%;
+  max-height: 85vh;
+  overflow: hidden !important;
+  display: flex;
+  flex-direction: column;
+  }
+
+  /* Contenu scrollable des modales */
+  .feuille-points-content,
+  .history-content {
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: auto;
+  -webkit-overflow-scrolling: touch;
+  }
+
+  /* Footer fixe avec les boutons */
+  .feuille-points-footer,
+  .history-footer {
+  display: flex;
+  justify-content: flex-end;
+  gap: 0.5rem;
+  padding: 0.8rem 0 0 0;
+  background: rgba(2, 12, 7, 0.98);
+  border-top: 1px solid rgba(55, 65, 81, 0.5);
+  flex-shrink: 0;
   }
 
   .history-table,
@@ -7551,7 +7608,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 
   .feuille-points-modal {
   position: relative;
-  overflow: hidden;
+  overflow: auto;
   }
 
 
