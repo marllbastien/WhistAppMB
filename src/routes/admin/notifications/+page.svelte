@@ -59,7 +59,10 @@
     'TableForceClosed': { label: 'Fermeture forcée', icon: '⚠️', color: '#ff8c00' },
     'PenaltyAdded': { label: 'Pénalité ajoutée', icon: 'JETON_BLEU', color: '#2563eb' },
     'TableLockedTooLong': { label: 'Verrou trop long', icon: '🔒', color: '#666' },
-    'PlayerConverted': { label: 'Joueur converti', icon: '👤', color: '#1e90ff' }
+    'PlayerConverted': { label: 'Joueur converti', icon: '👤', color: '#1e90ff' },
+    'ProvisionalPlayerCreated': { label: 'Joueur provisoire créé', icon: '➕', color: '#9333ea' },
+    'CompetitionCreated': { label: 'Compétition créée', icon: '🏆', color: '#c9a227' },
+    'EncodingStopped': { label: 'Encodage fermé', icon: '🛑', color: '#dc143c' }
   };
 
   function getTypeInfo(type: string) {

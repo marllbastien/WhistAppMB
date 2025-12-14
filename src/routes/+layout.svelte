@@ -12,13 +12,14 @@
 
   // Préfixes de routes avec leur propre authentification
   const SELF_AUTH_PREFIXES = ['/admin'];
-  
+
   // Durée de validité de l'autorisation (12 heures en millisecondes)
   const AUTH_EXPIRY_MS = 12 * 60 * 60 * 1000;
 
   let updateAvailable = false;
   let isAuthorized = false;
   let isChecking = true;
+  let fontsLoaded = false;
 
   function reloadApp() {
     window.location.reload();
@@ -79,33 +80,43 @@
     // Vérification initiale
     checkAuth($page.url.pathname);
 
+    // Attendre le chargement des polices (avec timeout de sécurité de 2s)
+    const fontTimeout = setTimeout(() => {
+      fontsLoaded = true;
+    }, 2000);
+
+    document.fonts.ready.then(() => {
+      clearTimeout(fontTimeout);
+      fontsLoaded = true;
+    });
+
     if ('serviceWorker' in navigator) {
-  // 🔔 messages du SW
-  navigator.serviceWorker.addEventListener('message', (event) => {
-  if (event.data?.type === 'NEW_VERSION') {
-  updateAvailable = true;
-  }
-  });
+      // 🔔 messages du SW
+      navigator.serviceWorker.addEventListener('message', (event) => {
+        if (event.data?.type === 'NEW_VERSION') {
+          updateAvailable = true;
+        }
+      });
 
-  // SW déjà waiting ?
-  navigator.serviceWorker.ready.then((reg) => {
-  if (reg.waiting) {
-  updateAvailable = true;
-  }
-  });
+      // SW déjà waiting ?
+      navigator.serviceWorker.ready.then((reg) => {
+        if (reg.waiting) {
+          updateAvailable = true;
+        }
+      });
 
-  // SW uniquement en prod
-  if (import.meta.env.PROD) {
-  navigator.serviceWorker
-  .register('/service-worker.js')
-  .then((reg) => {
-  console.log('Service worker enregistré :', reg.scope);
-  })
-  .catch((err) => {
-  console.error("Échec de l'enregistrement du service worker :", err);
-  });
-  }
-  }
+      // SW uniquement en prod
+      if (import.meta.env.PROD) {
+        navigator.serviceWorker
+          .register('/service-worker.js')
+          .then((reg) => {
+            console.log('Service worker enregistré :', reg.scope);
+          })
+          .catch((err) => {
+            console.error("Échec de l'enregistrement du service worker :", err);
+          });
+      }
+    }
   });
 </script>
 
@@ -113,8 +124,8 @@
   <link rel="icon" href={favicon} />
 </svelte:head>
 
-{#if isChecking}
-  <!-- Affichage pendant la vérification d'auth -->
+{#if isChecking || !fontsLoaded}
+  <!-- Affichage pendant la vérification d'auth ou le chargement des polices -->
   <div class="auth-checking"></div>
 {:else}
   <slot />

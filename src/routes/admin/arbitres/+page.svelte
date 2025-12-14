@@ -342,7 +342,8 @@
                 <td class="alias-cell">{arbitre.joueurAlias}</td>
                 <td>
                   <button class="btn-code" on:click={() => showCode(arbitre)} title="Voir le code">
-                    👁️ Afficher
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                    Afficher
                   </button>
                 </td>
                 <td>{formatDate(arbitre.dateDebut)}</td>
@@ -354,10 +355,14 @@
                     <span class="badge-inactif">❌ Inactif</span>
                   {/if}
                 </td>
-                <td class="center">
-                  <button class="btn-edit" on:click={() => openEditModal(arbitre)}>✏️</button>
+                <td class="center actions-cell">
+                  <button class="btn-edit" on:click={() => openEditModal(arbitre)} title="Modifier">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                  </button>
                   {#if arbitre.isActive}
-                    <button class="btn-delete" on:click={() => deleteArbitre(arbitre)}>🗑️</button>
+                    <button class="btn-deactivate" on:click={() => deleteArbitre(arbitre)} title="Désactiver">
+                      <svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/></svg>
+                    </button>
                   {/if}
                 </td>
               </tr>
@@ -390,10 +395,17 @@
                 </div>
               </div>
               <div class="card-actions">
-                <button class="btn-code" on:click={() => showCode(arbitre)}>👁️ Code</button>
-                <button class="btn-edit" on:click={() => openEditModal(arbitre)}>✏️</button>
+                <button class="btn-code" on:click={() => showCode(arbitre)}>
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z"/><circle cx="12" cy="12" r="3"/></svg>
+                  Code
+                </button>
+                <button class="btn-edit" on:click={() => openEditModal(arbitre)} title="Modifier">
+                  <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"/><path d="m15 5 4 4"/></svg>
+                </button>
                 {#if arbitre.isActive}
-                  <button class="btn-delete" on:click={() => deleteArbitre(arbitre)}>🗑️</button>
+                  <button class="btn-deactivate" on:click={() => deleteArbitre(arbitre)} title="Désactiver">
+                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><line x1="4.93" x2="19.07" y1="4.93" y2="19.07"/></svg>
+                  </button>
                 {/if}
               </div>
             </div>
@@ -645,47 +657,75 @@
     font-size: 0.85rem;
   }
 
+  .actions-cell {
+    display: flex;
+    gap: 0.35rem;
+    justify-content: center;
+    align-items: center;
+  }
+
   .btn-code {
-    padding: 0.25rem 0.5rem;
+    display: flex;
+    align-items: center;
+    gap: 0.35rem;
+    padding: 0.4rem 0.6rem;
     border-radius: 6px;
     border: 1px solid rgba(34, 197, 94, 0.5);
     background: transparent;
     color: #22c55e;
     cursor: pointer;
     font-size: 0.75rem;
+    transition: all 0.15s ease;
   }
 
   .btn-code:hover {
     background: rgba(34, 197, 94, 0.1);
   }
 
+  .btn-code svg {
+    flex-shrink: 0;
+  }
+
   .btn-edit {
-    padding: 0.3rem 0.5rem;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4rem;
     border-radius: 6px;
-    border: 1px solid rgba(59, 130, 246, 0.5);
+    border: 1px solid rgba(34, 197, 94, 0.5);
     background: transparent;
-    color: #3b82f6;
+    color: #22c55e;
     cursor: pointer;
-    font-size: 0.8rem;
-    margin-right: 0.25rem;
+    transition: all 0.15s ease;
   }
 
   .btn-edit:hover {
-    background: rgba(59, 130, 246, 0.1);
+    background: rgba(34, 197, 94, 0.1);
   }
 
-  .btn-delete {
-    padding: 0.3rem 0.5rem;
+  .btn-edit svg {
+    flex-shrink: 0;
+  }
+
+  .btn-deactivate {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 0.4rem;
     border-radius: 6px;
-    border: 1px solid rgba(239, 68, 68, 0.5);
+    border: 1px solid rgba(251, 146, 60, 0.5);
     background: transparent;
-    color: #ef4444;
+    color: #fb923c;
     cursor: pointer;
-    font-size: 0.8rem;
+    transition: all 0.15s ease;
   }
 
-  .btn-delete:hover {
-    background: rgba(239, 68, 68, 0.1);
+  .btn-deactivate:hover {
+    background: rgba(251, 146, 60, 0.1);
+  }
+
+  .btn-deactivate svg {
+    flex-shrink: 0;
   }
 
   /* Modal */
