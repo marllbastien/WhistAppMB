@@ -128,6 +128,13 @@
       description: 'Consulter les logs pour le debug',
       icon: '📋',
       href: '/admin/logs'
+    },
+    {
+      id: 'versions',
+      title: 'Versions',
+      description: 'Historique des deployements Backend et Frontend',
+      icon: '🏷️',
+      href: '/admin/versions'
     }
   ];
 
