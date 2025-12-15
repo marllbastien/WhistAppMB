@@ -1,4 +1,4 @@
-﻿const CACHE_VERSION = 'wb-scoring-v3';   // ⬅ tu incrémenteras ici
+﻿const CACHE_VERSION = 'wb-scoring-v6';   // ⬅ tu incrémenteras ici
 const CACHE_NAME = CACHE_VERSION;
 
 const ASSETS = ['/', '/favicon.ico', '/Logo_App_Rond.png'];

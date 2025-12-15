@@ -2,6 +2,15 @@
   import { onMount } from 'svelte';
   import { replaceState } from '$app/navigation';
   import JetonPoker from '$lib/components/JetonPoker.svelte';
+  import DebugModal from '$lib/components/DebugModal.svelte';
+
+  // 📦 Version de l'app (injectée au build)
+  declare const __APP_VERSION__: string;
+  declare const __BUILD_TIME__: string;
+  const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
+  const BUILD_TIME = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '';
+
+  let showDebugInfo = false;
 
   const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
@@ -112,6 +121,13 @@
       description: 'Gérer les annonces, jetons et grilles par défaut',
       icon: '⚙️',
       href: '/admin/config'
+    },
+    {
+      id: 'logs',
+      title: 'Logs de session',
+      description: 'Consulter les logs pour le debug',
+      icon: '📋',
+      href: '/admin/logs'
     }
   ];
 
@@ -1309,8 +1325,23 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
 {/if}
 
 <footer class="copyright">
-  © {currentYear} Wb-Scoring — Tous droits réservés
+  <span
+    class="copyright-text"
+    on:click={() => showDebugInfo = true}
+    role="button"
+    tabindex="0"
+    on:keydown={(e) => e.key === 'Enter' && (showDebugInfo = true)}
+  >
+    © {currentYear} Wb-Scoring
+  </span>
+  — Tous droits réservés
 </footer>
+
+<DebugModal
+  bind:show={showDebugInfo}
+  appVersion={APP_VERSION}
+  buildTime={BUILD_TIME}
+/>
 
 
 <style>
@@ -1642,6 +1673,11 @@ function formatCompetitionName(m: AdminMancheHeaderDto): string {
   padding: 4px 10px;
   border-radius: 10px;
   backdrop-filter: blur(4px); /* optionnel : joli effet verre dépoli */
+  }
+
+  /* Copyright cliquable pour debug */
+  .copyright-text {
+    cursor: pointer;
   }
 
   /* Pour éviter de cacher la dernière ligne */

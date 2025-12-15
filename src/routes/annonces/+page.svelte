@@ -5,12 +5,19 @@
   import ModeToggle from '$lib/components/ModeToggle.svelte';
   import LightModeEncoder from '$lib/components/LightModeEncoder.svelte';
   import JetonPoker from '$lib/components/JetonPoker.svelte';
+  import DebugModal from '$lib/components/DebugModal.svelte';
 
   // Référence au composant LightModeEncoder
   let lightEncoderRef: LightModeEncoder;
 
   const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
+
+  // 📦 Version de l'app (injectée au build)
+  declare const __APP_VERSION__: string;
+  declare const __BUILD_TIME__: string;
+  const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
+  const BUILD_TIME = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '';
 
   // --- Gestion des brouillons ("draft") ---
   const DRAFT_STORAGE_PREFIX = 'whist-draft';
@@ -117,6 +124,115 @@
   }
 
   let SessionId = '';
+
+  // 📊 Logging session avec queue offline
+  const LOG_QUEUE_KEY = 'whist-log-queue';
+
+  // Récupère la queue de logs en attente
+  function getLogQueue(): any[] {
+    if (!browser) return [];
+    try {
+      const stored = localStorage.getItem(LOG_QUEUE_KEY);
+      return stored ? JSON.parse(stored) : [];
+    } catch {
+      return [];
+    }
+  }
+
+  // Sauvegarde la queue de logs
+  function saveLogQueue(queue: any[]): void {
+    if (!browser) return;
+    try {
+      // Limiter à 50 logs max pour éviter de saturer localStorage
+      const limited = queue.slice(-50);
+      localStorage.setItem(LOG_QUEUE_KEY, JSON.stringify(limited));
+    } catch {
+      // Ignorer si localStorage plein
+    }
+  }
+
+  // Envoie un log au serveur, retourne true si succès
+  async function sendLogToServer(payload: any): Promise<boolean> {
+    try {
+      const response = await fetch(`${API_BASE_URL}/api/logs/session`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify(payload)
+      });
+      return response.ok;
+    } catch {
+      return false;
+    }
+  }
+
+  // Flush la queue de logs (appelé quand online)
+  async function flushLogQueue(): Promise<void> {
+    if (!browser || !navigator.onLine) return;
+
+    const queue = getLogQueue();
+    if (queue.length === 0) return;
+
+    const remaining: any[] = [];
+
+    for (const payload of queue) {
+      const success = await sendLogToServer(payload);
+      if (!success) {
+        remaining.push(payload);
+      }
+    }
+
+    saveLogQueue(remaining);
+
+    if (remaining.length < queue.length) {
+      console.log(`[SessionLog] Flushed ${queue.length - remaining.length} logs, ${remaining.length} remaining`);
+    }
+  }
+
+  // Écouter le retour de connexion pour flusher la queue
+  if (browser) {
+    window.addEventListener('online', () => {
+      console.log('[SessionLog] Connection restored, flushing queue...');
+      flushLogQueue();
+    });
+  }
+
+  // Log un événement (avec queue si offline)
+  async function logSessionEvent(
+    eventType: 'SESSION_START' | 'GRILLE_LOADED' | 'DRAFT_RESTORED' | 'ERROR',
+    details?: string
+  ): Promise<void> {
+    if (!browser) return;
+
+    const payload = {
+      tableConfigId,
+      sessionId: SessionId || null,
+      eventType,
+      appVersion: APP_VERSION,
+      userAgent: navigator.userAgent,
+      isOnline: navigator.onLine,
+      isPWA: window.matchMedia('(display-mode: standalone)').matches,
+      competitionType,
+      donneCount: rows,
+      grilleSource,
+      annoncesSource,
+      details,
+      // Timestamp local pour ordonner les logs en queue
+      clientTimestamp: new Date().toISOString()
+    };
+
+    // Si online, essayer d'envoyer directement
+    if (navigator.onLine) {
+      const success = await sendLogToServer(payload);
+      if (success) return;
+    }
+
+    // Sinon (ou si échec), ajouter à la queue
+    const queue = getLogQueue();
+    queue.push(payload);
+    saveLogQueue(queue);
+    console.log(`[SessionLog] Queued: ${eventType} (${queue.length} in queue)`);
+  }
+
   function scrollToEmballage(player: string) {
   if (!browser) return;
 
@@ -281,11 +397,41 @@ type SyncDonneServer = {
   joueurs: SyncJoueurServer[];
 };
 
+// Types pour la config de compétition renvoyée par sync/check
+type SyncAnnonceConfig = {
+  code: string;
+  label: string | null;
+  templateResult: number;
+  requirePartner: boolean;
+  requirePlis: boolean;
+  requireArbitre: boolean;
+};
+
+type SyncGrilleResultatConfig = {
+  code: string;
+  kind: string;
+  nbJoueursDedans: number;
+  plisFaits: number | null;
+  etat: string | null;
+  resultatInd: number;
+  resultatJeu: number;
+};
+
+type SyncCompetitionConfig = {
+  competitionDefinitionId: number | null;
+  competitionType: number | null;
+  competitionNumber: number | null;
+  nbreToursPerManche: number | null;
+  annonces: SyncAnnonceConfig[];
+  grilleResultats: SyncGrilleResultatConfig[];
+};
+
 type SyncCheckResponse = {
   isSynced: boolean;
   serverDonneCount: number;
   correctedHistory: SyncDonneServer[] | null;
   message: string | null;
+  competitionConfig: SyncCompetitionConfig | null;
 };
 
 let lastSyncCheck: number = 0;
@@ -350,6 +496,11 @@ async function checkAndSyncWithServer(): Promise<{ synced: boolean; resynced: bo
     const data: SyncCheckResponse = await res.json();
 
     console.log('[SYNC] Résultat du check:', data);
+
+    // Appliquer la config de compétition si disponible (resync mode dégradé)
+    if (data.competitionConfig) {
+      applyCompetitionConfigFromSync(data.competitionConfig);
+    }
 
     // TOUJOURS appliquer les scores du serveur si disponibles (pour les pénalités)
     // Même si les données de donne sont synchronisées, les scores peuvent avoir changé
@@ -450,6 +601,7 @@ function applyCorrectedHistory(corrected: SyncDonneServer[]) {
   let showHistorique = false; // Permet d'afficher le tableau des scores complet
   let showFeuillePoints = false;
   let showResultatsZoom = false; // Modale pour agrandir le tableau des résultats
+  let showDebugInfo = false; // Afficher les infos de debug (clic sur copyright)
   let showArbitreModal = false;
   let arbitreMessage = "";
   let mancheTerminee = false;
@@ -808,6 +960,10 @@ function nextDonne() {
   const DEFAULT_TOURS_PER_MANCHE = 4;
   let nbreToursPerManche: number = DEFAULT_TOURS_PER_MANCHE;
 
+  // 🚨 Mode dégradé : true si on utilise des données par défaut/cache au lieu de l'API
+  // Le bandeau sera affiché tant que ce flag est true
+  let isDegraded = $state(false);
+
   // Calcule le nombre de donnes en fonction du nombre de joueurs et tours
   function calculateRows(playerCount: number, tours: number): number {
     return playerCount * tours;
@@ -942,6 +1098,8 @@ function nextDonne() {
         annoncesAvecArbitre = new Set(DEFAULT_ANNONCES_AVEC_ARBITRE);
         annoncesSource = 'hardcoded';
         annoncesIsCompetitionSpecific = false;
+        isDegraded = true; // 🚨 Mode dégradé activé
+        console.log('[Annonces] Mode dégradé activé (fallback hardcodé)');
       }
     } else if (!hasCache) {
       // Offline et pas de cache → fallback hardcodé
@@ -950,6 +1108,8 @@ function nextDonne() {
       annoncesAvecArbitre = new Set(DEFAULT_ANNONCES_AVEC_ARBITRE);
       annoncesSource = 'hardcoded';
       annoncesIsCompetitionSpecific = false;
+      isDegraded = true; // 🚨 Mode dégradé activé
+      console.log('[Annonces] Mode dégradé activé (offline sans cache)');
     }
   }
 
@@ -968,6 +1128,106 @@ function nextDonne() {
   const ANNONCES_AVEC_ARBITRE = {
     has: (code: string) => annoncesAvecArbitre.has(code)
   };
+
+  /**
+   * Applique la configuration de compétition reçue du sync/check.
+   * Ceci permet de corriger les données locales si elles étaient en mode dégradé
+   * (hardcoded ou cache périmé).
+   */
+  function applyCompetitionConfigFromSync(config: SyncCompetitionConfig): void {
+    let changed = false;
+
+    // 1) Mettre à jour les annonces si différentes
+    if (config.annonces && config.annonces.length > 0) {
+      const newAnnonces: Annonce[] = config.annonces.map(a => ({
+        code: a.code,
+        label: a.label ?? a.code,
+        templateResult: a.templateResult
+      }));
+
+      // Vérifier si les annonces ont changé
+      const currentCodes = annonces.map(a => a.code).sort().join(',');
+      const newCodes = newAnnonces.map(a => a.code).sort().join(',');
+
+      if (currentCodes !== newCodes) {
+        annonces = newAnnonces;
+        changed = true;
+        console.log(`[Sync] Annonces mises à jour (${newAnnonces.length} annonces)`);
+      }
+
+      // Mettre à jour les annonces avec arbitre
+      const newAnnoncesAvecArbitre = new Set(
+        config.annonces
+          .filter(a => a.requireArbitre)
+          .map(a => a.code)
+      );
+
+      const currentArbitre = [...annoncesAvecArbitre].sort().join(',');
+      const newArbitre = [...newAnnoncesAvecArbitre].sort().join(',');
+
+      if (currentArbitre !== newArbitre) {
+        annoncesAvecArbitre = newAnnoncesAvecArbitre;
+        changed = true;
+        console.log(`[Sync] Annonces avec arbitre mises à jour`);
+      }
+
+      // Mettre à jour la source si on vient du hardcoded
+      if (annoncesSource === 'hardcoded') {
+        annoncesSource = 'api';
+        annoncesIsCompetitionSpecific = true;
+      }
+    }
+
+    // 2) Mettre à jour la grille de résultats si différente
+    if (config.grilleResultats && config.grilleResultats.length > 0) {
+      const newGrille: GrilleRow[] = config.grilleResultats.map((item): GrilleRow => {
+        if (item.kind === 'plis') {
+          return {
+            kind: 'plis',
+            code: item.code,
+            nbJoueursDedans: item.nbJoueursDedans,
+            plisFaits: item.plisFaits!,
+            resultatInd: item.resultatInd,
+            resultatJeu: item.resultatJeu
+          } as GrilleRowPlis;
+        } else {
+          return {
+            kind: 'etat',
+            code: item.code,
+            nbJoueursDedans: item.nbJoueursDedans,
+            etat: item.etat as EtatJeu,
+            resultatInd: item.resultatInd,
+            resultatJeu: item.resultatJeu
+          } as GrilleRowEtat;
+        }
+      });
+
+      // Vérifier si la grille a changé (comparer le nombre d'entrées au minimum)
+      if (grilleResultats.length !== newGrille.length) {
+        grilleResultats = newGrille;
+        grilleSource = 'api';
+        grilleIsCompetitionSpecific = true;
+        changed = true;
+        console.log(`[Sync] Grille de résultats mise à jour (${newGrille.length} entrées)`);
+      }
+    }
+
+    // 3) Mettre à jour nbreToursPerManche et recalculer rows
+    if (config.nbreToursPerManche != null && config.nbreToursPerManche !== nbreToursPerManche) {
+      const oldTours = nbreToursPerManche;
+      const oldRows = rows;
+      nbreToursPerManche = config.nbreToursPerManche;
+      rows = calculateRows(playerCount, nbreToursPerManche);
+      changed = true;
+      console.log(`[Sync] NbreToursPerManche mis à jour: ${oldTours} → ${nbreToursPerManche} (rows: ${oldRows} → ${rows})`);
+    }
+
+    // 4) Désactiver le mode dégradé si on a pu resynchroniser
+    if (changed) {
+      isDegraded = false;
+      console.log('[Sync] Mode dégradé désactivé après resync');
+    }
+  }
 
   let annonceByPlayer: Record<string, string> = {};
 	let emballes: Record<string, string> = {};
@@ -1908,6 +2168,13 @@ function getDisplayName(p: string): string {
         grilleSource = 'hardcoded';
         grilleIsCompetitionSpecific = false;
       }
+
+      // 🔧 FIX: Recalculer la feuille de points après chargement de la grille
+      // (évite la race condition où history est chargé avant la grille)
+      recomputeFeuillePoints();
+
+      // 📊 Log: grille chargée
+      logSessionEvent('GRILLE_LOADED', `source=${grilleSource}, entries=${grilleResultats.length}`);
     }
 
     onMount(() => {
@@ -2001,8 +2268,14 @@ function getDisplayName(p: string): string {
       rows = urlRows;
     }
 
-    // --- restaurer les donnes en attente (file d’attente locale) ---
+    // --- restaurer les donnes en attente (file d'attente locale) ---
     loadPendingFromLocalStorage();
+
+    // 📊 Log: session démarrée (toutes les données sont chargées)
+    logSessionEvent('SESSION_START', `players=${players.length}, donneNumber=${donneNumber}`);
+
+    // 📊 Flush les logs en attente (si connexion OK)
+    flushLogQueue();
 
     // --- tenter un flush au démarrage (si la connexion est OK) ---
     flushPendingDonnes()
@@ -2113,6 +2386,9 @@ function getDisplayName(p: string): string {
     if (hasAnyAnnonce || (history && history.length > 0)) {
     hasUnsavedManche = true;
     }
+
+    // 📊 Log: draft restauré
+    logSessionEvent('DRAFT_RESTORED', `historyLength=${history?.length ?? 0}, donneNumber=${donneNumber}`);
 
     } finally {
     isHydratingFromDraft = false;
@@ -3919,6 +4195,7 @@ async function validate() {
 
     // 🔹 Préparer le payload des scores à envoyer en DB
     const scoresPayload = {
+      tableConfigId,  // Ajouté pour garantir le recalcul des scores côté backend
       tableName,
       mancheNumber: Number(mancheNumber),
       donneNumber,
@@ -4337,6 +4614,18 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 
 
     </script>
+<!-- 🚨 Bandeau Mode Dégradé -->
+{#if isDegraded}
+<div class="degraded-banner">
+  <svg class="degraded-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2">
+    <path d="M12 9v2m0 4h.01m-6.938 4h13.856c1.54 0 2.502-1.667 1.732-3L13.732 4c-.77-1.333-2.694-1.333-3.464 0L3.34 16c-.77 1.333.192 3 1.732 3z"/>
+  </svg>
+  <span class="degraded-text">
+    Mode dégradé — Données locales utilisées. La synchronisation se fera automatiquement.
+  </span>
+</div>
+{/if}
+
 <!-- Bandeau supérieur + logos extérieurs -->
 <div class="page-header-wrapper">
   <!-- Logo gauche (extérieur) - logo du club organisateur ou logo par défaut -->
@@ -5292,11 +5581,28 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 
 </div>
 <footer class="copyright">
-  © 2025 WB-Scoring — 
-  <a href="mailto:contact@wb-scoring.com" class="footer-mail">
-    contact@wb-scoring.com
-  </a>
+  <span
+    class="copyright-text"
+    on:click={() => showDebugInfo = true}
+    role="button"
+    tabindex="0"
+    on:keydown={(e) => e.key === 'Enter' && (showDebugInfo = true)}
+  >
+    © 2025 WB-Scoring
+  </span>
+  — <a href="mailto:contact@wb-scoring.com" class="footer-mail">contact@wb-scoring.com</a>
 </footer>
+
+<DebugModal
+  bind:show={showDebugInfo}
+  appVersion={APP_VERSION}
+  buildTime={BUILD_TIME}
+  {tableConfigId}
+  donnes={rows}
+  competitionLabel={competitionTypeLabel ? `${competitionTypeLabel}${competitionSubtypeLabel ? ' - ' + competitionSubtypeLabel : ''}` : null}
+  {grilleSource}
+  {annoncesSource}
+/>
 
 
 <style>
@@ -5322,6 +5628,33 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   /* Classe utilitaire pour cacher des éléments */
   .hidden {
     display: none !important;
+  }
+
+  /* 🚨 Bandeau Mode Dégradé */
+  .degraded-banner {
+    position: sticky;
+    top: 0;
+    z-index: 9999;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    gap: 0.5rem;
+    padding: 0.6rem 1rem;
+    background: linear-gradient(90deg, #f59e0b 0%, #d97706 100%);
+    color: #1f2937;
+    font-size: 0.85rem;
+    font-weight: 600;
+    box-shadow: 0 2px 8px rgba(0, 0, 0, 0.25);
+  }
+
+  .degraded-icon {
+    width: 1.25rem;
+    height: 1.25rem;
+    flex-shrink: 0;
+  }
+
+  .degraded-text {
+    text-align: center;
   }
 
   /* Fond simple, non répétitif */
@@ -5359,6 +5692,11 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
     font-size: 0.75rem;
     text-align: center;
     margin-top: 0.5rem;
+  }
+
+  /* Copyright cliquable pour debug */
+  .copyright-text {
+    cursor: pointer;
   }
 
   .header-top {

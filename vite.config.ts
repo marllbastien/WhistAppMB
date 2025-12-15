@@ -1,8 +1,16 @@
 import { defineConfig } from 'vitest/config';
 import { sveltekit } from '@sveltejs/kit/vite';
+import { readFileSync } from 'fs';
+
+// Lire la version depuis package.json
+const pkg = JSON.parse(readFileSync('./package.json', 'utf-8'));
 
 export default defineConfig({
 	plugins: [sveltekit()],
+	define: {
+		'__APP_VERSION__': JSON.stringify(pkg.version),
+		'__BUILD_TIME__': JSON.stringify(new Date().toISOString())
+	},
 	test: {
 		expect: { requireAssertions: true },
 		projects: [

@@ -2,6 +2,15 @@
   import { goto } from '$app/navigation';
   import { onMount } from 'svelte';
   import ModeToggle from '$lib/components/ModeToggle.svelte';
+  import DebugModal from '$lib/components/DebugModal.svelte';
+
+  // 📦 Version de l'app (injectée au build)
+  declare const __APP_VERSION__: string;
+  declare const __BUILD_TIME__: string;
+  const APP_VERSION = typeof __APP_VERSION__ !== 'undefined' ? __APP_VERSION__ : 'dev';
+  const BUILD_TIME = typeof __BUILD_TIME__ !== 'undefined' ? __BUILD_TIME__ : '';
+
+  let showDebugInfo = false;
 
   const API_BASE_URL =
   import.meta.env.VITE_API_BASE_URL || 'http://localhost:5179';
@@ -1660,9 +1669,24 @@ async function useExistingPlayer(player: ExistingPlayerMatch) {
 
 
 <footer class="copyright">
-  © 2025 WB-Scoring — Tous droits réservés —
+  <span
+    class="copyright-text"
+    on:click={() => showDebugInfo = true}
+    role="button"
+    tabindex="0"
+    on:keydown={(e) => e.key === 'Enter' && (showDebugInfo = true)}
+  >
+    © 2025 WB-Scoring
+  </span>
+  — Tous droits réservés —
   <a href="/legal">Mentions légales</a>
 </footer>
+
+<DebugModal
+  bind:show={showDebugInfo}
+  appVersion={APP_VERSION}
+  buildTime={BUILD_TIME}
+/>
 
 </main>
 {/if}
@@ -2200,6 +2224,11 @@ async function useExistingPlayer(player: ExistingPlayerMatch) {
   .copyright a:visited,
   .footer-mail:visited {
   color: #f5b942 !important;
+  }
+
+  /* Copyright cliquable pour debug */
+  .copyright-text {
+    cursor: pointer;
   }
 
   /* Adaptation mobile */
