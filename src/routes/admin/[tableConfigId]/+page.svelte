@@ -309,6 +309,158 @@
   let emailSuccess = '';
   let emailError = '';
 
+  // Variables pour l'édition de la configuration de la table
+  let showEditConfigModal = false;
+  let editTableName = '';
+  let editMancheNumber = 1;
+  let editCompetitionType: number | null = null;
+  let editCompetitionNumber: number | null = null;
+  let savingConfig = false;
+  let configSaveMessage = '';
+  let configSaveError = '';
+
+  // Liste des compétitions disponibles pour le type sélectionné
+  interface CompetitionOption {
+    id: number;
+    competitionNumber: number;
+    name: string;
+  }
+  let availableCompetitions: CompetitionOption[] = [];
+  let loadingCompetitions = false;
+
+  // Variables pour le recalcul des scores
+  let recalculating = false;
+  let recalculateMessage = '';
+  let recalculateError = '';
+
+  // Charger les compétitions disponibles pour un type donné
+  async function loadCompetitionsForType(type: number | null) {
+    if (type === null) {
+      availableCompetitions = [];
+      return;
+    }
+
+    loadingCompetitions = true;
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/config/competitions?competitionType=${type}&includeAll=true`);
+      if (res.ok) {
+        const data = await res.json();
+        availableCompetitions = data.map((c: any) => ({
+          id: c.id,
+          competitionNumber: c.competitionNumber,
+          name: c.name || `Compétition ${c.competitionNumber}`
+        }));
+      } else {
+        availableCompetitions = [];
+      }
+    } catch (e) {
+      console.error('Erreur chargement compétitions:', e);
+      availableCompetitions = [];
+    } finally {
+      loadingCompetitions = false;
+    }
+  }
+
+  // Réagir au changement de type de compétition
+  async function handleCompetitionTypeChange() {
+    editCompetitionNumber = null; // Reset le numéro quand le type change
+    await loadCompetitionsForType(editCompetitionType);
+  }
+
+  // Ouvrir la modal d'édition
+  async function openEditConfigModal() {
+    if (!detail) return;
+    editTableName = detail.tableName;
+    editMancheNumber = detail.mancheNumber;
+    editCompetitionType = detail.competitionType ?? null;
+    editCompetitionNumber = detail.competitionNumber ?? null;
+    configSaveMessage = '';
+    configSaveError = '';
+    showEditConfigModal = true;
+    // Charger les compétitions pour le type actuel
+    await loadCompetitionsForType(editCompetitionType);
+  }
+
+  // Fermer la modal d'édition
+  function closeEditConfigModal() {
+    showEditConfigModal = false;
+  }
+
+  // Sauvegarder la configuration
+  async function saveConfig() {
+    if (!detail) return;
+
+    savingConfig = true;
+    configSaveMessage = '';
+    configSaveError = '';
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/table-config/${detail.tableConfigId}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          tableName: editTableName !== detail.tableName ? editTableName : null,
+          mancheNumber: editMancheNumber !== detail.mancheNumber ? editMancheNumber : null,
+          competitionType: editCompetitionType !== detail.competitionType ? editCompetitionType : null,
+          competitionNumber: editCompetitionNumber !== detail.competitionNumber ? editCompetitionNumber : null
+        })
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        configSaveMessage = data.message || 'Configuration mise à jour';
+        // Recharger les données
+        await loadDetail();
+        setTimeout(() => {
+          showEditConfigModal = false;
+        }, 1500);
+      } else {
+        configSaveError = data.message || 'Erreur lors de la mise à jour';
+      }
+    } catch (e) {
+      configSaveError = 'Erreur réseau: ' + (e instanceof Error ? e.message : String(e));
+    } finally {
+      savingConfig = false;
+    }
+  }
+
+  // Recalculer tous les scores
+  async function recalculateScores() {
+    if (!detail) return;
+
+    if (!confirm('Recalculer tous les scores de cette manche ?\n\nCeci utilisera la grille de la compétition actuelle.')) {
+      return;
+    }
+
+    recalculating = true;
+    recalculateMessage = '';
+    recalculateError = '';
+
+    try {
+      const res = await fetch(`${API_BASE_URL}/api/admin/table-config/${detail.tableConfigId}/recalculate`, {
+        method: 'POST'
+      });
+
+      const data = await res.json();
+
+      if (res.ok && data.success) {
+        recalculateMessage = data.message || `${data.donnesRecalculated} donnes recalculées`;
+        // Recharger les données
+        await loadDetail();
+        setTimeout(() => {
+          recalculateMessage = '';
+        }, 3000);
+      } else {
+        recalculateError = data.message || 'Erreur lors du recalcul';
+      }
+    } catch (e) {
+      recalculateError = 'Erreur réseau: ' + (e instanceof Error ? e.message : String(e));
+    } finally {
+      recalculating = false;
+    }
+  }
+
   const currentYear = new Date().getFullYear();
 
   let finalScoresByAlias: Record<string, number> = {};
@@ -1392,13 +1544,26 @@ function getChangeClass(after: number, before: number) {
     </div>
 
     <div class="actions-row">
+      <button on:click={openEditConfigModal} class="btn-edit">
+        Modifier la config
+      </button>
+      <button on:click={recalculateScores} class="btn-recalc" disabled={recalculating}>
+        {recalculating ? 'Recalcul...' : 'Recalculer les scores'}
+      </button>
+      <button on:click={openFeuillePoints} class="btn-feuille">
+        Feuille de points
+      </button>
       <button on:click={deleteTable} class="danger">
         Supprimer toute la table
       </button>
-        <button on:click={openFeuillePoints}>
-    Feuille de points
-  </button>
     </div>
+
+    {#if recalculateMessage}
+      <div class="success-message">{recalculateMessage}</div>
+    {/if}
+    {#if recalculateError}
+      <div class="error-message">{recalculateError}</div>
+    {/if}
 
     <!-- Scores finaux -->
 <div class="card">
@@ -1879,8 +2044,8 @@ function getChangeClass(after: number, before: number) {
       {/if}
 
       <div class="modal-actions">
-        <button 
-          on:click={sendFeuillePointsByEmail} 
+        <button
+          on:click={sendFeuillePointsByEmail}
           disabled={sendingEmail || !emailRecipient.trim()}
           class="btn-primary"
         >
@@ -1893,6 +2058,101 @@ function getChangeClass(after: number, before: number) {
     </div>
   </div>
 {/if}
+
+<!-- Modal pour modifier la configuration de la table -->
+{#if showEditConfigModal}
+  <!-- svelte-ignore a11y_click_events_have_key_events a11y_no_static_element_interactions -->
+  <div class="modal-backdrop" on:click|self={closeEditConfigModal}>
+    <div class="modal edit-config-modal" on:click|stopPropagation>
+      <h3>Modifier la configuration</h3>
+
+      <div class="config-form">
+        <div class="form-group">
+          <label for="editTableName">Nom de la table</label>
+          <input
+            type="text"
+            id="editTableName"
+            bind:value={editTableName}
+            placeholder="Ex: A, B, 1, 2..."
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="editMancheNumber">Numéro de manche</label>
+          <input
+            type="number"
+            id="editMancheNumber"
+            bind:value={editMancheNumber}
+            min="1"
+          />
+        </div>
+
+        <div class="form-group">
+          <label for="editCompetitionType">Type de compétition</label>
+          <select id="editCompetitionType" bind:value={editCompetitionType} on:change={handleCompetitionTypeChange}>
+            <option value={null}>-- Aucun --</option>
+            {#each allCompetitionTypes as ct}
+              <option value={ct.id}>{ct.name}</option>
+            {/each}
+            {#if allCompetitionTypes.length === 0}
+              <option value={1}>Championnat</option>
+              <option value={2}>Interclubs</option>
+              <option value={3}>Manche libre</option>
+              <option value={4}>Concours club</option>
+            {/if}
+          </select>
+        </div>
+
+        <div class="form-group">
+          <label for="editCompetitionNumber">Compétition</label>
+          {#if loadingCompetitions}
+            <div class="loading-competitions">Chargement...</div>
+          {:else if editCompetitionType === null}
+            <select id="editCompetitionNumber" disabled>
+              <option>-- Sélectionnez d'abord un type --</option>
+            </select>
+          {:else if availableCompetitions.length === 0}
+            <select id="editCompetitionNumber" disabled>
+              <option>-- Aucune compétition disponible --</option>
+            </select>
+          {:else}
+            <select id="editCompetitionNumber" bind:value={editCompetitionNumber}>
+              <option value={null}>-- Sélectionnez --</option>
+              {#each availableCompetitions as comp}
+                <option value={comp.competitionNumber}>{comp.name}</option>
+              {/each}
+            </select>
+          {/if}
+        </div>
+      </div>
+
+      {#if configSaveMessage}
+        <p class="success">{configSaveMessage}</p>
+      {/if}
+      {#if configSaveError}
+        <p class="error">{configSaveError}</p>
+      {/if}
+
+      <div class="modal-actions">
+        <button
+          on:click={saveConfig}
+          disabled={savingConfig}
+          class="btn-primary"
+        >
+          {savingConfig ? 'Enregistrement…' : 'Enregistrer'}
+        </button>
+        <button on:click={closeEditConfigModal} disabled={savingConfig}>
+          Annuler
+        </button>
+      </div>
+
+      <p class="config-note">
+        ⚠️ Après modification, pensez à <strong>Recalculer les scores</strong> si vous avez changé la compétition.
+      </p>
+    </div>
+  </div>
+{/if}
+
 </div>  <!-- fin .admin-page -->
 
 <footer class="copyright">
@@ -2070,27 +2330,43 @@ function getChangeClass(after: number, before: number) {
   }
 
   button {
-    padding: 0.45rem 0.9rem;
-    border-radius: 999px;
-    border: none;
-    background: #22c55e;
-    color: #020617;
+    padding: 0.6rem 1rem;
+    border-radius: 8px;
+    border: 1px solid;
+    background: rgba(107, 114, 128, 0.2);
+    border-color: rgba(107, 114, 128, 0.4);
+    color: #9ca3af;
     font-weight: 600;
     cursor: pointer;
-    font-size: 0.85rem;
+    font-size: 0.9rem;
+    transition: all 0.2s ease;
   }
 
   button:hover {
-    filter: brightness(1.05);
+    background: rgba(107, 114, 128, 0.3);
+    border-color: #9ca3af;
   }
 
   .danger {
-    background: #dc2626;
-    color: #fee2e2;
+    background: rgba(239, 68, 68, 0.2);
+    border: 1px solid rgba(239, 68, 68, 0.4);
+    color: #f87171;
   }
 
   .danger:hover {
-    filter: brightness(1.05);
+    background: rgba(239, 68, 68, 0.3);
+    border-color: #f87171;
+  }
+
+  .btn-feuille {
+    background: rgba(34, 197, 94, 0.2);
+    border: 1px solid rgba(34, 197, 94, 0.4);
+    color: #4ade80;
+  }
+
+  .btn-feuille:hover {
+    background: rgba(34, 197, 94, 0.3);
+    border-color: #4ade80;
   }
 
   .error {
@@ -2711,6 +2987,115 @@ function getChangeClass(after: number, before: number) {
   .success {
     color: #22c55e;
     margin: 0.5rem 0;
+  }
+
+  /* Messages de succès et erreur globaux */
+  .success-message {
+    background: rgba(22, 163, 74, 0.15);
+    border: 1px solid #22c55e;
+    color: #22c55e;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    margin: 0.5rem 0;
+    text-align: center;
+  }
+  .error-message {
+    background: rgba(220, 38, 38, 0.15);
+    border: 1px solid #dc2626;
+    color: #fca5a5;
+    padding: 0.75rem 1rem;
+    border-radius: 8px;
+    margin: 0.5rem 0;
+    text-align: center;
+  }
+
+  /* Boutons d'édition et recalcul - style cohérent avec admin/logs */
+  .btn-edit,
+  .btn-recalc {
+    padding: 0.6rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    font-weight: 600;
+    transition: all 0.2s ease;
+    border: 1px solid;
+  }
+  .btn-edit {
+    background: rgba(59, 130, 246, 0.2);
+    border-color: rgba(59, 130, 246, 0.4);
+    color: #60a5fa;
+  }
+  .btn-edit:hover {
+    background: rgba(59, 130, 246, 0.3);
+    border-color: #60a5fa;
+  }
+  .btn-recalc {
+    background: rgba(251, 191, 36, 0.2);
+    border-color: rgba(251, 191, 36, 0.4);
+    color: #fbbf24;
+  }
+  .btn-recalc:hover:not(:disabled) {
+    background: rgba(251, 191, 36, 0.3);
+    border-color: #fbbf24;
+  }
+  .btn-recalc:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+  }
+
+  /* Modal de configuration */
+  .edit-config-modal {
+    max-width: 450px;
+  }
+  .edit-config-modal h3 {
+    margin-bottom: 1rem;
+    color: #f9fafb;
+  }
+  .config-form {
+    display: flex;
+    flex-direction: column;
+    gap: 1rem;
+    margin-bottom: 1rem;
+  }
+  .config-form .form-group {
+    display: flex;
+    flex-direction: column;
+    gap: 0.3rem;
+  }
+  .config-form label {
+    font-weight: 500;
+    color: #d1d5db;
+    font-size: 0.9rem;
+  }
+  .config-form input,
+  .config-form select {
+    padding: 0.6rem 0.8rem;
+    border: 1px solid rgba(55, 65, 81, 0.8);
+    border-radius: 6px;
+    background: rgba(17, 24, 39, 0.8);
+    color: #f9fafb;
+    font-size: 1rem;
+  }
+  .config-form input:focus,
+  .config-form select:focus {
+    outline: none;
+    border-color: #3b82f6;
+    box-shadow: 0 0 0 2px rgba(59, 130, 246, 0.3);
+  }
+  .config-note {
+    margin-top: 1rem;
+    padding: 0.75rem;
+    background: rgba(251, 191, 36, 0.1);
+    border: 1px solid rgba(251, 191, 36, 0.3);
+    border-radius: 6px;
+    font-size: 0.85rem;
+    color: #fbbf24;
+  }
+  .loading-competitions {
+    padding: 0.6rem 0.8rem;
+    color: #9ca3af;
+    font-style: italic;
+    font-size: 0.9rem;
   }
 
   /* Jetons dans le tableau des donnes */
