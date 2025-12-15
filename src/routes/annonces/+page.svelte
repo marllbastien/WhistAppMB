@@ -786,7 +786,7 @@ function applyCorrectedHistory(corrected: SyncDonneServer[]) {
     $: allPlayersValidated =
     players.length > 0 && players.every((p) => validations[p]);
 
-    // Réinitialiser les validations quand le modal s’ouvre
+    // Réinitialiser les validations quand le modal s'ouvre
     $: if (showEndOfMancheModal) {
     validations = {};
     for (const row of classementFinal) {
@@ -962,7 +962,7 @@ function nextDonne() {
 
   // 🚨 Mode dégradé : true si on utilise des données par défaut/cache au lieu de l'API
   // Le bandeau sera affiché tant que ce flag est true
-  let isDegraded = $state(false);
+  let isDegraded = false;
 
   // Calcule le nombre de donnes en fonction du nombre de joueurs et tours
   function calculateRows(playerCount: number, tours: number): number {
@@ -4663,42 +4663,44 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
       </div>
     {/if}
 
-<table
-  class="players-table players-table-clickable"
-  on:click={() => showResultatsZoom = true}
-  on:keydown={(e) => e.key === 'Enter' && (showResultatsZoom = true)}
-  role="button"
-  tabindex="0"
-  title="Cliquer pour agrandir"
->
-  <thead>
-    <tr>
-      <th></th>
-      {#each players as p, i}
-      <th
-          class:leader={leaderScore !== 0  && scoresCumulés[p] === leaderScore}
-        >
-        {#if i === currentDealer}
-        <span class="dealer-icon">🖐️</span>
-        {/if}
-        {p}
-      </th>
-      {/each}
-    </tr>
-  </thead>
-  <tbody>
-    <tr>
-      <td class="label-cell">Résultats</td>
-      {#each players as p}
-      <td
-          class:leader={leaderScore !== 0 && scoresCumulés[p] === leaderScore}
-        >
-          {scoresCumulés[p] ?? 0}
-        </td>
-      {/each}
-    </tr>
-  </tbody>
-</table>
+<!-- Conteneur pour le badge + tableau (sans espace) -->
+<div class="resultats-container">
+  <div class="resultats-badge">Résultats</div>
+  <table
+    class="players-table players-table-clickable players-table-no-label"
+    on:click={() => showResultatsZoom = true}
+    on:keydown={(e) => e.key === 'Enter' && (showResultatsZoom = true)}
+    role="button"
+    tabindex="0"
+    title="Cliquer pour agrandir"
+  >
+    <thead>
+      <tr>
+        {#each players as p, i}
+        <th
+            class:leader={leaderScore !== 0  && scoresCumulés[p] === leaderScore}
+          >
+          {#if i === currentDealer}
+          <span class="dealer-icon">🖐️</span>
+          {/if}
+          {p}
+        </th>
+        {/each}
+      </tr>
+    </thead>
+    <tbody>
+      <tr>
+        {#each players as p}
+        <td
+            class:leader={leaderScore !== 0 && scoresCumulés[p] === leaderScore}
+          >
+            {scoresCumulés[p] ?? 0}
+          </td>
+        {/each}
+      </tr>
+    </tbody>
+  </table>
+</div>
     <!-- Texte centré sous le tableau -->
     {#if mancheStartTime}
   <div class="manche-info minimal">
@@ -6968,6 +6970,66 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
   margin-bottom: 2.2rem !important;   /* plus d'espace */
   }
 
+  /* Conteneur flex pour badge + tableau (garantit zéro espace) */
+  .resultats-container {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    margin-top: 1.2rem;
+    margin-bottom: 0;
+  }
+
+  /* Badge "Résultats" au-dessus du tableau - style boutons */
+  .resultats-container .resultats-badge {
+    text-align: center;
+    font-size: 0.75rem;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.1em;
+    color: #fef9c3;
+    background: radial-gradient(circle at top, #184326 0%, #07170d 65%, #020806 100%);
+    border: 1px solid var(--accent);
+    border-bottom: none;
+    border-radius: 8px 8px 0 0;
+    padding: 0.35rem 1rem;
+    margin: 0;
+    width: fit-content;
+    min-width: 90px;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.7);
+    box-shadow: 0 -2px 8px rgba(0, 0, 0, 0.5);
+  }
+
+  /* Tableau dans le conteneur - garde les bords arrondis, sans marge */
+  .resultats-container .players-table.players-table-no-label {
+    margin: 0 !important;
+    margin-bottom: 0 !important;
+  }
+
+  /* Tableau sans la colonne label - toutes les colonnes égales */
+  .players-table.players-table-no-label th,
+  .players-table.players-table-no-label td {
+    width: auto !important;
+  }
+
+  /* Taille police pour prénoms et scores - téléphone */
+  .resultats-container .players-table th {
+    font-size: 0.85rem;
+  }
+  .resultats-container .players-table td {
+    font-size: 1rem;
+    font-weight: 700;
+  }
+
+  /* Tablette : police un peu plus grande */
+  @media (min-width: 600px) {
+    .resultats-container .players-table th {
+      font-size: 1.05rem;
+    }
+    .resultats-container .players-table td {
+      font-size: 1.25rem;
+    }
+  }
+
   /* Espace sous le numéro de donne */
   .donne-title {
   margin-bottom: 2.4rem !important;
@@ -7372,7 +7434,7 @@ async function archiveFeuillePoints(_doc?: jsPDF) {
 
 
   .manche-info.minimal {
-  margin-top: 14px;
+  margin-top: 6px;
   text-align: center;
   font-size: 1rem;
   color: #d5d5d5;
